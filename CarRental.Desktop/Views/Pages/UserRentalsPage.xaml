@@ -1,0 +1,453 @@
+<UserControl x:Class="CarRental.Desktop.Views.Pages.UserRentalsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+
+        <Style x:Key="InlineMessagePanelStyle"
+               TargetType="Border"
+               BasedOn="{StaticResource StatusPanelStyle}">
+            <Setter Property="Margin" Value="0,12,0,0" />
+        </Style>
+
+        <Style x:Key="StatusMessagePanelStyle"
+               TargetType="Border"
+               BasedOn="{StaticResource InlineMessagePanelStyle}">
+            <Setter Property="Visibility" Value="Visible" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding StatusMessage}" Value="">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="ActionMessagePanelStyle"
+               TargetType="Border"
+               BasedOn="{StaticResource InlineMessagePanelStyle}">
+            <Setter Property="Background" Value="#ECFDF5" />
+            <Setter Property="BorderBrush" Value="#A7F3D0" />
+            <Setter Property="Visibility" Value="Visible" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding ActionMessage}" Value="">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0"
+                Margin="0,0,0,12"
+                Style="{StaticResource FilterCardStyle}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="Мої бронювання та оренди"
+                               Style="{StaticResource FilterHeaderTextStyle}" />
+                    <TextBlock Text="{Binding ClientSummaryText}"
+                               Style="{StaticResource FilterSubtleTextStyle}" />
+
+                    <UniformGrid Margin="0,12,0,0"
+                                 Rows="1"
+                                 Columns="3">
+                        <Border Margin="0,0,8,0"
+                                Padding="12"
+                                Background="#FFF7ED"
+                                BorderBrush="#FED7AA"
+                                BorderThickness="1"
+                                CornerRadius="10">
+                            <StackPanel>
+                                <TextBlock Text="Майбутні"
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                <TextBlock Text="{Binding UpcomingCount}"
+                                           FontSize="28"
+                                           FontWeight="Bold"
+                                           Foreground="#9A3412" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Margin="4,0"
+                                Padding="12"
+                                Background="#ECFDF5"
+                                BorderBrush="#A7F3D0"
+                                BorderThickness="1"
+                                CornerRadius="10">
+                            <StackPanel>
+                                <TextBlock Text="Активні"
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                <TextBlock Text="{Binding ActiveCount}"
+                                           FontSize="28"
+                                           FontWeight="Bold"
+                                           Foreground="#166534" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Margin="8,0,0,0"
+                                Padding="12"
+                                Background="#EFF6FF"
+                                BorderBrush="#BFDBFE"
+                                BorderThickness="1"
+                                CornerRadius="10">
+                            <StackPanel>
+                                <TextBlock Text="Історія"
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                <TextBlock Text="{Binding HistoryCount}"
+                                           FontSize="28"
+                                           FontWeight="Bold"
+                                           Foreground="#1D4ED8" />
+                            </StackPanel>
+                        </Border>
+                    </UniformGrid>
+
+                    <Border Style="{StaticResource ActionMessagePanelStyle}">
+                        <TextBlock Text="{Binding ActionMessage}"
+                                   Foreground="#065F46"
+                                   TextWrapping="Wrap" />
+                    </Border>
+
+                    <Border Style="{StaticResource StatusMessagePanelStyle}">
+                        <TextBlock Text="{Binding StatusMessage}"
+                                   TextWrapping="Wrap" />
+                    </Border>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1"
+                            Margin="16,0,0,0"
+                            Style="{StaticResource FilterActionBarStyle}">
+                    <Button Content="Прокат"
+                            Margin="0,0,8,0"
+                            Command="{Binding OpenCatalogCommand}" />
+                    <Button Content="Оновити"
+                            Style="{StaticResource PrimaryButtonStyle}"
+                            Command="{Binding RefreshCommand}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <Border Style="{StaticResource CardSurfaceStyle}"
+                    Visibility="{Binding HasRentals, Converter={StaticResource BoolToVisibilityConverter}}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel>
+                        <Border Margin="0,0,0,14"
+                                Padding="12"
+                                Background="#FEF3C7"
+                                BorderBrush="#FCD34D"
+                                BorderThickness="1"
+                                CornerRadius="10"
+                                Visibility="{Binding HasUpcomingRentals, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <DockPanel>
+                                <StackPanel DockPanel.Dock="Left">
+                                    <TextBlock Text="Майбутні бронювання"
+                                               Style="{StaticResource SectionTitleStyle}"
+                                               FontSize="16" />
+                                    <TextBlock Text="Записи, які вже створені й очікують початку."
+                                               Style="{StaticResource SectionHintStyle}" />
+                                </StackPanel>
+                                <Border DockPanel.Dock="Right"
+                                        Padding="10,4"
+                                        Background="#FFEDD5"
+                                        BorderBrush="#FDBA74"
+                                        BorderThickness="1"
+                                        CornerRadius="999">
+                                    <TextBlock Text="{Binding UpcomingCount}"
+                                               FontWeight="SemiBold"
+                                               Foreground="#9A3412" />
+                                </Border>
+                            </DockPanel>
+                        </Border>
+
+                        <ItemsControl ItemsSource="{Binding UpcomingRentals}"
+                                      Visibility="{Binding HasUpcomingRentals, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Margin="0,0,0,12"
+                                            Padding="14"
+                                            Background="#F8FAFC"
+                                            BorderBrush="#E2E8F0"
+                                            BorderThickness="1"
+                                            CornerRadius="12">
+                                        <StackPanel>
+                                            <DockPanel LastChildFill="False">
+                                                <StackPanel DockPanel.Dock="Left">
+                                                    <TextBlock Text="{Binding VehicleName}" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" />
+                                                    <TextBlock Text="{Binding ContractNumber}" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                </StackPanel>
+                                                <Border DockPanel.Dock="Right"
+                                                        Padding="10,4"
+                                                        Background="{Binding StatusBadgeBackground}"
+                                                        BorderBrush="#E5E7EB"
+                                                        BorderThickness="1"
+                                                        CornerRadius="999">
+                                                    <TextBlock Text="{Binding StatusText}" FontWeight="SemiBold" Foreground="{Binding StatusBadgeForeground}" />
+                                                </Border>
+                                            </DockPanel>
+                                            <Grid Margin="0,12,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                </Grid.RowDefinitions>
+                                                <TextBlock Grid.Row="0" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="Період:" />
+                                                <TextBlock Grid.Row="0" Grid.Column="1" Margin="0,0,0,6" Text="{Binding PeriodDisplay}" />
+                                                <TextBlock Grid.Row="1" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="Сума:" />
+                                                <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,0,0,6" Text="{Binding TotalAmountDisplay}" />
+                                                <TextBlock Grid.Row="2" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="Сплачено:" />
+                                                <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,0,0,6" Text="{Binding PaidAmountDisplay}" />
+                                                <TextBlock Grid.Row="3" Margin="0,0,8,0" Style="{StaticResource FormLabelStyle}" Text="Залишок:" />
+                                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding BalanceDisplay}" />
+                                            </Grid>
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+                                                <Button Content="Скасувати бронювання"
+                                                        Style="{StaticResource DangerButtonStyle}"
+                                                        Command="{Binding DataContext.RequestCancelCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <Border Margin="0,6,0,14"
+                                Padding="12"
+                                Background="#ECFDF5"
+                                BorderBrush="#A7F3D0"
+                                BorderThickness="1"
+                                CornerRadius="10"
+                                Visibility="{Binding HasActiveRentals, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <DockPanel>
+                                <StackPanel DockPanel.Dock="Left">
+                                    <TextBlock Text="Активні оренди" Style="{StaticResource SectionTitleStyle}" FontSize="16" />
+                                    <TextBlock Text="Поточні договори, які ще тривають." Style="{StaticResource SectionHintStyle}" />
+                                </StackPanel>
+                                <Border DockPanel.Dock="Right" Padding="10,4" Background="#DCFCE7" BorderBrush="#86EFAC" BorderThickness="1" CornerRadius="999">
+                                    <TextBlock Text="{Binding ActiveCount}" FontWeight="SemiBold" Foreground="#166534" />
+                                </Border>
+                            </DockPanel>
+                        </Border>
+
+                        <ItemsControl ItemsSource="{Binding ActiveRentals}"
+                                      Visibility="{Binding HasActiveRentals, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Margin="0,0,0,12"
+                                            Padding="14"
+                                            Background="#F8FAFC"
+                                            BorderBrush="#E2E8F0"
+                                            BorderThickness="1"
+                                            CornerRadius="12">
+                                        <StackPanel>
+                                            <DockPanel LastChildFill="False">
+                                                <StackPanel DockPanel.Dock="Left">
+                                                    <TextBlock Text="{Binding VehicleName}" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" />
+                                                    <TextBlock Text="{Binding ContractNumber}" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                </StackPanel>
+                                                <Border DockPanel.Dock="Right"
+                                                        Padding="10,4"
+                                                        Background="{Binding StatusBadgeBackground}"
+                                                        BorderBrush="#E5E7EB"
+                                                        BorderThickness="1"
+                                                        CornerRadius="999">
+                                                    <TextBlock Text="{Binding StatusText}" FontWeight="SemiBold" Foreground="{Binding StatusBadgeForeground}" />
+                                                </Border>
+                                            </DockPanel>
+                                            <Grid Margin="0,12,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                </Grid.RowDefinitions>
+                                                <TextBlock Grid.Row="0" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="Період:" />
+                                                <TextBlock Grid.Row="0" Grid.Column="1" Margin="0,0,0,6" Text="{Binding PeriodDisplay}" />
+                                                <TextBlock Grid.Row="1" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="Сума:" />
+                                                <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,0,0,6" Text="{Binding TotalAmountDisplay}" />
+                                                <TextBlock Grid.Row="2" Margin="0,0,8,0" Style="{StaticResource FormLabelStyle}" Text="Сплачено:" />
+                                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding PaidAmountDisplay}" />
+                                            </Grid>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <Border Margin="0,6,0,14"
+                                Padding="12"
+                                Background="#EFF6FF"
+                                BorderBrush="#BFDBFE"
+                                BorderThickness="1"
+                                CornerRadius="10"
+                                Visibility="{Binding HasHistoryRentals, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <DockPanel>
+                                <StackPanel DockPanel.Dock="Left">
+                                    <TextBlock Text="Історія" Style="{StaticResource SectionTitleStyle}" FontSize="16" />
+                                    <TextBlock Text="Завершені та скасовані договори." Style="{StaticResource SectionHintStyle}" />
+                                </StackPanel>
+                                <Border DockPanel.Dock="Right" Padding="10,4" Background="#DBEAFE" BorderBrush="#93C5FD" BorderThickness="1" CornerRadius="999">
+                                    <TextBlock Text="{Binding HistoryCount}" FontWeight="SemiBold" Foreground="#1D4ED8" />
+                                </Border>
+                            </DockPanel>
+                        </Border>
+
+                        <ItemsControl ItemsSource="{Binding HistoryRentals}"
+                                      Visibility="{Binding HasHistoryRentals, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Margin="0,0,0,12"
+                                            Padding="14"
+                                            Background="#F8FAFC"
+                                            BorderBrush="#E2E8F0"
+                                            BorderThickness="1"
+                                            CornerRadius="12">
+                                        <StackPanel>
+                                            <DockPanel LastChildFill="False">
+                                                <StackPanel DockPanel.Dock="Left">
+                                                    <TextBlock Text="{Binding VehicleName}" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" />
+                                                    <TextBlock Text="{Binding ContractNumber}" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                </StackPanel>
+                                                <Border DockPanel.Dock="Right"
+                                                        Padding="10,4"
+                                                        Background="{Binding StatusBadgeBackground}"
+                                                        BorderBrush="#E5E7EB"
+                                                        BorderThickness="1"
+                                                        CornerRadius="999">
+                                                    <TextBlock Text="{Binding StatusText}" FontWeight="SemiBold" Foreground="{Binding StatusBadgeForeground}" />
+                                                </Border>
+                                            </DockPanel>
+                                            <Grid Margin="0,12,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                </Grid.RowDefinitions>
+                                                <TextBlock Grid.Row="0" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="Період:" />
+                                                <TextBlock Grid.Row="0" Grid.Column="1" Margin="0,0,0,6" Text="{Binding PeriodDisplay}" />
+                                                <TextBlock Grid.Row="1" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="Сума:" />
+                                                <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,0,0,6" Text="{Binding TotalAmountDisplay}" />
+                                                <TextBlock Grid.Row="2" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="Сплачено:" />
+                                                <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,0,0,6" Text="{Binding PaidAmountDisplay}" />
+                                                <TextBlock Grid.Row="3" Margin="0,0,8,0" Style="{StaticResource FormLabelStyle}" Text="Подія:" />
+                                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding HistoryMomentDisplay}" />
+                                            </Grid>
+                                            <TextBlock Margin="0,10,0,0"
+                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                       Text="{Binding CancellationReason}"
+                                                       Visibility="{Binding HasCancellationReason, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+                                                <Button Content="Забронювати знову"
+                                                        Command="{Binding DataContext.BookAgainCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <Border>
+                <Border.Style>
+                    <Style TargetType="Border" BasedOn="{StaticResource CardSurfaceStyle}">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding HasRentals}" Value="False">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <StackPanel>
+                    <TextBlock Text="У вас ще немає оформлених бронювань."
+                               Style="{StaticResource SectionTitleStyle}" />
+                    <TextBlock Text="Почніть із підбору авто, а після оформлення всі записи з’являться на цій сторінці."
+                               Style="{StaticResource SectionHintStyle}" />
+                    <Button Content="Перейти до прокату"
+                            Width="180"
+                            Margin="0,14,0,0"
+                            Style="{StaticResource PrimaryButtonStyle}"
+                            Command="{Binding OpenCatalogCommand}" />
+                </StackPanel>
+            </Border>
+
+            <Border Background="#880F172A"
+                    Visibility="{Binding IsCancelDialogOpen, Converter={StaticResource BoolToVisibilityConverter}}"
+                    Panel.ZIndex="40">
+                <Grid>
+                    <Border Width="460"
+                            Padding="18"
+                            Background="White"
+                            BorderBrush="#D1D5DB"
+                            BorderThickness="1"
+                            CornerRadius="14"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center">
+                        <StackPanel>
+                            <TextBlock Text="Скасувати бронювання"
+                                       Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Margin="0,8,0,0" TextWrapping="Wrap">
+                                <Run Text="Бронювання " />
+                                <Run Text="{Binding CancelDialogContractText}" FontWeight="SemiBold" />
+                                <Run Text=" буде переведене в статус " />
+                                <Run Text="Canceled" FontWeight="SemiBold" />
+                                <Run Text="." />
+                            </TextBlock>
+                            <Grid Margin="0,14,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="Авто:" />
+                                <TextBlock Grid.Row="0" Grid.Column="1" Margin="0,0,0,6" Text="{Binding CancelDialogVehicleText}" />
+                                <TextBlock Grid.Row="1" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="Період:" />
+                                <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,0,0,6" Text="{Binding CancelDialogPeriodText}" />
+                                <TextBlock Grid.Row="2" Margin="0,0,8,0" Style="{StaticResource FormLabelStyle}" Text="Причина:" />
+                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding CancelDialogReasonText}" />
+                            </Grid>
+                            <DockPanel Margin="0,18,0,0" LastChildFill="False">
+                                <Button DockPanel.Dock="Right"
+                                        Content="Скасувати бронювання"
+                                        Style="{StaticResource DangerButtonStyle}"
+                                        Command="{Binding ConfirmCancelCommand}" />
+                                <Button DockPanel.Dock="Right"
+                                        Margin="0,0,8,0"
+                                        Content="Назад"
+                                        Command="{Binding CloseCancelDialogCommand}" />
+                            </DockPanel>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

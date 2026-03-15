@@ -1,0 +1,146 @@
+﻿<UserControl x:Class="CarRental.Desktop.Views.Pages.MaintenancePage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid x:Name="MaintenanceRoot" Margin="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <GroupBox x:Name="MaintenanceRecordGroup" Grid.Row="0" Header="Запис про техобслуговування">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="2*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="1.5*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Авто" />
+                    <ComboBox ItemsSource="{Binding Vehicles}"
+                              DisplayMemberPath="Display"
+                              SelectedItem="{Binding SelectedVehicle}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Margin="0,0,8,0">
+                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Пробіг на ТО" />
+                    <TextBox Text="{Binding MileageInput}" />
+                </StackPanel>
+                <StackPanel Grid.Column="2" Margin="0,0,8,0">
+                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Наступне ТО" />
+                    <TextBox Text="{Binding NextMileageInput}" />
+                </StackPanel>
+                <StackPanel Grid.Column="3" Margin="0,0,8,0">
+                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Вартість" />
+                    <TextBox Text="{Binding CostInput}" />
+                </StackPanel>
+                <StackPanel Grid.Column="4" Margin="0,0,8,0">
+                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Опис робіт" />
+                    <TextBox Text="{Binding Description}" />
+                </StackPanel>
+                <Button x:Name="AddRecordButton"
+                        Grid.Column="5"
+                        Width="100"
+                        Margin="0,20,0,0"
+                        Content="Додати"
+                        Style="{StaticResource PrimaryButtonStyle}"
+                        Command="{Binding AddRecordCommand}" />
+            </Grid>
+        </GroupBox>
+
+        <TabControl x:Name="MaintenanceTabControl" Grid.Row="1" Margin="0,12,0,0">
+            <TabItem x:Name="HistoryTab" Header="Історія техобслуговування">
+                <DataGrid x:Name="RecordsGrid"
+                          Margin="0,12,0,0"
+                          ItemsSource="{Binding Records}"
+                          AutoGenerateColumns="False"
+                          IsReadOnly="True">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Авто" Binding="{Binding Vehicle}" Width="220" />
+                        <DataGridTextColumn Header="Дата" Binding="{Binding ServiceDate, StringFormat=dd.MM.yyyy}" Width="120" />
+                        <DataGridTextColumn Header="Пробіг" Binding="{Binding MileageAtService}" Width="110" />
+                        <DataGridTextColumn Header="Наступне ТО" Binding="{Binding NextServiceMileage}" Width="130" />
+                        <DataGridTextColumn Header="Вартість" Binding="{Binding Cost}" Width="120" />
+                        <DataGridTextColumn Header="Опис" Binding="{Binding Description}" Width="*" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </TabItem>
+
+            <TabItem x:Name="DueTab" Header="Планове ТО за регламентом">
+                <DataGrid x:Name="DueItemsGrid"
+                          Margin="0,12,0,0"
+                          ItemsSource="{Binding DueItems}"
+                          AutoGenerateColumns="False"
+                          IsReadOnly="True">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Авто" Binding="{Binding Vehicle}" Width="260" />
+                        <DataGridTextColumn Header="Поточний пробіг" Binding="{Binding CurrentMileage}" Width="150" />
+                        <DataGridTextColumn Header="Наступне ТО" Binding="{Binding NextServiceMileage}" Width="130" />
+                        <DataGridTextColumn Header="Прострочено (км)" Binding="{Binding OverdueByKm}" Width="140" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </TabItem>
+        </TabControl>
+
+        <Border x:Name="MaintenanceStatusPanel"
+                Grid.Row="2"
+                Margin="0,12,0,0"
+                Style="{StaticResource StatusPanelStyle}">
+            <TextBlock Text="{Binding StatusMessage}"
+                       VerticalAlignment="Center"
+                       TextWrapping="Wrap" />
+        </Border>
+
+        <Border x:Name="GuideOverlay"
+                Grid.RowSpan="3"
+                Background="Transparent"
+                Visibility="Collapsed"
+                Panel.ZIndex="1200"
+                MouseLeftButtonDown="GuideOverlay_OnMouseLeftButtonDown">
+            <Canvas>
+                <Rectangle x:Name="GuideDimTop" Fill="#A8000000" IsHitTestVisible="False" />
+                <Rectangle x:Name="GuideDimLeft" Fill="#A8000000" IsHitTestVisible="False" />
+                <Rectangle x:Name="GuideDimRight" Fill="#A8000000" IsHitTestVisible="False" />
+                <Rectangle x:Name="GuideDimBottom" Fill="#A8000000" IsHitTestVisible="False" />
+
+                <Border x:Name="GuideHighlightBorder"
+                        BorderBrush="#34D399"
+                        BorderThickness="2"
+                        CornerRadius="10"
+                        Background="#18FFFFFF"
+                        IsHitTestVisible="False" />
+
+                <Border x:Name="GuideCard"
+                        Width="350"
+                        Padding="12"
+                        Background="White"
+                        BorderBrush="#CBD5E1"
+                        BorderThickness="1"
+                        CornerRadius="12"
+                        IsHitTestVisible="False">
+                    <StackPanel>
+                        <TextBlock Text="Гайд: ТО"
+                                   FontSize="16"
+                                   FontWeight="SemiBold"
+                                   Foreground="#0F172A" />
+                        <TextBlock x:Name="GuideStepTitle"
+                                   Margin="0,8,0,4"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   Foreground="#111827" />
+                        <TextBlock x:Name="GuideStepDescription"
+                                   Foreground="#475569"
+                                   TextWrapping="Wrap" />
+                        <TextBlock x:Name="GuideStepProgress"
+                                   Margin="0,8,0,0"
+                                   Foreground="#6B7280"
+                                   FontSize="12" />
+                    </StackPanel>
+                </Border>
+            </Canvas>
+        </Border>
+    </Grid>
+</UserControl>

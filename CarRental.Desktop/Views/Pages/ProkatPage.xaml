@@ -1,0 +1,922 @@
+﻿<UserControl x:Class="CarRental.Desktop.Views.Pages.ProkatPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:primitives="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
+             x:Name="Root">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+
+        <Style x:Key="CityLinkButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="6,2" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Foreground" Value="#20324E" />
+            <Setter Property="FontSize" Value="32" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Host"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="8"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Host" Property="Background" Value="#26FFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Host" Property="Background" Value="#40FFFFFF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="CardItem" TargetType="ListBoxItem">
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <ContentPresenter />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <LinearGradientBrush x:Key="PrimaryBlueButtonBrush" StartPoint="0,0" EndPoint="0,1">
+            <GradientStop Color="#1D5FA7" Offset="0" />
+            <GradientStop Color="#123F79" Offset="1" />
+        </LinearGradientBrush>
+
+        <DrawingBrush x:Key="CityMapBackgroundBrush" Stretch="Fill">
+            <DrawingBrush.Drawing>
+                <DrawingGroup>
+                    <GeometryDrawing Brush="#F3F1E5">
+                        <GeometryDrawing.Geometry>
+                            <RectangleGeometry Rect="0,0,1,1" />
+                        </GeometryDrawing.Geometry>
+                    </GeometryDrawing>
+
+                    <GeometryDrawing>
+                        <GeometryDrawing.Pen>
+                            <Pen Brush="#2AB7CCD9" Thickness="0.08" StartLineCap="Round" EndLineCap="Round" />
+                        </GeometryDrawing.Pen>
+                        <GeometryDrawing.Geometry>
+                            <PathGeometry Figures="M 0.72,0.02 C 0.67,0.23 0.66,0.39 0.68,0.58 C 0.70,0.77 0.73,0.90 0.81,1.02" />
+                        </GeometryDrawing.Geometry>
+                    </GeometryDrawing>
+
+                    <GeometryDrawing>
+                        <GeometryDrawing.Pen>
+                            <Pen Brush="#66C9D8B4" Thickness="0.018" StartLineCap="Round" EndLineCap="Round" />
+                        </GeometryDrawing.Pen>
+                        <GeometryDrawing.Geometry>
+                            <GeometryGroup>
+                                <LineGeometry StartPoint="0.48,0.14" EndPoint="0.96,0.13" />
+                                <LineGeometry StartPoint="0.45,0.25" EndPoint="0.97,0.24" />
+                                <LineGeometry StartPoint="0.43,0.37" EndPoint="0.95,0.35" />
+                                <LineGeometry StartPoint="0.50,0.50" EndPoint="0.98,0.48" />
+                                <LineGeometry StartPoint="0.42,0.64" EndPoint="0.93,0.62" />
+                                <LineGeometry StartPoint="0.45,0.78" EndPoint="0.90,0.77" />
+                                <LineGeometry StartPoint="0.56,0.08" EndPoint="0.49,0.88" />
+                                <LineGeometry StartPoint="0.64,0.05" EndPoint="0.60,0.96" />
+                                <LineGeometry StartPoint="0.74,0.12" EndPoint="0.71,0.95" />
+                                <LineGeometry StartPoint="0.84,0.08" EndPoint="0.81,0.94" />
+                            </GeometryGroup>
+                        </GeometryDrawing.Geometry>
+                    </GeometryDrawing>
+
+                    <GeometryDrawing>
+                        <GeometryDrawing.Pen>
+                            <Pen Brush="#4DB7BE93" Thickness="0.010" StartLineCap="Round" EndLineCap="Round" />
+                        </GeometryDrawing.Pen>
+                        <GeometryDrawing.Geometry>
+                            <GeometryGroup>
+                                <LineGeometry StartPoint="0.50,0.06" EndPoint="0.97,0.60" />
+                                <LineGeometry StartPoint="0.45,0.20" EndPoint="0.95,0.72" />
+                                <LineGeometry StartPoint="0.48,0.34" EndPoint="0.92,0.92" />
+                                <LineGeometry StartPoint="0.55,0.02" EndPoint="0.88,0.76" />
+                                <LineGeometry StartPoint="0.60,0.12" EndPoint="0.98,0.84" />
+                            </GeometryGroup>
+                        </GeometryDrawing.Geometry>
+                    </GeometryDrawing>
+                </DrawingGroup>
+            </DrawingBrush.Drawing>
+        </DrawingBrush>
+
+        <ImageBrush x:Key="KyivHeroPhotoBrush"
+                    ImageSource="/Assets/Prokat/kyiv-hero-wide.jpg"
+                    Stretch="UniformToFill"
+                    AlignmentX="Center"
+                    AlignmentY="Center">
+            <ImageBrush.RelativeTransform>
+                <TranslateTransform X="0.08" Y="0" />
+            </ImageBrush.RelativeTransform>
+        </ImageBrush>
+
+        <ImageBrush x:Key="LvivHeroPhotoBrush"
+                    ImageSource="/Assets/Prokat/lviv-hero-wide.jpg"
+                    Stretch="UniformToFill"
+                    AlignmentX="Center"
+                    AlignmentY="Center" />
+
+        <ImageBrush x:Key="OdessaHeroPhotoBrush"
+                    ImageSource="/Assets/Prokat/odesa-hero-wide.jpg"
+                    Stretch="UniformToFill"
+                    AlignmentX="Center"
+                    AlignmentY="Center">
+            <ImageBrush.RelativeTransform>
+                <TranslateTransform X="0.10" Y="0" />
+            </ImageBrush.RelativeTransform>
+        </ImageBrush>
+    </UserControl.Resources>
+
+    <Grid Background="#E7EBF1">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="282" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0"
+                Margin="8,8,0,8"
+                Style="{StaticResource FilterCardStyle}">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel>
+                    <Border Style="{StaticResource FilterSectionStyle}" Margin="0,0,0,10">
+                        <StackPanel>
+                            <TextBlock Text="Період і локації" Style="{StaticResource FilterHeaderTextStyle}" />
+                            <TextBlock Text="{Binding CheckoutPeriodSummary}"
+                                       Style="{StaticResource FilterSubtleTextStyle}" />
+
+                            <Grid Margin="0,12,0,0">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <StackPanel Grid.Row="0" Margin="0,0,0,10">
+                                    <TextBlock Text="Місце подачі" Style="{StaticResource FormLabelStyle}" />
+                                    <ComboBox ItemsSource="{Binding Locations}"
+                                              SelectedItem="{Binding PickupLocation}" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="1" Margin="0,0,0,10">
+                                    <TextBlock Text="Дата оренди / час" Style="{StaticResource FormLabelStyle}" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="96" />
+                                        </Grid.ColumnDefinitions>
+                                        <DatePicker Grid.Column="0"
+                                                    Margin="0,0,6,0"
+                                                    SelectedDate="{Binding StartDate}" />
+                                        <ComboBox Grid.Column="1"
+                                                  ItemsSource="{Binding TimeOptions}"
+                                                  SelectedItem="{Binding PickupTime}" />
+                                    </Grid>
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="2" Margin="0,0,0,10">
+                                    <TextBlock Text="Пункт повернення" Style="{StaticResource FormLabelStyle}" />
+                                    <ComboBox ItemsSource="{Binding Locations}"
+                                              SelectedItem="{Binding ReturnLocation}" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="3">
+                                    <TextBlock Text="Дата повернення / час" Style="{StaticResource FormLabelStyle}" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="96" />
+                                        </Grid.ColumnDefinitions>
+                                        <DatePicker Grid.Column="0"
+                                                    Margin="0,0,6,0"
+                                                    SelectedDate="{Binding EndDate}" />
+                                        <ComboBox Grid.Column="1"
+                                                  ItemsSource="{Binding TimeOptions}"
+                                                  SelectedItem="{Binding ReturnTime}" />
+                                    </Grid>
+                                </StackPanel>
+                            </Grid>
+
+                            <StackPanel Style="{StaticResource FilterActionBarStyle}" Margin="0,14,0,0">
+                                <Button Content="Скинути фільтри"
+                                        Margin="0,0,8,0"
+                                        Command="{Binding ResetFiltersCommand}" />
+                                <Button Content="Оновити каталог"
+                                        Style="{StaticResource PrimaryButtonStyle}"
+                                        Command="{Binding RefreshCommand}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource FilterSectionStyle}" Margin="0,0,0,10">
+                        <StackPanel>
+                            <TextBlock Text="Каталог" Style="{StaticResource FilterHeaderTextStyle}" />
+                            <TextBlock Text="{Binding ActiveFiltersSummary}"
+                                       Style="{StaticResource FilterSubtleTextStyle}"
+                                       TextWrapping="Wrap" />
+
+                            <StackPanel Margin="0,12,0,0">
+                                <TextBlock Text="Сортування" Style="{StaticResource FormLabelStyle}" />
+                                <ComboBox ItemsSource="{Binding SortOptions}"
+                                          SelectedItem="{Binding SelectedSortOption}" />
+                            </StackPanel>
+
+                            <TextBlock Margin="0,12,0,0"
+                                       Text="{Binding StatusMessage}"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource FilterSectionStyle}" Margin="0,0,0,10">
+                        <StackPanel>
+                            <TextBlock Text="Клас авто" Style="{StaticResource FilterHeaderTextStyle}" />
+                            <TextBlock Text="Оберіть один або кілька класів для каталогу."
+                                       Style="{StaticResource FilterSubtleTextStyle}" />
+                            <ItemsControl ItemsSource="{Binding CarClassFilters}" Margin="0,12,0,0">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <CheckBox IsChecked="{Binding IsSelected}"
+                                                  Style="{StaticResource FilterChipToggleStyle}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Margin="0,0,6,0" Text="{Binding Icon}" FontSize="15" />
+                                                <TextBlock Text="{Binding Label}" />
+                                            </StackPanel>
+                                        </CheckBox>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource FilterSectionStyle}" Margin="0,0,0,10">
+                        <StackPanel>
+                            <TextBlock Text="Тип палива" Style="{StaticResource FilterHeaderTextStyle}" />
+                            <TextBlock Text="Комбінуйте пальне з іншими фільтрами без повторного пошуку."
+                                       Style="{StaticResource FilterSubtleTextStyle}" />
+                            <ItemsControl ItemsSource="{Binding FuelFilters}" Margin="0,12,0,0">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <CheckBox IsChecked="{Binding IsSelected}"
+                                                  Style="{StaticResource FilterChipToggleStyle}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Margin="0,0,6,0" Text="{Binding Icon}" FontSize="15" />
+                                                <TextBlock Text="{Binding Label}" />
+                                            </StackPanel>
+                                        </CheckBox>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource FilterSectionStyle}" Margin="0,0,0,10">
+                        <StackPanel>
+                            <TextBlock Text="Трансмісія" Style="{StaticResource FilterHeaderTextStyle}" />
+                            <TextBlock Text="Швидко перемикайте механіку та автомат у форматі chip-перемикачів."
+                                       Style="{StaticResource FilterSubtleTextStyle}" />
+                            <ItemsControl ItemsSource="{Binding TransmissionFilters}" Margin="0,12,0,0">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <CheckBox IsChecked="{Binding IsSelected}"
+                                                  Style="{StaticResource FilterChipToggleStyle}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Margin="0,0,6,0" Text="{Binding Icon}" FontSize="15" />
+                                                <TextBlock Text="{Binding Label}" />
+                                            </StackPanel>
+                                        </CheckBox>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource FilterSectionStyle}" Margin="0,0,0,10">
+                        <StackPanel>
+                            <TextBlock Text="Статус авто" Style="{StaticResource FilterHeaderTextStyle}" />
+                            <TextBlock Text="За замовчуванням показані вільні авто, але можна розширити вибірку."
+                                       Style="{StaticResource FilterSubtleTextStyle}" />
+                            <ItemsControl ItemsSource="{Binding VehicleStatusFilters}" Margin="0,12,0,0">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <CheckBox IsChecked="{Binding IsSelected}"
+                                                  Style="{StaticResource FilterChipToggleStyle}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Margin="0,0,6,0" Text="{Binding Icon}" FontSize="15" />
+                                                <TextBlock Text="{Binding Label}" />
+                                            </StackPanel>
+                                        </CheckBox>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource FilterSectionStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Ціна, €" Style="{StaticResource FilterHeaderTextStyle}" />
+                            <TextBlock Text="Вкажіть мінімальну та максимальну добову ставку або скористайтеся слайдерами."
+                                       Style="{StaticResource FilterSubtleTextStyle}" />
+                            <Grid Margin="0,12,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0" Margin="0,0,6,0">
+                                    <TextBlock Text="Від" Style="{StaticResource FormLabelStyle}" />
+                                    <TextBox Text="{Binding MinPriceInput, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="1" Margin="6,0,0,0">
+                                    <TextBlock Text="До" Style="{StaticResource FormLabelStyle}" />
+                                    <TextBox Text="{Binding MaxPriceInput, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                            </Grid>
+                            <Slider Minimum="20"
+                                    Maximum="290"
+                                    Margin="0,4,0,8"
+                                    Value="{Binding MinPriceValue, Mode=TwoWay}"
+                                    primitives:Thumb.DragCompleted="PriceSlider_DragCompleted" />
+                            <Slider Minimum="20"
+                                    Maximum="290"
+                                    Margin="0,0,0,12"
+                                    Value="{Binding MaxPriceValue, Mode=TwoWay}"
+                                    primitives:Thumb.DragCompleted="PriceSlider_DragCompleted" />
+                            <StackPanel Style="{StaticResource FilterActionBarStyle}">
+                                <Button Content="Скинути все"
+                                        Margin="0,0,8,0"
+                                        Command="{Binding ResetFiltersCommand}" />
+                                <Button Content="Застосувати ціну"
+                                        Style="{StaticResource PrimaryButtonStyle}"
+                                        Command="{Binding ApplyPriceCommand}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+        <Grid Grid.Column="1" Margin="10,8,8,8">
+            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+
+            <Border Grid.Row="0"
+                    BorderBrush="#D6DAE2"
+                    BorderThickness="1"
+                    CornerRadius="10"
+                    Padding="12"
+                    Margin="0,0,0,10"
+                    Background="#ECECEF">
+                <Grid>
+                    <Rectangle RadiusX="8"
+                               RadiusY="8"
+                               Fill="{StaticResource CityMapBackgroundBrush}">
+                        <Rectangle.Style>
+                            <Style TargetType="Rectangle">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding PickupLocation}" Value="Київ">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding PickupLocation}" Value="Львів">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding PickupLocation}" Value="Одеса">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Rectangle.Style>
+                    </Rectangle>
+
+                    <Rectangle RadiusX="8"
+                               RadiusY="8"
+                               Fill="{StaticResource KyivHeroPhotoBrush}">
+                        <Rectangle.Width>460</Rectangle.Width>
+                        <Rectangle.HorizontalAlignment>Right</Rectangle.HorizontalAlignment>
+                        <Rectangle.OpacityMask>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                <GradientStop Color="#00FFFFFF" Offset="0" />
+                                <GradientStop Color="#00FFFFFF" Offset="0.28" />
+                                <GradientStop Color="#88FFFFFF" Offset="0.58" />
+                                <GradientStop Color="#FFFFFFFF" Offset="0.78" />
+                                <GradientStop Color="#FFFFFFFF" Offset="1" />
+                            </LinearGradientBrush>
+                        </Rectangle.OpacityMask>
+                        <Rectangle.Style>
+                            <Style TargetType="Rectangle">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding PickupLocation}" Value="Київ">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Rectangle.Style>
+                    </Rectangle>
+
+                    <Rectangle RadiusX="8"
+                               RadiusY="8"
+                               Fill="{StaticResource LvivHeroPhotoBrush}">
+                        <Rectangle.Width>460</Rectangle.Width>
+                        <Rectangle.HorizontalAlignment>Right</Rectangle.HorizontalAlignment>
+                        <Rectangle.OpacityMask>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                <GradientStop Color="#00FFFFFF" Offset="0" />
+                                <GradientStop Color="#00FFFFFF" Offset="0.28" />
+                                <GradientStop Color="#88FFFFFF" Offset="0.58" />
+                                <GradientStop Color="#FFFFFFFF" Offset="0.78" />
+                                <GradientStop Color="#FFFFFFFF" Offset="1" />
+                            </LinearGradientBrush>
+                        </Rectangle.OpacityMask>
+                        <Rectangle.Style>
+                            <Style TargetType="Rectangle">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding PickupLocation}" Value="Львів">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Rectangle.Style>
+                    </Rectangle>
+
+                    <Rectangle RadiusX="8"
+                               RadiusY="8"
+                               Fill="{StaticResource OdessaHeroPhotoBrush}">
+                        <Rectangle.Width>460</Rectangle.Width>
+                        <Rectangle.HorizontalAlignment>Right</Rectangle.HorizontalAlignment>
+                        <Rectangle.OpacityMask>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                <GradientStop Color="#00FFFFFF" Offset="0" />
+                                <GradientStop Color="#00FFFFFF" Offset="0.28" />
+                                <GradientStop Color="#88FFFFFF" Offset="0.58" />
+                                <GradientStop Color="#FFFFFFFF" Offset="0.78" />
+                                <GradientStop Color="#FFFFFFFF" Offset="1" />
+                            </LinearGradientBrush>
+                        </Rectangle.OpacityMask>
+                        <Rectangle.Style>
+                            <Style TargetType="Rectangle">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding PickupLocation}" Value="Одеса">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Rectangle.Style>
+                    </Rectangle>
+                    <Rectangle RadiusX="8" RadiusY="8">
+                        <Rectangle.Fill>
+                            <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
+                                <GradientStop Color="#F7F4EA" Offset="0" />
+                                <GradientStop Color="#EFEBDD" Offset="0.34" />
+                                <GradientStop Color="#3AF2EFE3" Offset="0.58" />
+                                <GradientStop Color="#12F2EFE3" Offset="0.76" />
+                                <GradientStop Color="#00F2EFE3" Offset="1" />
+                            </LinearGradientBrush>
+                        </Rectangle.Fill>
+                    </Rectangle>
+                    <Grid Margin="14,8">
+                        <Button Style="{StaticResource CityLinkButtonStyle}"
+                            Content="{Binding PickupLocationHeader}"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Left"
+                            Margin="0"
+                            Padding="0"
+                            FontSize="58"
+                            FontWeight="Bold"
+                            Foreground="#0B2346"
+                            Opacity="1"
+                            Click="CityPickerButton_OnClick">
+                        <Button.ContextMenu>
+                            <ContextMenu Placement="Bottom"
+                                         StaysOpen="False"
+                                         ItemsSource="{Binding Locations}">
+                                <ContextMenu.ItemContainerStyle>
+                                    <Style TargetType="MenuItem">
+                                        <EventSetter Event="Click" Handler="CityMenuItem_OnClick" />
+                                    </Style>
+                                </ContextMenu.ItemContainerStyle>
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <Border Grid.Row="1"
+                    Background="#F2F1EE"
+                    BorderBrush="#D8DCE5"
+                    BorderThickness="1"
+                    CornerRadius="10"
+                    Padding="8">
+                <ListBox ItemsSource="{Binding Vehicles}"
+                         SelectedItem="{Binding SelectedVehicle}"
+                         ItemContainerStyle="{StaticResource CardItem}"
+                         BorderThickness="0"
+                         Background="Transparent"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         ScrollViewer.CanContentScroll="False">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <UniformGrid Columns="3" />
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Border x:Name="Card"
+                                    Margin="6"
+                                    CornerRadius="14"
+                                    Background="#F5F3EC"
+                                    BorderBrush="#D6CCAF"
+                                    BorderThickness="1"
+                                    VerticalAlignment="Stretch">
+                                <Border.Effect>
+                                    <DropShadowEffect Color="#3A000000" BlurRadius="10" ShadowDepth="2" Opacity="0.20" />
+                                </Border.Effect>
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="160" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+
+                                    <StackPanel Grid.Row="0" Margin="14,12,14,8">
+                                        <TextBlock Text="{Binding Car}" FontSize="34" FontWeight="SemiBold" Foreground="#1E293B" TextWrapping="Wrap" TextAlignment="Center" />
+                                        <TextBlock Text="{Binding EngineFuelTransmission}" FontSize="18" Foreground="#475569" HorizontalAlignment="Center" />
+                                    </StackPanel>
+
+                                    <Grid Grid.Row="1" Margin="8,0,8,8">
+                                        <Border CornerRadius="8" Background="#F1F5F9" BorderBrush="#CBD5E1" BorderThickness="1" />
+                                        <Image Source="{Binding ImageSource, Converter={StaticResource VehiclePhotoSourceConverter}, ConverterParameter=440}" Stretch="UniformToFill" Margin="1" />
+                                        <StackPanel VerticalAlignment="Top" HorizontalAlignment="Left" Margin="0,8,0,0">
+                                            <Border Visibility="{Binding HasPrimaryBadge, Converter={StaticResource BoolToVisibilityConverter}}" Background="{Binding PrimaryBadgeColor}" CornerRadius="0,4,4,0" Padding="10,2" Margin="0,0,0,4">
+                                                <TextBlock Text="{Binding PrimaryBadgeText}" Foreground="White" FontWeight="Bold" FontSize="12" />
+                                            </Border>
+                                            <Border Visibility="{Binding HasSecondaryBadge, Converter={StaticResource BoolToVisibilityConverter}}" Background="{Binding SecondaryBadgeColor}" CornerRadius="0,4,4,0" Padding="10,2">
+                                                <TextBlock Text="{Binding SecondaryBadgeText}" Foreground="White" FontWeight="Bold" FontSize="12" />
+                                            </Border>
+                                        </StackPanel>
+                                        <Border x:Name="BusyBadge" Visibility="Collapsed" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,8,8,0" Background="#DC2626" CornerRadius="4" Padding="8,3">
+                                            <TextBlock Text="Зайнято" Foreground="White" FontWeight="SemiBold" FontSize="11" />
+                                        </Border>
+                                        <Border Visibility="{Binding HasMultipleFleetVariants, Converter={StaticResource BoolToVisibilityConverter}}" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,36,8,0" Background="#0F4C81" CornerRadius="4" Padding="8,3">
+                                            <TextBlock Text="{Binding FleetCountBadgeText}" Foreground="White" FontWeight="SemiBold" FontSize="11" />
+                                        </Border>
+                                    </Grid>
+
+                                    <Grid Grid.Row="2" Margin="10,0,10,8">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="❄ A/C" HorizontalAlignment="Center" FontSize="11" Foreground="#64748B" />
+                                        <TextBlock Grid.Column="1" Text="{Binding DoorsDisplay}" HorizontalAlignment="Center" FontSize="11" Foreground="#64748B" />
+                                        <TextBlock Grid.Column="2" Text="{Binding TrunkDisplay}" HorizontalAlignment="Center" FontSize="11" Foreground="#64748B" />
+                                        <TextBlock Grid.Column="3" Text="{Binding ConsumptionDisplay}" HorizontalAlignment="Center" FontSize="11" Foreground="#64748B" />
+                                    </Grid>
+
+                                    <Grid Grid.Row="3" Background="#F0F0F1" Margin="0,0,0,10">
+                                        <Grid.RowDefinitions><RowDefinition Height="34" /><RowDefinition Height="34" /><RowDefinition Height="34" /><RowDefinition Height="34" /></Grid.RowDefinitions>
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding PriceFor26PlusDaysDisplay}" Margin="14,0,0,0" VerticalAlignment="Center" FontWeight="Bold" />
+                                        <TextBlock Grid.Row="0" Grid.Column="1" Text="від 26 діб" Margin="0,0,14,0" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="#334155" />
+                                        <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding PriceFor10To25DaysDisplay}" Margin="14,0,0,0" VerticalAlignment="Center" FontWeight="Bold" />
+                                        <TextBlock Grid.Row="1" Grid.Column="1" Text="10-25 діб" Margin="0,0,14,0" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="#334155" />
+                                        <TextBlock Grid.Row="2" Grid.Column="0" Text="{Binding PriceFor4To9DaysDisplay}" Margin="14,0,0,0" VerticalAlignment="Center" FontWeight="Bold" />
+                                        <TextBlock Grid.Row="2" Grid.Column="1" Text="4-9 діб" Margin="0,0,14,0" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="#334155" />
+                                        <TextBlock Grid.Row="3" Grid.Column="0" Text="{Binding PriceFor1To3DaysDisplay}" Margin="14,0,0,0" VerticalAlignment="Center" FontWeight="Bold" />
+                                        <TextBlock Grid.Row="3" Grid.Column="1" Text="1-3 діб" Margin="0,0,14,0" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="#334155" />
+                                    </Grid>
+
+                                    <Button x:Name="SelectButton"
+                                            Grid.Row="5"
+                                            Height="42"
+                                            Margin="10,0,10,10"
+                                            Content="{Binding ActionButtonText}"
+                                            FontSize="17"
+                                            FontWeight="SemiBold"
+                                            Background="{StaticResource PrimaryBlueButtonBrush}"
+                                            Foreground="White"
+                                            BorderBrush="#0F345F"
+                                            IsEnabled="{Binding CanOpenDetails}"
+                                            Command="{Binding DataContext.OpenVehicleDetailsCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}" />
+                                </Grid>
+                            </Border>
+
+                            <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding IsAvailableNow}" Value="False">
+                                    <Setter TargetName="BusyBadge" Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=ListBoxItem}, Path=IsSelected}" Value="True">
+                                    <Setter TargetName="Card" Property="BorderBrush" Value="#10B88F" />
+                                    <Setter TargetName="Card" Property="BorderThickness" Value="2" />
+                                </DataTrigger>
+                            </DataTemplate.Triggers>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+
+        </Grid>
+
+        <Border Grid.ColumnSpan="2"
+                Background="#99000000"
+                Visibility="{Binding IsVehicleDetailsDialogOpen, Converter={StaticResource BoolToVisibilityConverter}}">
+            <Grid VerticalAlignment="Center" HorizontalAlignment="Center">
+                <Border Width="980"
+                        MaxHeight="620"
+                        Background="White"
+                        CornerRadius="10"
+                        BorderBrush="#CBD5E1"
+                        BorderThickness="1"
+                        Padding="14">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0"
+                                   Margin="0,0,46,8"
+                                   Text="{Binding DetailsVehicle.Car}"
+                                   FontSize="28"
+                                   FontWeight="Bold"
+                                   Foreground="#0F172A" />
+
+                        <StackPanel Grid.Row="1" Margin="0,0,0,8">
+                            <TextBlock Text="{Binding DetailsVehicleSummary}" Foreground="#334155" FontSize="14" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding DetailsVehiclePricingSummary}" Foreground="#475569" FontSize="13" Margin="0,3,0,0" />
+                        </StackPanel>
+
+                        <DataGrid Grid.Row="2"
+                                  ItemsSource="{Binding VehicleVariants}"
+                                  AutoGenerateColumns="False"
+                                  CanUserAddRows="False"
+                                  IsReadOnly="True"
+                                  HeadersVisibility="Column"
+                                  Margin="0,0,0,8">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Варіант" Binding="{Binding VariantName}" Width="90" />
+                                <DataGridTextColumn Header="Держ. номер" Binding="{Binding LicensePlate}" Width="160" />
+                                <DataGridTextColumn Header="Пробіг" Binding="{Binding MileageDisplay}" Width="130" />
+                                <DataGridTextColumn Header="Стан" Binding="{Binding Condition}" Width="*" />
+                                <DataGridTextColumn Header="Статус" Binding="{Binding AvailabilityDisplay}" Width="170" />
+                                <DataGridTextColumn Header="Тариф/доба" Binding="{Binding DailyRate, StringFormat={}{0:0} €}" Width="110" />
+                                <DataGridTemplateColumn Header="Дія" Width="120">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Button Content="{Binding SelectActionText}"
+                                                    Padding="10,4"
+                                                    IsEnabled="{Binding CanSelect}"
+                                                    Background="#19B98F"
+                                                    Foreground="White"
+                                                    BorderBrush="#139370"
+                                                    Command="{Binding DataContext.ChooseVehicleVariantCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}" />
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                        <TextBlock Grid.Row="3"
+                                   Text="Оберіть конкретний екземпляр авто для переходу до оформлення."
+                                   VerticalAlignment="Center"
+                                   Foreground="#334155" />
+
+                        <Button Grid.Row="0"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Top"
+                                Content="✕"
+                                Width="34"
+                                Height="30"
+                                FontSize="16"
+                                Command="{Binding CloseVehicleDetailsCommand}" />
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
+
+        <Border Grid.ColumnSpan="2"
+                Background="#CC020617"
+                Visibility="{Binding IsCheckoutDialogOpen, Converter={StaticResource BoolToVisibilityConverter}}">
+            <Border Margin="24"
+                    Background="White"
+                    CornerRadius="12"
+                    BorderBrush="#CBD5E1"
+                    BorderThickness="1"
+                    Padding="20">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="0,0,0,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Оформлення оренди"
+                                       FontSize="30"
+                                       FontWeight="Bold"
+                                       Foreground="#0F172A" />
+                            <TextBlock Text="{Binding DetailsVehicle.Car}"
+                                       Margin="0,4,0,0"
+                                       FontSize="18"
+                                       FontWeight="SemiBold"
+                                       Foreground="#1E293B" />
+                            <TextBlock Text="{Binding SelectedVehicleVariantInfo}"
+                                       Margin="0,2,0,0"
+                                       Foreground="#334155" />
+                        </StackPanel>
+                        <Button Grid.Column="1"
+                                Content="✕"
+                                Width="34"
+                                Height="30"
+                                FontSize="16"
+                                Command="{Binding CloseCheckoutCommand}" />
+                    </Grid>
+
+                    <ScrollViewer Grid.Row="1"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                    <Grid Margin="0,0,2,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="3*" />
+                            <ColumnDefinition Width="2*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0"
+                                Background="#F8FAFC"
+                                BorderBrush="#E2E8F0"
+                                BorderThickness="1"
+                                CornerRadius="10"
+                                Padding="14"
+                                Margin="0,0,12,0">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="260" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <Border Grid.Row="0"
+                                        Background="#E2E8F0"
+                                        BorderBrush="#CBD5E1"
+                                        BorderThickness="1"
+                                        CornerRadius="8">
+                                    <Image Source="{Binding DetailsVehicle.ImageSource, Converter={StaticResource VehiclePhotoSourceConverter}, ConverterParameter=detail}"
+                                           Stretch="Uniform"
+                                           Margin="8" />
+                                </Border>
+
+                                <StackPanel Grid.Row="1" Margin="0,12,0,0">
+                                    <TextBlock Text="{Binding DetailsVehicleSummary}" Foreground="#334155" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding DetailsVehiclePricingSummary}" Foreground="#475569" Margin="0,6,0,0" />
+                                    <TextBlock Text="{Binding CheckoutPeriodSummary}" Foreground="#0F172A" Margin="0,12,0,0" FontWeight="SemiBold" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <StackPanel Grid.Column="1">
+                            <Border Background="#F8FAFC"
+                                    BorderBrush="#E2E8F0"
+                                    BorderThickness="1"
+                                    CornerRadius="10"
+                                    Padding="14"
+                                    Margin="0,0,0,12">
+                                <StackPanel>
+                                    <TextBlock Text="Повернення"
+                                               FontSize="17"
+                                               FontWeight="SemiBold"
+                                               Foreground="#0F172A"
+                                               Margin="0,0,0,10" />
+                                    <TextBlock Text="Пункт повернення" Foreground="#334155" />
+                                    <ComboBox Margin="0,4,0,8"
+                                              Height="30"
+                                              ItemsSource="{Binding Locations}"
+                                              SelectedItem="{Binding ReturnLocation}" />
+                                    <TextBlock Text="Дата повернення / Час" Foreground="#334155" />
+                                    <Grid Margin="0,4,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="100" />
+                                        </Grid.ColumnDefinitions>
+                                        <DatePicker Grid.Column="0" SelectedDate="{Binding EndDate}" Margin="0,0,6,0" />
+                                        <ComboBox Grid.Column="1"
+                                                  ItemsSource="{Binding TimeOptions}"
+                                                  SelectedItem="{Binding ReturnTime}" />
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Background="#F8FAFC"
+                                    BorderBrush="#E2E8F0"
+                                    BorderThickness="1"
+                                    CornerRadius="10"
+                                    Padding="14">
+                                <StackPanel>
+                                    <TextBlock Text="Оплата карткою"
+                                               FontSize="17"
+                                               FontWeight="SemiBold"
+                                               Foreground="#0F172A"
+                                               Margin="0,0,0,10" />
+                                    <TextBlock Text="Власник картки" Foreground="#334155" />
+                                    <TextBox Margin="0,4,0,8"
+                                             Height="30"
+                                             Text="{Binding CardholderNameInput, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Text="Номер картки" Foreground="#334155" />
+                                    <TextBox Margin="0,4,0,8"
+                                             Height="30"
+                                             Text="{Binding CardNumberInput, UpdateSourceTrigger=PropertyChanged}" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="104" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                            <TextBlock Text="Термін дії (MM/YY)" Foreground="#334155" />
+                                            <TextBox Margin="0,4,0,0"
+                                                     Height="30"
+                                                     Text="{Binding CardExpiryInput, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Text="CVV" Foreground="#334155" />
+                                            <TextBox Margin="0,4,0,4"
+                                                     Height="30"
+                                                     MaxLength="4"
+                                                     Text="{Binding CardCvvInput, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+                    </ScrollViewer>
+
+                    <DockPanel Grid.Row="2" Margin="0,16,0,0" LastChildFill="False">
+                        <TextBlock DockPanel.Dock="Left"
+                                   Text="{Binding CheckoutAmountSummary}"
+                                   VerticalAlignment="Center"
+                                   Foreground="#0F172A"
+                                   FontSize="16"
+                                   FontWeight="SemiBold" />
+                        <Button DockPanel.Dock="Right"
+                                Content="Оплатити та оформити"
+                                Padding="20,9"
+                                FontSize="16"
+                                FontWeight="SemiBold"
+                                Background="#19B98F"
+                                Foreground="White"
+                                BorderBrush="#139370"
+                                Command="{Binding CompleteCheckoutCommand}" />
+                    </DockPanel>
+                </Grid>
+            </Border>
+        </Border>
+    </Grid>
+</UserControl>

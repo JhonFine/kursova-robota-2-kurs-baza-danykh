@@ -1,0 +1,199 @@
+﻿<UserControl x:Class="CarRental.Desktop.Views.Pages.ReportsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid x:Name="ReportsRoot" Margin="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border x:Name="ReportsFiltersCard"
+                Grid.Row="0"
+                Margin="0,0,0,12"
+                Style="{StaticResource FilterCardStyle}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="Звіти та аналітика" Style="{StaticResource FilterHeaderTextStyle}" />
+                    <TextBlock Text="Фільтри періоду і відповідальних співробітників для експорту."
+                               Style="{StaticResource FilterSubtleTextStyle}" />
+
+                    <Grid x:Name="ReportsFilterInputsGrid" Margin="0,10,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="180" />
+                            <ColumnDefinition Width="180" />
+                            <ColumnDefinition Width="230" />
+                            <ColumnDefinition Width="230" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                            <TextBlock Style="{StaticResource FormLabelStyle}" Text="Період з" />
+                            <DatePicker SelectedDate="{Binding FromDate}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Margin="0,0,8,0">
+                            <TextBlock Style="{StaticResource FormLabelStyle}" Text="Період до" />
+                            <DatePicker SelectedDate="{Binding ToDate}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Margin="0,0,8,0">
+                            <TextBlock Style="{StaticResource FormLabelStyle}" Text="Фільтр авто" />
+                            <ComboBox ItemsSource="{Binding VehicleFilters}"
+                                      DisplayMemberPath="Label"
+                                      SelectedItem="{Binding SelectedVehicle}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="3">
+                            <TextBlock Style="{StaticResource FormLabelStyle}" Text="Фільтр співробітника" />
+                            <ComboBox ItemsSource="{Binding EmployeeFilters}"
+                                      DisplayMemberPath="Label"
+                                      SelectedItem="{Binding SelectedEmployee}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <TextBlock Margin="0,12,0,0"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               Text="{Binding StatusMessage}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="1"
+                            Margin="16,0,0,0"
+                            Style="{StaticResource FilterActionBarStyle}">
+                    <Button x:Name="RefreshReportsButton"
+                            Content="Оновити"
+                            Margin="0,0,8,0"
+                            Style="{StaticResource PrimaryButtonStyle}"
+                            Command="{Binding RefreshCommand}" />
+                    <Button x:Name="ExportCsvButton"
+                            Content="Експорт CSV"
+                            Margin="0,0,8,0"
+                            Command="{Binding ExportCsvCommand}" />
+                    <Button x:Name="ExportExcelButton"
+                            Content="Експорт Excel"
+                            Command="{Binding ExportExcelCommand}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <UniformGrid x:Name="ReportsMetricsGrid" Grid.Row="1" Columns="2" Rows="2">
+            <Border x:Name="TotalRentalsCard"
+                    Margin="0,0,10,10"
+                    Padding="16"
+                    Style="{StaticResource CardSurfaceStyle}">
+                <StackPanel>
+                    <TextBlock Text="Усього оренд"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               FontSize="13" />
+                    <TextBlock Text="{Binding TotalRentals}"
+                               FontSize="34"
+                               FontWeight="Bold"
+                               Foreground="{StaticResource TextPrimaryBrush}" />
+                </StackPanel>
+            </Border>
+
+            <Border x:Name="ActiveRentalsCard"
+                    Margin="10,0,0,10"
+                    Padding="16"
+                    Style="{StaticResource CardSurfaceStyle}">
+                <StackPanel>
+                    <TextBlock Text="Активні зараз"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               FontSize="13" />
+                    <TextBlock Text="{Binding ActiveRentals}"
+                               FontSize="34"
+                               FontWeight="Bold"
+                               Foreground="#166534" />
+                </StackPanel>
+            </Border>
+
+            <Border x:Name="RevenueCard"
+                    Margin="0,10,10,0"
+                    Padding="16"
+                    Style="{StaticResource CardSurfaceStyle}">
+                <StackPanel>
+                    <TextBlock Text="Дохід (закриті оренди)"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               FontSize="13" />
+                    <TextBlock Text="{Binding TotalRevenue, StringFormat={}{0:C}}"
+                               FontSize="34"
+                               FontWeight="Bold"
+                               Foreground="#0F766E" />
+                </StackPanel>
+            </Border>
+
+            <Border x:Name="DamagesCostCard"
+                    Margin="10,10,0,0"
+                    Padding="16"
+                    Style="{StaticResource CardSurfaceStyle}">
+                <StackPanel>
+                    <TextBlock Text="Витрати на пошкодження"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               FontSize="13" />
+                    <TextBlock Text="{Binding TotalDamageCost, StringFormat={}{0:C}}"
+                               FontSize="34"
+                               FontWeight="Bold"
+                               Foreground="#B91C1C" />
+                </StackPanel>
+            </Border>
+        </UniformGrid>
+
+        <Border x:Name="ReportsStatusPanel"
+                Grid.Row="2"
+                Margin="0,12,0,0"
+                Style="{StaticResource StatusPanelStyle}">
+            <TextBlock Text="{Binding StatusMessage}" />
+        </Border>
+
+        <Border x:Name="GuideOverlay"
+                Grid.RowSpan="3"
+                Background="Transparent"
+                Visibility="Collapsed"
+                Panel.ZIndex="1200"
+                MouseLeftButtonDown="GuideOverlay_OnMouseLeftButtonDown">
+            <Canvas>
+                <Rectangle x:Name="GuideDimTop" Fill="#A8000000" IsHitTestVisible="False" />
+                <Rectangle x:Name="GuideDimLeft" Fill="#A8000000" IsHitTestVisible="False" />
+                <Rectangle x:Name="GuideDimRight" Fill="#A8000000" IsHitTestVisible="False" />
+                <Rectangle x:Name="GuideDimBottom" Fill="#A8000000" IsHitTestVisible="False" />
+
+                <Border x:Name="GuideHighlightBorder"
+                        BorderBrush="#34D399"
+                        BorderThickness="2"
+                        CornerRadius="10"
+                        Background="#18FFFFFF"
+                        IsHitTestVisible="False" />
+
+                <Border x:Name="GuideCard"
+                        Width="350"
+                        Padding="12"
+                        Background="White"
+                        BorderBrush="#CBD5E1"
+                        BorderThickness="1"
+                        CornerRadius="12"
+                        IsHitTestVisible="False">
+                    <StackPanel>
+                        <TextBlock Text="Гайд: Звіти"
+                                   FontSize="16"
+                                   FontWeight="SemiBold"
+                                   Foreground="#0F172A" />
+                        <TextBlock x:Name="GuideStepTitle"
+                                   Margin="0,8,0,4"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   Foreground="#111827" />
+                        <TextBlock x:Name="GuideStepDescription"
+                                   Foreground="#475569"
+                                   TextWrapping="Wrap" />
+                        <TextBlock x:Name="GuideStepProgress"
+                                   Margin="0,8,0,0"
+                                   Foreground="#6B7280"
+                                   FontSize="12" />
+                    </StackPanel>
+                </Border>
+            </Canvas>
+        </Border>
+    </Grid>
+</UserControl>

@@ -1,0 +1,161 @@
+﻿<UserControl x:Class="CarRental.Desktop.Views.Pages.DamagesPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid x:Name="DamagesRoot" Margin="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <GroupBox x:Name="DamageFormGroup" Grid.Row="0" Header="Фіксація нового пошкодження">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="2*" />
+                    <ColumnDefinition Width="2*" />
+                    <ColumnDefinition Width="2*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="1.4*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Авто" />
+                    <ComboBox ItemsSource="{Binding Vehicles}"
+                              DisplayMemberPath="Display"
+                              SelectedItem="{Binding SelectedVehicle}" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Margin="0,0,8,0">
+                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Договір (опціонально)" />
+                    <ComboBox ItemsSource="{Binding Rentals}"
+                              DisplayMemberPath="Display"
+                              SelectedItem="{Binding SelectedRental}" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="2" Margin="0,0,8,0">
+                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Опис пошкодження" />
+                    <TextBox Text="{Binding Description}" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="3" Margin="0,0,8,0">
+                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Вартість ремонту" />
+                    <TextBox Text="{Binding RepairCostInput}" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="4" Margin="0,0,8,0">
+                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Фото (шлях) та донарахування" />
+                    <StackPanel Orientation="Horizontal">
+                        <TextBox Width="170"
+                                 Margin="0,0,8,0"
+                                 Text="{Binding PhotoPath}" />
+                        <CheckBox VerticalAlignment="Center"
+                                  IsChecked="{Binding AutoChargeToRental}"
+                                  Content="Автодонарахування" />
+                    </StackPanel>
+                </StackPanel>
+
+                <Button x:Name="AddDamageButton"
+                        Grid.Column="5"
+                        Width="100"
+                        Margin="0,20,0,0"
+                        Content="Додати"
+                        Style="{StaticResource PrimaryButtonStyle}"
+                        Command="{Binding AddDamageCommand}" />
+            </Grid>
+        </GroupBox>
+
+        <GroupBox x:Name="DamageHistoryGroup" Grid.Row="1" Header="Історія пошкоджень">
+            <DataGrid x:Name="DamagesGrid"
+                      ItemsSource="{Binding Damages}"
+                      AutoGenerateColumns="False"
+                      IsReadOnly="True">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Акт №" Binding="{Binding ActNumber}" Width="120" />
+                    <DataGridTextColumn Header="Авто" Binding="{Binding Vehicle}" Width="170" />
+                    <DataGridTextColumn Header="Договір" Binding="{Binding ContractNumber}" Width="120" />
+                    <DataGridTextColumn Header="Зафіксовано" Binding="{Binding ReportedAt, StringFormat=dd.MM.yyyy HH:mm}" Width="140" />
+                    <DataGridTextColumn Header="Вартість ремонту" Binding="{Binding RepairCost}" Width="130" />
+                    <DataGridTextColumn Header="Донараховано" Binding="{Binding ChargedAmount}" Width="120" />
+                    <DataGridTemplateColumn Header="Статус" Width="130">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Border Style="{StaticResource StatusBadgeBorderStyle}"
+                                        Background="{Binding Status, Converter={StaticResource StatusBadgeBackgroundConverter}}">
+                                    <TextBlock Style="{StaticResource StatusBadgeTextStyle}"
+                                               Text="{Binding Status}"
+                                               Foreground="{Binding Status, Converter={StaticResource StatusBadgeForegroundConverter}}" />
+                                </Border>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTextColumn Header="Шлях до фото" Binding="{Binding PhotoPath}" Width="*" />
+                </DataGrid.Columns>
+            </DataGrid>
+        </GroupBox>
+
+        <Border x:Name="DamagesStatusPanel"
+                Grid.Row="2"
+                Margin="0,12,0,0"
+                Style="{StaticResource StatusPanelStyle}">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Left"
+                           VerticalAlignment="Center"
+                           Text="{Binding StatusMessage}" />
+                <Button x:Name="RefreshDamagesButton"
+                        DockPanel.Dock="Right"
+                        Content="Оновити"
+                        Command="{Binding RefreshCommand}" />
+            </DockPanel>
+        </Border>
+
+        <Border x:Name="GuideOverlay"
+                Grid.RowSpan="3"
+                Background="Transparent"
+                Visibility="Collapsed"
+                Panel.ZIndex="1200"
+                MouseLeftButtonDown="GuideOverlay_OnMouseLeftButtonDown">
+            <Canvas>
+                <Rectangle x:Name="GuideDimTop" Fill="#A8000000" IsHitTestVisible="False" />
+                <Rectangle x:Name="GuideDimLeft" Fill="#A8000000" IsHitTestVisible="False" />
+                <Rectangle x:Name="GuideDimRight" Fill="#A8000000" IsHitTestVisible="False" />
+                <Rectangle x:Name="GuideDimBottom" Fill="#A8000000" IsHitTestVisible="False" />
+
+                <Border x:Name="GuideHighlightBorder"
+                        BorderBrush="#34D399"
+                        BorderThickness="2"
+                        CornerRadius="10"
+                        Background="#18FFFFFF"
+                        IsHitTestVisible="False" />
+
+                <Border x:Name="GuideCard"
+                        Width="350"
+                        Padding="12"
+                        Background="White"
+                        BorderBrush="#CBD5E1"
+                        BorderThickness="1"
+                        CornerRadius="12"
+                        IsHitTestVisible="False">
+                    <StackPanel>
+                        <TextBlock Text="Гайд: Пошкодження"
+                                   FontSize="16"
+                                   FontWeight="SemiBold"
+                                   Foreground="#0F172A" />
+                        <TextBlock x:Name="GuideStepTitle"
+                                   Margin="0,8,0,4"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   Foreground="#111827" />
+                        <TextBlock x:Name="GuideStepDescription"
+                                   Foreground="#475569"
+                                   TextWrapping="Wrap" />
+                        <TextBlock x:Name="GuideStepProgress"
+                                   Margin="0,8,0,0"
+                                   Foreground="#6B7280"
+                                   FontSize="12" />
+                    </StackPanel>
+                </Border>
+            </Canvas>
+        </Border>
+    </Grid>
+</UserControl>

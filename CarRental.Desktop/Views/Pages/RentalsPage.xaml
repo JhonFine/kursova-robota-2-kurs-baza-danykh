@@ -1,0 +1,503 @@
+﻿<UserControl x:Class="CarRental.Desktop.Views.Pages.RentalsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:models="clr-namespace:CarRental.Desktop.Models">
+    <Grid x:Name="RentalsRoot" Margin="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border x:Name="RentalsOverviewCard"
+                Grid.Row="0"
+                Margin="0,0,0,12"
+                Style="{StaticResource FilterCardStyle}">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Left">
+                    <TextBlock Text="Керування орендами в одному робочому просторі"
+                               Style="{StaticResource FilterHeaderTextStyle}" />
+                    <TextBlock Text="Договори, платежі та календар завантаженості доступні без відкриття додаткових вікон."
+                               Style="{StaticResource FilterSubtleTextStyle}" />
+                    <TextBlock Margin="0,10,0,0"
+                               Text="{Binding StatusMessage}"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+                <Button DockPanel.Dock="Right"
+                        Style="{StaticResource PrimaryButtonStyle}"
+                        Content="Оновити дані"
+                        Command="{Binding RefreshCommand}" />
+            </DockPanel>
+        </Border>
+
+        <TabControl x:Name="RentalsTabControl" Grid.Row="1">
+            <TabItem x:Name="ContractsTab" Header="Договори">
+                <Grid Margin="0,12,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Border x:Name="CreateRentalGroup"
+                            Grid.Row="0"
+                            Style="{StaticResource FilterCardStyle}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <StackPanel Grid.Row="0" Margin="0,0,0,12">
+                                <TextBlock Text="Дані для створення бронювання або оренди"
+                                           Style="{StaticResource FilterHeaderTextStyle}" />
+                                <TextBlock Text="Пошук клієнта та авто працює без відкриття окремих діалогів і оновлюється під час введення."
+                                           Style="{StaticResource FilterSubtleTextStyle}" />
+                            </StackPanel>
+
+                            <Grid Grid.Row="1">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="2*" />
+                                    <ColumnDefinition Width="2*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Клієнт (пошук)" />
+                                    <ComboBox ItemsSource="{Binding Clients}"
+                                              DisplayMemberPath="Display"
+                                              SelectedItem="{Binding SelectedClient}"
+                                              Text="{Binding ClientSearchText, UpdateSourceTrigger=PropertyChanged}"
+                                              IsEditable="True"
+                                              IsTextSearchEnabled="False"
+                                              StaysOpenOnEdit="True"
+                                              MaxDropDownHeight="360"
+                                              ToolTip="Введіть ПІБ, посвідчення водія, телефон або паспортні дані" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="1" Margin="0,0,10,0">
+                                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Авто (пошук)" />
+                                    <ComboBox ItemsSource="{Binding Vehicles}"
+                                              DisplayMemberPath="Display"
+                                              SelectedItem="{Binding SelectedVehicle}"
+                                              Text="{Binding VehicleSearchText, UpdateSourceTrigger=PropertyChanged}"
+                                              IsEditable="True"
+                                              IsTextSearchEnabled="False"
+                                              StaysOpenOnEdit="True"
+                                              MaxDropDownHeight="360"
+                                              ToolTip="Введіть марку, модель або номерний знак" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="2" Margin="0,0,10,0">
+                                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Дата початку" />
+                                    <DatePicker SelectedDate="{Binding StartDate}" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="3" Margin="0,0,10,0">
+                                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Дата завершення" />
+                                    <DatePicker SelectedDate="{Binding EndDate}" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Bottom">
+                                    <Button Content="Створити оренду"
+                                            Style="{StaticResource PrimaryButtonStyle}"
+                                            Width="150"
+                                            Margin="0,0,10,0"
+                                            IsEnabled="{Binding CanManageRentals}"
+                                            Command="{Binding CreateRentalCommand}" />
+                                    <CheckBox Content="Автодрук PDF"
+                                              VerticalAlignment="Center"
+                                              IsChecked="{Binding AutoPrintContract}" />
+                                </StackPanel>
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="2.2*" />
+                            <ColumnDefinition Width="1.1*" />
+                        </Grid.ColumnDefinitions>
+
+                        <GroupBox x:Name="RentalsListGroup"
+                                  Grid.Column="0"
+                                  Margin="0,0,10,0"
+                                  Header="Список договорів і бронювань">
+                            <DataGrid ItemsSource="{Binding Rentals}"
+                                      SelectedItem="{Binding SelectedRental}"
+                                      AutoGenerateColumns="False"
+                                      IsReadOnly="True">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="60" />
+                                    <DataGridTextColumn Header="Договір" Binding="{Binding ContractNumber}" Width="120" />
+                                    <DataGridTextColumn Header="Клієнт" Binding="{Binding ClientName}" Width="180" />
+                                    <DataGridTextColumn Header="Авто" Binding="{Binding VehicleName}" Width="170" />
+                                    <DataGridTextColumn Header="Початок" Binding="{Binding StartDate, StringFormat=dd.MM.yyyy}" Width="108" />
+                                    <DataGridTextColumn Header="Кінець" Binding="{Binding EndDate, StringFormat=dd.MM.yyyy}" Width="108" />
+                                    <DataGridTextColumn Header="Сума" Binding="{Binding TotalAmount, StringFormat={}{0:C}}" Width="110" />
+                                    <DataGridTextColumn Header="Сплачено" Binding="{Binding PaidAmount, StringFormat={}{0:C}}" Width="110" />
+                                    <DataGridTextColumn Header="Залишок" Binding="{Binding Balance, StringFormat={}{0:C}}" Width="110" />
+                                    <DataGridTemplateColumn Header="Статус" Width="130">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <Border Style="{StaticResource StatusBadgeBorderStyle}"
+                                                        Background="{Binding StatusDisplay, Converter={StaticResource StatusBadgeBackgroundConverter}}">
+                                                    <TextBlock Style="{StaticResource StatusBadgeTextStyle}"
+                                                               Text="{Binding StatusDisplay}"
+                                                               Foreground="{Binding StatusDisplay, Converter={StaticResource StatusBadgeForegroundConverter}}" />
+                                                </Border>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </GroupBox>
+
+                        <GroupBox x:Name="RentalDetailsGroup" Grid.Column="1" Header="Деталі обраної оренди">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel>
+                                    <TextBlock Text="Інформація"
+                                               Style="{StaticResource SectionTitleStyle}"
+                                               FontSize="16" />
+                                    <Grid Margin="0,8,0,12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+
+                                        <TextBlock Grid.Row="0" Grid.Column="0" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="Договір:" />
+                                        <TextBlock Grid.Row="0" Grid.Column="1" Margin="0,0,0,6" Text="{Binding SelectedRental.ContractNumber, TargetNullValue=—}" />
+
+                                        <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="Клієнт:" />
+                                        <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,0,0,6" Text="{Binding SelectedRental.ClientName, TargetNullValue=—}" />
+
+                                        <TextBlock Grid.Row="2" Grid.Column="0" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="Авто:" />
+                                        <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,0,0,6" Text="{Binding SelectedRental.VehicleName, TargetNullValue=—}" />
+
+                                        <TextBlock Grid.Row="3" Grid.Column="0" Margin="0,0,8,0" Style="{StaticResource FormLabelStyle}" Text="Баланс:" />
+                                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedRental.Balance, StringFormat={}{0:C}, TargetNullValue=—}" />
+                                    </Grid>
+
+                                    <Expander IsExpanded="True">
+                                        <Expander.Header>
+                                            <TextBlock Text="Закриття оренди"
+                                                       Style="{StaticResource SectionTitleStyle}"
+                                                       FontSize="15" />
+                                        </Expander.Header>
+                                        <Border Margin="0,10,0,10"
+                                                Padding="12"
+                                                Background="#F8FAFC"
+                                                BorderBrush="#E5E7EB"
+                                                BorderThickness="1"
+                                                CornerRadius="10">
+                                            <StackPanel>
+                                                <TextBlock Style="{StaticResource FormLabelStyle}" Text="Дата повернення" Margin="0,0,0,4" />
+                                                <DatePicker SelectedDate="{Binding ActualReturnDate}" />
+                                                <TextBlock Style="{StaticResource FormLabelStyle}"
+                                                           Margin="0,8,0,0"
+                                                           Text="Після огляду авто внесіть новий пробіг для повернення в автопарк."
+                                                           TextWrapping="Wrap" />
+                                                <TextBlock Style="{StaticResource FormLabelStyle}" Text="Кінцевий пробіг" Margin="0,10,0,4" />
+                                                <TextBox Text="{Binding EndMileageInput, UpdateSourceTrigger=PropertyChanged}" />
+                                                <Button Content="Закрити оренду"
+                                                        Margin="0,12,0,0"
+                                                        Style="{StaticResource PrimaryButtonStyle}"
+                                                        IsEnabled="{Binding CanManageRentals}"
+                                                        Command="{Binding CloseRentalCommand}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </Expander>
+
+                                    <Expander IsExpanded="False">
+                                        <Expander.Header>
+                                            <TextBlock Text="Скасування оренди"
+                                                       Style="{StaticResource SectionTitleStyle}"
+                                                       FontSize="15" />
+                                        </Expander.Header>
+                                        <Border Margin="0,10,0,0"
+                                                Padding="12"
+                                                Background="#FFF7F7"
+                                                BorderBrush="#FECACA"
+                                                BorderThickness="1"
+                                                CornerRadius="10">
+                                            <StackPanel>
+                                                <TextBlock Style="{StaticResource FormLabelStyle}" Text="Причина" Margin="0,0,0,4" />
+                                                <TextBox Text="{Binding CancelReason, UpdateSourceTrigger=PropertyChanged}" />
+                                                <Button Content="Скасувати оренду"
+                                                        Margin="0,12,0,0"
+                                                        Style="{StaticResource DangerButtonStyle}"
+                                                        IsEnabled="{Binding CanManageRentals}"
+                                                        Command="{Binding CancelRentalCommand}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </Expander>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </GroupBox>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
+            <TabItem x:Name="PaymentsTab" Header="Платежі та календар">
+                <Grid Margin="0,12,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="2*" />
+                        <RowDefinition Height="1.2*" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1.65*" />
+                            <ColumnDefinition Width="1.35*" />
+                        </Grid.ColumnDefinitions>
+
+                        <GroupBox x:Name="PaymentRentalSelectionGroup"
+                                  Grid.Column="0"
+                                  Margin="0,0,10,0"
+                                  Header="Оберіть договір для роботи з платежами">
+                            <DataGrid ItemsSource="{Binding Rentals}"
+                                      SelectedItem="{Binding SelectedRental}"
+                                      AutoGenerateColumns="False"
+                                      IsReadOnly="True">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Договір" Binding="{Binding ContractNumber}" Width="120" />
+                                    <DataGridTextColumn Header="Клієнт" Binding="{Binding ClientName}" Width="180" />
+                                    <DataGridTextColumn Header="Авто" Binding="{Binding VehicleName}" Width="160" />
+                                    <DataGridTextColumn Header="Початок" Binding="{Binding StartDate, StringFormat=dd.MM.yyyy}" Width="100" />
+                                    <DataGridTextColumn Header="Кінець" Binding="{Binding EndDate, StringFormat=dd.MM.yyyy}" Width="100" />
+                                    <DataGridTextColumn Header="Залишок" Binding="{Binding Balance, StringFormat={}{0:C}}" Width="100" />
+                                    <DataGridTemplateColumn Header="Статус" Width="128">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <Border Style="{StaticResource StatusBadgeBorderStyle}"
+                                                        Background="{Binding StatusDisplay, Converter={StaticResource StatusBadgeBackgroundConverter}}">
+                                                    <TextBlock Style="{StaticResource StatusBadgeTextStyle}"
+                                                               Text="{Binding StatusDisplay}"
+                                                               Foreground="{Binding StatusDisplay, Converter={StaticResource StatusBadgeForegroundConverter}}" />
+                                                </Border>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </GroupBox>
+
+                        <GroupBox x:Name="PaymentsHistoryGroup" Grid.Column="1" Header="Провести платіж та історія">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+
+                                <Grid Grid.Row="0" Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                        <TextBlock Style="{StaticResource FormLabelStyle}" Text="Сума" />
+                                        <TextBox Text="{Binding PaymentAmountInput, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Margin="0,0,8,0">
+                                        <TextBlock Style="{StaticResource FormLabelStyle}" Text="Метод" />
+                                        <ComboBox SelectedValue="{Binding PaymentMethod}"
+                                                  SelectedValuePath="Tag">
+                                            <ComboBoxItem Content="Готівка" Tag="{x:Static models:PaymentMethod.Cash}" />
+                                            <ComboBoxItem Content="Карта" Tag="{x:Static models:PaymentMethod.Card}" />
+                                        </ComboBox>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" Margin="0,0,8,0">
+                                        <TextBlock Style="{StaticResource FormLabelStyle}" Text="Напрям" />
+                                        <ComboBox SelectedValue="{Binding PaymentDirection}"
+                                                  SelectedValuePath="Tag">
+                                            <ComboBoxItem Content="Надходження" Tag="{x:Static models:PaymentDirection.Incoming}" />
+                                            <ComboBoxItem Content="Повернення" Tag="{x:Static models:PaymentDirection.Refund}" />
+                                        </ComboBox>
+                                    </StackPanel>
+                                    <Button Grid.Column="3"
+                                            Margin="0,20,0,0"
+                                            Width="130"
+                                            Content="Додати"
+                                            Style="{StaticResource PrimaryButtonStyle}"
+                                            IsEnabled="{Binding CanManagePayments}"
+                                            Command="{Binding AddPaymentCommand}" />
+                                </Grid>
+
+                                <DataGrid Grid.Row="1"
+                                          ItemsSource="{Binding Payments}"
+                                          AutoGenerateColumns="False"
+                                          IsReadOnly="True">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Дата" Binding="{Binding CreatedAtUtc, StringFormat=HH:mm:ss dd.MM}" Width="130" />
+                                        <DataGridTextColumn Header="Метод" Binding="{Binding MethodDisplay}" Width="110" />
+                                        <DataGridTemplateColumn Header="Напрям" Width="120">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Border Style="{StaticResource StatusBadgeBorderStyle}"
+                                                            Background="{Binding DirectionDisplay, Converter={StaticResource StatusBadgeBackgroundConverter}}">
+                                                        <TextBlock Style="{StaticResource StatusBadgeTextStyle}"
+                                                                   Text="{Binding DirectionDisplay}"
+                                                                   Foreground="{Binding DirectionDisplay, Converter={StaticResource StatusBadgeForegroundConverter}}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                        <DataGridTextColumn Header="Сума" Binding="{Binding Amount, StringFormat={}{0:C}}" Width="100" />
+                                        <DataGridTextColumn Header="Примітки" Binding="{Binding Notes}" Width="*" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Grid>
+                        </GroupBox>
+                    </Grid>
+
+                    <GroupBox x:Name="GanttGroup" Grid.Row="1" Header="Завантаженість автопарку (Gantt, 14 днів)">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <Border Style="{StaticResource StatusBadgeBorderStyle}"
+                                        Background="{Binding Source={x:Static models:RentalStatus.Active}, Converter={StaticResource StatusBadgeBackgroundConverter}}">
+                                    <TextBlock Style="{StaticResource StatusBadgeTextStyle}"
+                                               Text="Активна"
+                                               Foreground="{Binding Source={x:Static models:RentalStatus.Active}, Converter={StaticResource StatusBadgeForegroundConverter}}" />
+                                </Border>
+                                <Border Margin="8,0,0,0"
+                                        Style="{StaticResource StatusBadgeBorderStyle}"
+                                        Background="{Binding Source={x:Static models:RentalStatus.Booked}, Converter={StaticResource StatusBadgeBackgroundConverter}}">
+                                    <TextBlock Style="{StaticResource StatusBadgeTextStyle}"
+                                               Text="Бронь"
+                                               Foreground="{Binding Source={x:Static models:RentalStatus.Booked}, Converter={StaticResource StatusBadgeForegroundConverter}}" />
+                                </Border>
+                                <Border Margin="8,0,0,0"
+                                        Style="{StaticResource StatusBadgeBorderStyle}"
+                                        Background="{Binding Source={x:Static models:RentalStatus.Closed}, Converter={StaticResource StatusBadgeBackgroundConverter}}">
+                                    <TextBlock Style="{StaticResource StatusBadgeTextStyle}"
+                                               Text="Закрита"
+                                               Foreground="{Binding Source={x:Static models:RentalStatus.Closed}, Converter={StaticResource StatusBadgeForegroundConverter}}" />
+                                </Border>
+                                <Border Margin="8,0,0,0"
+                                        Style="{StaticResource StatusBadgeBorderStyle}"
+                                        Background="{Binding Source=Вільно, Converter={StaticResource StatusBadgeBackgroundConverter}}">
+                                    <TextBlock Style="{StaticResource StatusBadgeTextStyle}"
+                                               Text="Вільно"
+                                               Foreground="{Binding Source=Вільно, Converter={StaticResource StatusBadgeForegroundConverter}}" />
+                                </Border>
+                            </StackPanel>
+
+                            <DataGrid Grid.Row="1"
+                                      ItemsSource="{Binding GanttRows}"
+                                      AutoGenerateColumns="False"
+                                      IsReadOnly="True">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Авто" Binding="{Binding Vehicle}" Width="300" />
+                                    <DataGridTemplateColumn Header="14 днів">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <ItemsControl ItemsSource="{Binding Cells}">
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <UniformGrid Rows="1" Columns="14" />
+                                                        </ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Border Margin="0,0,4,0"
+                                                                    Height="34"
+                                                                    MinWidth="28"
+                                                                    CornerRadius="8"
+                                                                    Background="{Binding StatusText, Converter={StaticResource StatusBadgeBackgroundConverter}}"
+                                                                    ToolTip="{Binding Tooltip}">
+                                                                <TextBlock Text="{Binding DayLabel}"
+                                                                           HorizontalAlignment="Center"
+                                                                           VerticalAlignment="Center"
+                                                                           FontSize="11"
+                                                                           FontWeight="SemiBold"
+                                                                           Foreground="{Binding StatusText, Converter={StaticResource StatusBadgeForegroundConverter}}" />
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </GroupBox>
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+        <Border Grid.Row="2"
+                Margin="0,12,0,0"
+                Style="{StaticResource StatusPanelStyle}">
+            <TextBlock Text="{Binding StatusMessage}"
+                       Foreground="{StaticResource TextPrimaryBrush}"
+                       TextWrapping="Wrap" />
+        </Border>
+
+        <Border x:Name="GuideOverlay"
+                Grid.RowSpan="3"
+                Background="Transparent"
+                Visibility="Collapsed"
+                Panel.ZIndex="1000"
+                MouseLeftButtonDown="GuideOverlay_OnMouseLeftButtonDown">
+            <Canvas x:Name="GuideCanvas">
+                <Rectangle x:Name="GuideDimTop" Fill="#A8000000" IsHitTestVisible="False" />
+                <Rectangle x:Name="GuideDimLeft" Fill="#A8000000" IsHitTestVisible="False" />
+                <Rectangle x:Name="GuideDimRight" Fill="#A8000000" IsHitTestVisible="False" />
+                <Rectangle x:Name="GuideDimBottom" Fill="#A8000000" IsHitTestVisible="False" />
+
+                <Border x:Name="GuideHighlightBorder"
+                        BorderBrush="#34D399"
+                        BorderThickness="2"
+                        CornerRadius="10"
+                        Background="#18FFFFFF"
+                        IsHitTestVisible="False" />
+
+                <Border x:Name="GuideCard"
+                        Width="360"
+                        Padding="12"
+                        Background="White"
+                        BorderBrush="#CBD5E1"
+                        BorderThickness="1"
+                        CornerRadius="12"
+                        IsHitTestVisible="False">
+                    <StackPanel>
+                        <TextBlock Text="Гайд: Оренди"
+                                   FontSize="16"
+                                   FontWeight="SemiBold"
+                                   Foreground="#0F172A" />
+                        <TextBlock x:Name="GuideStepTitle"
+                                   Margin="0,8,0,4"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   Foreground="#111827" />
+                        <TextBlock x:Name="GuideStepDescription"
+                                   Foreground="#475569"
+                                   TextWrapping="Wrap" />
+                        <TextBlock x:Name="GuideStepProgress"
+                                   Margin="0,8,0,0"
+                                   Foreground="#6B7280"
+                                   FontSize="12" />
+                    </StackPanel>
+                </Border>
+            </Canvas>
+        </Border>
+    </Grid>
+</UserControl>

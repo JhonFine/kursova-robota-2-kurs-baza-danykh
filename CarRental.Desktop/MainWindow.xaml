@@ -1,0 +1,405 @@
+﻿<Window x:Class="CarRental.Desktop.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Система оренди авто"
+        Width="1400"
+        Height="860"
+        MinWidth="1100"
+        MinHeight="700"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource AppBackgroundBrush}"
+        Loaded="Window_OnLoaded">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+        <Style x:Key="HeaderIconButtonStyle"
+               TargetType="Button"
+               BasedOn="{StaticResource BaseButtonStyle}">
+            <Setter Property="Width" Value="34" />
+            <Setter Property="Height" Value="34" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="BorderBrush" Value="#9FB8DD" />
+            <Setter Property="Background" Value="#EDF4FF" />
+            <Setter Property="Foreground" Value="#123D72" />
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="FontWeight" Value="Normal" />
+        </Style>
+        <Style x:Key="SidebarSectionLabelStyle" TargetType="TextBlock">
+            <Setter Property="Margin" Value="0,14,0,8" />
+            <Setter Property="Foreground" Value="#93C5C6" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style x:Key="SidebarNavigationButtonStyle"
+               TargetType="Button"
+               BasedOn="{StaticResource NavigationButtonStyle}">
+            <Setter Property="Margin" Value="0,0,0,8" />
+            <Setter Property="Padding" Value="12,10" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding RelativeSource={RelativeSource Self}, Path=Tag}" Value="True">
+                    <Setter Property="Background" Value="#F8F1E7" />
+                    <Setter Property="Foreground" Value="#12353B" />
+                    <Setter Property="BorderBrush" Value="#E6D4B4" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="UserTopNavButtonStyle"
+               TargetType="Button"
+               BasedOn="{StaticResource BaseButtonStyle}">
+            <Setter Property="Margin" Value="0,0,10,0" />
+            <Setter Property="Padding" Value="16,8" />
+            <Setter Property="Background" Value="#E7F0FC" />
+            <Setter Property="BorderBrush" Value="#AAC4E3" />
+            <Setter Property="Foreground" Value="#123D72" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding RelativeSource={RelativeSource Self}, Path=Tag}" Value="True">
+                    <Setter Property="Background" Value="#F8F1E7" />
+                    <Setter Property="BorderBrush" Value="#E6D4B4" />
+                    <Setter Property="Foreground" Value="#12353B" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0"
+                Background="#1E293B"
+                Padding="16"
+                Visibility="{Binding ShowNavigationSidebar, Converter={StaticResource BoolToVisibilityConverter}}">
+            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel>
+                    <StackPanel Margin="0,0,0,18">
+                        <TextBlock Text="ОРЕНДА АВТО"
+                                   Foreground="White"
+                                   FontSize="22"
+                                   FontWeight="Bold" />
+                        <TextBlock Text="Локальна робоча консоль"
+                                   Foreground="#CBD5E1"
+                                   FontSize="12" />
+                    </StackPanel>
+
+                    <TextBlock Text="Операції"
+                               Style="{StaticResource SidebarSectionLabelStyle}" />
+                    <Button Padding="10"
+                            Content="Автопарк"
+                            Style="{StaticResource SidebarNavigationButtonStyle}"
+                            Tag="{Binding IsFleetPageActive}"
+                            Command="{Binding ShowFleetCommand}"
+                            Visibility="{Binding CanSeeFleet, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    <Button Padding="10"
+                            Content="Клієнти"
+                            Style="{StaticResource SidebarNavigationButtonStyle}"
+                            Tag="{Binding IsClientsPageActive}"
+                            Command="{Binding ShowClientsCommand}"
+                            Visibility="{Binding CanSeeClients, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    <Button Padding="10"
+                            Content="Оренди"
+                            Style="{StaticResource SidebarNavigationButtonStyle}"
+                            Tag="{Binding IsRentalsPageActive}"
+                            Command="{Binding ShowRentalsCommand}"
+                            Visibility="{Binding CanSeeRentals, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    <Button Padding="10"
+                            Content="ТО"
+                            Style="{StaticResource SidebarNavigationButtonStyle}"
+                            Tag="{Binding IsMaintenancePageActive}"
+                            Command="{Binding ShowMaintenanceCommand}"
+                            Visibility="{Binding CanSeeMaintenance, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    <Button Padding="10"
+                            Content="Пошкодження"
+                            Style="{StaticResource SidebarNavigationButtonStyle}"
+                            Tag="{Binding IsDamagesPageActive}"
+                            Command="{Binding ShowDamagesCommand}"
+                            Visibility="{Binding CanSeeDamages, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                    <TextBlock Text="Аналітика"
+                               Style="{StaticResource SidebarSectionLabelStyle}" />
+                    <Button Padding="10"
+                            Content="Звіти"
+                            Style="{StaticResource SidebarNavigationButtonStyle}"
+                            Tag="{Binding IsReportsPageActive}"
+                            Command="{Binding ShowReportsCommand}"
+                            Visibility="{Binding CanSeeReports, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                    <TextBlock Text="Система"
+                               Style="{StaticResource SidebarSectionLabelStyle}" />
+                    <Button Padding="10"
+                            Content="Адміністрування"
+                            Style="{StaticResource SidebarNavigationButtonStyle}"
+                            Tag="{Binding IsAdminPageActive}"
+                            Command="{Binding ShowAdminCommand}"
+                            Visibility="{Binding CanSeeAdmin, Converter={StaticResource BoolToVisibilityConverter}}" />
+                </StackPanel>            </ScrollViewer>
+        </Border>
+
+        <Grid Grid.Column="1" Background="{StaticResource AppBackgroundBrush}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Border Margin="16,16,16,8"
+                    MinHeight="78"
+                    BorderBrush="#20497E"
+                    BorderThickness="1"
+                    CornerRadius="12">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#0F4D91" Offset="0" />
+                        <GradientStop Color="#0A3468" Offset="1" />
+                    </LinearGradientBrush>
+                </Border.Background>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <DockPanel Grid.Row="0" Margin="14,10">
+                    <StackPanel DockPanel.Dock="Left"
+                                Orientation="Horizontal"
+                                VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Header}"
+                                   FontSize="34"
+                                   FontWeight="SemiBold"
+                                   Foreground="#F8FBFF" />
+                        <Button Margin="10,0,0,0"
+                                Width="28"
+                                Height="28"
+                                MinHeight="0"
+                                Padding="0"
+                                FontSize="14"
+                                FontFamily="Segoe UI"
+                                FontWeight="Bold"
+                                Content="?"
+                                ToolTip="Показати гайд по розділу"
+                                Visibility="{Binding IsAdminPageActive, Converter={StaticResource BoolToVisibilityConverter}}"
+                                Command="{Binding AdminPage.RequestGuideCommand}">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource HeaderIconButtonStyle}">
+                                    <Setter Property="Width" Value="28" />
+                                    <Setter Property="Height" Value="28" />
+                                    <Setter Property="MinHeight" Value="0" />
+                                    <Setter Property="Padding" Value="0" />
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                        <Button Margin="10,0,0,0"
+                                Width="28"
+                                Height="28"
+                                MinHeight="0"
+                                Padding="0"
+                                FontSize="14"
+                                FontFamily="Segoe UI"
+                                FontWeight="Bold"
+                                Content="?"
+                                ToolTip="Показати гайд по розділу"
+                                Visibility="{Binding IsDamagesPageActive, Converter={StaticResource BoolToVisibilityConverter}}"
+                                Command="{Binding DamagesPage.RequestGuideCommand}">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource HeaderIconButtonStyle}">
+                                    <Setter Property="Width" Value="28" />
+                                    <Setter Property="Height" Value="28" />
+                                    <Setter Property="MinHeight" Value="0" />
+                                    <Setter Property="Padding" Value="0" />
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                        <Button Margin="10,0,0,0"
+                                Width="28"
+                                Height="28"
+                                MinHeight="0"
+                                Padding="0"
+                                FontSize="14"
+                                FontFamily="Segoe UI"
+                                FontWeight="Bold"
+                                Content="?"
+                                ToolTip="Показати гайд по розділу"
+                                Visibility="{Binding IsMaintenancePageActive, Converter={StaticResource BoolToVisibilityConverter}}"
+                                Command="{Binding MaintenancePage.RequestGuideCommand}">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource HeaderIconButtonStyle}">
+                                    <Setter Property="Width" Value="28" />
+                                    <Setter Property="Height" Value="28" />
+                                    <Setter Property="MinHeight" Value="0" />
+                                    <Setter Property="Padding" Value="0" />
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                        <Button Margin="10,0,0,0"
+                                Width="28"
+                                Height="28"
+                                MinHeight="0"
+                                Padding="0"
+                                FontSize="14"
+                                FontFamily="Segoe UI"
+                                FontWeight="Bold"
+                                Content="?"
+                                ToolTip="Показати гайд по розділу"
+                                Visibility="{Binding IsReportsPageActive, Converter={StaticResource BoolToVisibilityConverter}}"
+                                Command="{Binding ReportsPage.RequestGuideCommand}">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource HeaderIconButtonStyle}">
+                                    <Setter Property="Width" Value="28" />
+                                    <Setter Property="Height" Value="28" />
+                                    <Setter Property="MinHeight" Value="0" />
+                                    <Setter Property="Padding" Value="0" />
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                        <Button Margin="10,0,0,0"
+                                Width="28"
+                                Height="28"
+                                MinHeight="0"
+                                Padding="0"
+                                FontSize="14"
+                                FontFamily="Segoe UI"
+                                FontWeight="Bold"
+                                Content="?"
+                                ToolTip="Показати гайд по розділу"
+                                Visibility="{Binding IsClientsPageActive, Converter={StaticResource BoolToVisibilityConverter}}"
+                                Command="{Binding ClientsPage.RequestGuideCommand}">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource HeaderIconButtonStyle}">
+                                    <Setter Property="Width" Value="28" />
+                                    <Setter Property="Height" Value="28" />
+                                    <Setter Property="MinHeight" Value="0" />
+                                    <Setter Property="Padding" Value="0" />
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                        <Button Margin="10,0,0,0"
+                                Width="28"
+                                Height="28"
+                                MinHeight="0"
+                                Padding="0"
+                                FontSize="14"
+                                FontFamily="Segoe UI"
+                                FontWeight="Bold"
+                                Content="?"
+                                ToolTip="Показати гайд по розділу"
+                                Visibility="{Binding IsFleetPageActive, Converter={StaticResource BoolToVisibilityConverter}}"
+                                Command="{Binding FleetPage.RequestGuideCommand}">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource HeaderIconButtonStyle}">
+                                    <Setter Property="Width" Value="28" />
+                                    <Setter Property="Height" Value="28" />
+                                    <Setter Property="MinHeight" Value="0" />
+                                    <Setter Property="Padding" Value="0" />
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                    </StackPanel>
+                    <StackPanel DockPanel.Dock="Right"
+                                HorizontalAlignment="Right">
+                        <Button x:Name="SettingsButton"
+                                HorizontalAlignment="Right"
+                                Style="{StaticResource HeaderIconButtonStyle}"
+                                Content="&#xE713;"
+                                ToolTip="Налаштування"
+                                Click="SettingsButton_OnClick">
+                            <Button.ContextMenu>
+                                <ContextMenu Placement="Bottom"
+                                             StaysOpen="False">
+                                    <MenuItem Header="{Binding SelfRoleMenuHeader}"
+                                              Visibility="{Binding CanSelfManageRole, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <MenuItem Header="Користувач"
+                                                  Command="{Binding ChangeSelfRoleCommand}"
+                                                  CommandParameter="User" />
+                                        <MenuItem Header="Менеджер"
+                                                  Command="{Binding ChangeSelfRoleCommand}"
+                                                  CommandParameter="Manager" />
+                                        <MenuItem Header="Адміністратор"
+                                                  Command="{Binding ChangeSelfRoleCommand}"
+                                                  CommandParameter="Admin" />
+                                    </MenuItem>
+                                    <Separator Visibility="{Binding CanSelfManageRole, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                    <MenuItem Header="Вийти з облікового акаунту"
+                                              Command="{Binding LogoutCommand}" />
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                        </Button>
+
+                        <StackPanel Orientation="Horizontal"
+                                    HorizontalAlignment="Right"
+                                    Margin="0,8,0,0">
+                            <TextBlock Text="{Binding CurrentEmployee.FullName}"
+                                       Foreground="#EDF3FC"
+                                       FontWeight="SemiBold"
+                                       Margin="0,0,10,0" />
+                            <Border Background="#DCE9FB"
+                                    BorderBrush="#A8C0DF"
+                                    BorderThickness="1"
+                                    Padding="8,4"
+                                    CornerRadius="999">
+                                <TextBlock Text="{Binding CurrentEmployeeRole}"
+                                           Foreground="#123D72"
+                                           FontWeight="SemiBold" />
+                            </Border>
+                        </StackPanel>
+                    </StackPanel>
+                    </DockPanel>
+
+                    <StackPanel Grid.Row="1"
+                                Margin="14,0,14,12"
+                                Orientation="Horizontal"
+                                Visibility="{Binding IsUser, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Button Content="Прокат"
+                                Style="{StaticResource UserTopNavButtonStyle}"
+                                Tag="{Binding IsProkatPageActive}"
+                                Command="{Binding ShowProkatCommand}" />
+                        <Button Content="Мої бронювання"
+                                Style="{StaticResource UserTopNavButtonStyle}"
+                                Tag="{Binding IsUserRentalsPageActive}"
+                                Command="{Binding ShowUserRentalsCommand}" />
+                    </StackPanel>
+
+                    <Border Grid.RowSpan="2"
+                            Width="58"
+                            Height="58"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Visibility="{Binding ShowNavigationSidebar, Converter={StaticResource BoolToVisibilityConverter}}"
+                            CornerRadius="29"
+                            BorderBrush="#F1CD8E"
+                            BorderThickness="2">
+                        <Border.Background>
+                            <RadialGradientBrush Center="0.3,0.28"
+                                                 GradientOrigin="0.3,0.28"
+                                                 RadiusX="0.9"
+                                                 RadiusY="0.9">
+                                <GradientStop Color="#21568F" Offset="0" />
+                                <GradientStop Color="#0E2F57" Offset="0.68" />
+                                <GradientStop Color="#081F3F" Offset="1" />
+                            </RadialGradientBrush>
+                        </Border.Background>
+                        <TextBlock Text="JF"
+                                   FontFamily="Times New Roman"
+                                   FontSize="30"
+                                   FontWeight="Bold"
+                                   Foreground="#F9E5BC"
+                                   VerticalAlignment="Center"
+                                   HorizontalAlignment="Center" />
+                    </Border>
+                </Grid>
+            </Border>
+
+            <Border Grid.Row="1"
+                    Margin="16,8,16,16"
+                    Padding="10"
+                    Style="{StaticResource CardSurfaceStyle}">
+                <ContentControl Content="{Binding CurrentPage}" />
+            </Border>
+        </Grid>
+    </Grid>
+</Window>
+
+
+
