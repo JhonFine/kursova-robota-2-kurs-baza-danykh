@@ -2,6 +2,17 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Api } from '../api/client';
 import type { ClientProfile } from '../api/types';
 import { LoadingView } from '../components/LoadingView';
+import {
+  CLIENT_DRIVER_LICENSE_MAX_LENGTH,
+  CLIENT_FULL_NAME_MAX_LENGTH,
+  CLIENT_PASSPORT_MAX_LENGTH,
+  CLIENT_PHONE_MAX_LENGTH,
+  getClientProfileCompletionIssues,
+  getClientProfileCompletionMessage,
+  isLegacyDriverLicense,
+  isLegacyPassportData,
+  PASSWORD_MAX_LENGTH,
+} from './prokatShared';
 
 export function ProkatProfilePage() {
   const [loading, setLoading] = useState(true);
@@ -17,6 +28,9 @@ export function ProkatProfilePage() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const requestIdRef = useRef(0);
+  const profileDraft = { fullName, phone, passportData, driverLicense };
+  const completionIssues = getClientProfileCompletionIssues(profileDraft);
+  const completionMessage = getClientProfileCompletionMessage(profileDraft);
 
   const loadProfile = useCallback(async (): Promise<void> => {
     const requestId = ++requestIdRef.current;
@@ -68,9 +82,15 @@ export function ProkatProfilePage() {
       });
 
       setProfile(updated);
+      setFullName(updated.fullName);
+      setPhone(updated.phone);
+      setPassportData(updated.passportData);
+      setDriverLicense(updated.driverLicense);
+
+      const updatedCompletionMessage = getClientProfileCompletionMessage(updated);
       setMessage(updated.isComplete
         ? 'Профіль клієнта оновлено.'
-        : 'Профіль оновлено, але для бронювання ще потрібно завершити всі поля.');
+        : `Профіль оновлено. ${updatedCompletionMessage ?? 'Для бронювання ще потрібно завершити всі поля.'}`);
     } catch (requestError) {
       setError(Api.errorMessage(requestError));
     } finally {
@@ -133,6 +153,7 @@ export function ProkatProfilePage() {
       {!profile?.isComplete ? (
         <section className="status-panel">
           <strong>Профіль потрібно завершити</strong>
+          {completionMessage ? <p className="muted">{completionMessage}</p> : null}
           <p className="muted">
             Поки профіль неповний, оформлення нових бронювань у каталозі буде заблоковано.
           </p>
@@ -147,11 +168,24 @@ export function ProkatProfilePage() {
           </div>
 
           <form className="form-grid" onSubmit={(event) => void saveProfile(event)}>
+            {completionIssues.length > 0 ? (
+              <div className="prokat-profile-hints full-row">
+                <strong>Що ще потрібно для повного профілю</strong>
+                <ul>
+                  {completionIssues.map((issue) => (
+                    <li key={issue}>{issue}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
             <label className="full-row">
               ПІБ
               <input
                 value={fullName}
-                onChange={(event) => setFullName(event.target.value)}
+                onChange={(event) => setFullName(event.target.value.slice(0, CLIENT_FULL_NAME_MAX_LENGTH))}
+                maxLength={CLIENT_FULL_NAME_MAX_LENGTH}
+                autoComplete="name"
                 placeholder="Коваленко Іван Олександрович"
               />
             </label>
@@ -160,7 +194,10 @@ export function ProkatProfilePage() {
               Телефон
               <input
                 value={phone}
-                onChange={(event) => setPhone(event.target.value)}
+                onChange={(event) => setPhone(event.target.value.slice(0, CLIENT_PHONE_MAX_LENGTH))}
+                maxLength={CLIENT_PHONE_MAX_LENGTH}
+                inputMode="tel"
+                autoComplete="tel"
                 placeholder="+380671234567"
               />
             </label>
@@ -169,18 +206,28 @@ export function ProkatProfilePage() {
               Паспорт
               <input
                 value={passportData}
-                onChange={(event) => setPassportData(event.target.value)}
+                onChange={(event) => setPassportData(event.target.value.slice(0, CLIENT_PASSPORT_MAX_LENGTH))}
+                maxLength={CLIENT_PASSPORT_MAX_LENGTH}
+                spellCheck={false}
                 placeholder="МК123456"
               />
+              {isLegacyPassportData(passportData) ? (
+                <small className="prokat-field-hint warn">EMP-... не рахується реальними паспортними даними.</small>
+              ) : null}
             </label>
 
             <label className="full-row">
               Посвідчення водія
               <input
                 value={driverLicense}
-                onChange={(event) => setDriverLicense(event.target.value)}
+                onChange={(event) => setDriverLicense(event.target.value.slice(0, CLIENT_DRIVER_LICENSE_MAX_LENGTH))}
+                maxLength={CLIENT_DRIVER_LICENSE_MAX_LENGTH}
+                spellCheck={false}
                 placeholder="ВХЕ123456"
               />
+              {isLegacyDriverLicense(driverLicense) ? (
+                <small className="prokat-field-hint warn">USR-... не рахується реальним посвідченням водія.</small>
+              ) : null}
             </label>
 
             <button type="submit" className="btn primary" disabled={savingProfile}>
@@ -201,7 +248,9 @@ export function ProkatProfilePage() {
               <input
                 type="password"
                 value={currentPassword}
-                onChange={(event) => setCurrentPassword(event.target.value)}
+                onChange={(event) => setCurrentPassword(event.target.value.slice(0, PASSWORD_MAX_LENGTH))}
+                maxLength={PASSWORD_MAX_LENGTH}
+                autoComplete="current-password"
               />
             </label>
 
@@ -210,7 +259,9 @@ export function ProkatProfilePage() {
               <input
                 type="password"
                 value={newPassword}
-                onChange={(event) => setNewPassword(event.target.value)}
+                onChange={(event) => setNewPassword(event.target.value.slice(0, PASSWORD_MAX_LENGTH))}
+                maxLength={PASSWORD_MAX_LENGTH}
+                autoComplete="new-password"
               />
             </label>
 

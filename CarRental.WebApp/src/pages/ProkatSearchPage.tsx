@@ -16,6 +16,11 @@ import {
   withUpdatedSearchParams,
 } from '../utils/searchParams';
 import {
+  CARD_NUMBER_MAX_DIGITS,
+  CARD_CVV_MAX_DIGITS,
+  CARD_EXPIRY_INPUT_MAX_LENGTH,
+  CARDHOLDER_NAME_MAX_LENGTH,
+  CARD_NUMBER_INPUT_MAX_LENGTH,
   buildCatalogVehicleCards,
   buildAvailabilityMap,
   buildMaskedCardPaymentNote,
@@ -26,16 +31,20 @@ import {
   LOCATION_OPTIONS,
   digitsOnly,
   estimateRentalAmount,
+  formatCardCvvInput,
   formatBookingMoment,
+  formatCardExpiryInput,
+  formatCardNumberInput,
   formatDoors,
   formatDuration,
+  getClientProfileCompletionMessage,
   localImage,
   parseCardExpiry,
   parseDateTime,
-  passesLuhnCheck,
   pickBookableVehicleId,
   pickVehicleId,
   rentalStatusLabel,
+  shouldWarnAboutCardNumber,
   sortVehiclesForSelection,
   sortOptionValues,
   timeOptions,
@@ -100,6 +109,7 @@ export function ProkatSearchPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [cardWarningOpen, setCardWarningOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createdRental, setCreatedRental] = useState<Rental | null>(null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -202,7 +212,28 @@ export function ProkatSearchPage() {
 
   const beginInteraction = (): void => {
     clearFeedback();
+    setCardWarningOpen(false);
     setError(null);
+  };
+
+  const handleCardholderNameChange = (value: string): void => {
+    beginInteraction();
+    setCardholderName(value.slice(0, CARDHOLDER_NAME_MAX_LENGTH));
+  };
+
+  const handleCardNumberChange = (value: string): void => {
+    beginInteraction();
+    setCardNumber(formatCardNumberInput(value));
+  };
+
+  const handleCardExpiryChange = (value: string): void => {
+    beginInteraction();
+    setCardExpiry(formatCardExpiryInput(value));
+  };
+
+  const handleCardCvvChange = (value: string): void => {
+    beginInteraction();
+    setCardCvv(formatCardCvvInput(value));
   };
 
   const availabilityByVehicleId = useMemo(
@@ -627,7 +658,7 @@ export function ProkatSearchPage() {
     }
 
     const cardDigits = digitsOnly(cardNumber);
-    if (cardDigits.length < 13 || cardDigits.length > 19 || !passesLuhnCheck(cardDigits)) {
+    if (cardDigits.length !== CARD_NUMBER_MAX_DIGITS) {
       return 'Некоректний номер картки.';
     }
 
@@ -645,11 +676,6 @@ export function ProkatSearchPage() {
     const cvvDigits = digitsOnly(cardCvv);
     if (cvvDigits.length < 3 || cvvDigits.length > 4) {
       return 'CVV має містити 3 або 4 цифри.';
-    }
-
-    const legacyValidationMessage = getCheckoutValidationMessage();
-    if (legacyValidationMessage) {
-      return legacyValidationMessage;
     }
 
     return null;
@@ -689,7 +715,7 @@ export function ProkatSearchPage() {
     }
 
     const cardDigits = digitsOnly(cardNumber);
-    if (cardDigits.length < 13 || cardDigits.length > 19 || !passesLuhnCheck(cardDigits)) {
+    if (cardDigits.length !== CARD_NUMBER_MAX_DIGITS) {
       return 'Некоректний номер картки.';
     }
 
@@ -709,11 +735,20 @@ export function ProkatSearchPage() {
       return 'CVV має містити 3 або 4 цифри.';
     }
 
+    const legacyValidationMessage = getCheckoutValidationMessage();
+    if (legacyValidationMessage) {
+      return legacyValidationMessage;
+    }
+
     return null;
   };
 
+  const profileCompletionMessage = getClientProfileCompletionMessage(myClient);
+  const checkoutValidationMessage = getCheckoutValidationMessageEnhanced();
+  const cardNumberNeedsConfirmation = shouldWarnAboutCardNumber(cardNumber);
+
   const openConfirmDialog = (): void => {
-    const validationMessage = getCheckoutValidationMessageEnhanced();
+    const validationMessage = checkoutValidationMessage;
     if (validationMessage) {
       if (myClient && !myClient.isComplete) {
         navigate('/prokat/profile');
@@ -724,6 +759,16 @@ export function ProkatSearchPage() {
 
     clearFeedback();
     setError(null);
+    if (cardNumberNeedsConfirmation) {
+      setCardWarningOpen(true);
+      return;
+    }
+
+    setConfirmOpen(true);
+  };
+
+  const confirmSuspiciousCardCheckout = (): void => {
+    setCardWarningOpen(false);
     setConfirmOpen(true);
   };
 
@@ -1372,6 +1417,7 @@ export function ProkatSearchPage() {
                   <div className="prokat-selection-alert">
                     <strong>Профіль клієнта ще не завершений.</strong>
                     <p>Заповніть реальні документи та контакти, після чого поверніться до оформлення.</p>
+                    {profileCompletionMessage ? <p>{profileCompletionMessage}</p> : null}
                     <div className="row-actions">
                       <button type="button" className="btn primary" onClick={() => navigate('/prokat/profile')}>
                         Перейти до профілю
@@ -1421,10 +1467,9 @@ export function ProkatSearchPage() {
                       <span>Власник картки</span>
                       <input
                         value={cardholderName}
-                        onChange={(event) => {
-                          beginInteraction();
-                          setCardholderName(event.target.value);
-                        }}
+                        onChange={(event) => handleCardholderNameChange(event.target.value)}
+                        maxLength={CARDHOLDER_NAME_MAX_LENGTH}
+                        autoComplete="cc-name"
                         placeholder="Ім'я та прізвище"
                       />
                     </label>
@@ -1433,12 +1478,11 @@ export function ProkatSearchPage() {
                       <span>Номер картки</span>
                       <input
                         value={cardNumber}
-                        onChange={(event) => {
-                          beginInteraction();
-                          setCardNumber(event.target.value);
-                        }}
+                        onChange={(event) => handleCardNumberChange(event.target.value)}
                         inputMode="numeric"
                         autoComplete="cc-number"
+                        maxLength={CARD_NUMBER_INPUT_MAX_LENGTH}
+                        spellCheck={false}
                         placeholder="0000 0000 0000 0000"
                       />
                     </label>
@@ -1447,11 +1491,11 @@ export function ProkatSearchPage() {
                       <span>Термін дії (MM/YY)</span>
                       <input
                         value={cardExpiry}
-                        onChange={(event) => {
-                          beginInteraction();
-                          setCardExpiry(event.target.value);
-                        }}
+                        onChange={(event) => handleCardExpiryChange(event.target.value)}
+                        inputMode="numeric"
                         autoComplete="cc-exp"
+                        maxLength={CARD_EXPIRY_INPUT_MAX_LENGTH}
+                        spellCheck={false}
                         placeholder="08/29"
                       />
                     </label>
@@ -1460,13 +1504,11 @@ export function ProkatSearchPage() {
                       <span>CVV</span>
                       <input
                         value={cardCvv}
-                        onChange={(event) => {
-                          beginInteraction();
-                          setCardCvv(event.target.value);
-                        }}
+                        onChange={(event) => handleCardCvvChange(event.target.value)}
                         inputMode="numeric"
                         autoComplete="cc-csc"
-                        maxLength={4}
+                        maxLength={CARD_CVV_MAX_DIGITS}
+                        spellCheck={false}
                         placeholder="123"
                       />
                     </label>
@@ -1478,11 +1520,15 @@ export function ProkatSearchPage() {
                   і збереже договір у ваших бронюваннях та орендах.
                 </div>
 
+                {checkoutValidationMessage ? (
+                  <p className="prokat-checkout-hint warn">{checkoutValidationMessage}</p>
+                ) : null}
+
                 <button
                   type="button"
                   className="btn primary prokat-rent-btn"
                   onClick={openConfirmDialog}
-                  disabled={submitting || Boolean(getCheckoutValidationMessageEnhanced())}
+                  disabled={submitting || Boolean(checkoutValidationMessage)}
                 >
                   {submitting ? 'Оформлення...' : 'Оплатити та оформити'}
                 </button>
@@ -1496,6 +1542,20 @@ export function ProkatSearchPage() {
           </section>
         </aside>
       </div>
+
+      <ConfirmDialog
+        open={cardWarningOpen}
+        title="Ймовірно, це не справжня картка"
+        description={(
+          <p>
+            Номер картки не пройшов базову перевірку. Якщо це тестова або нестандартна картка, ви все одно можете продовжити оформлення.
+          </p>
+        )}
+        confirmLabel="Продовжити"
+        cancelLabel="Змінити номер"
+        onConfirm={confirmSuspiciousCardCheckout}
+        onCancel={() => setCardWarningOpen(false)}
+      />
 
       <ConfirmDialog
         open={confirmOpen}

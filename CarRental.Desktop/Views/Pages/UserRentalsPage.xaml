@@ -412,7 +412,7 @@
                                        Style="{StaticResource SectionTitleStyle}" />
                             <TextBlock Margin="0,8,0,0" TextWrapping="Wrap">
                                 <Run Text="Бронювання " />
-                                <Run Text="{Binding CancelDialogContractText}" FontWeight="SemiBold" />
+                                <Run Text="{Binding CancelDialogContractText, Mode=OneWay}" FontWeight="SemiBold" />
                                 <Run Text=" буде переведене в статус " />
                                 <Run Text="Canceled" FontWeight="SemiBold" />
                                 <Run Text="." />

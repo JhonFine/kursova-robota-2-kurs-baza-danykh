@@ -9,6 +9,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using System.Windows;
 
 namespace CarRental.Desktop.ViewModels;
 
@@ -16,6 +17,12 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
 {
     private const string AvailableStatusKey = "Вільні";
     private const string UnavailableStatusKey = "Зайняті / Недоступні";
+    private const int CardholderNameMaxLength = 120;
+    private const int CardNumberMaxDigits = 16;
+    private const int CardNumberInputMaxLength = 19;
+    private const int CardExpiryMaxDigits = 4;
+    private const int CardExpiryInputMaxLength = 5;
+    private const int CardCvvMaxDigits = 4;
 
     private readonly RentalDbContext _dbContext;
     private readonly IRentalService _rentalService;
@@ -46,6 +53,8 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
     private string _cardNumberInput = string.Empty;
     private string _cardExpiryInput = string.Empty;
     private string _cardCvvInput = string.Empty;
+    private string _checkoutAttemptHint = string.Empty;
+    private bool _periodAvailabilityRefreshPending;
     private bool _suppressFilterApply;
 
     public ProkatPageViewModel(
@@ -171,6 +180,8 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
 
                 OnPropertyChanged(nameof(CheckoutPeriodSummary));
                 OnPropertyChanged(nameof(CheckoutAmountSummary));
+                NotifyCheckoutValidationChanged();
+                RequestPeriodAvailabilityRefresh();
             }
         }
     }
@@ -184,6 +195,8 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
             {
                 OnPropertyChanged(nameof(CheckoutPeriodSummary));
                 OnPropertyChanged(nameof(CheckoutAmountSummary));
+                NotifyCheckoutValidationChanged();
+                RequestPeriodAvailabilityRefresh();
             }
         }
     }
@@ -194,6 +207,29 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
         set => SetProperty(ref _statusMessage, value);
     }
 
+    public string CheckoutActionHint
+    {
+        get
+        {
+            var validationError = ValidateCheckoutInputs();
+            if (!string.IsNullOrWhiteSpace(validationError))
+            {
+                return validationError;
+            }
+
+            if (!string.IsNullOrWhiteSpace(_checkoutAttemptHint))
+            {
+                return _checkoutAttemptHint;
+            }
+
+            return ShouldWarnAboutCardNumber(CardNumberInput)
+                ? "Ймовірно тестова картка."
+                : string.Empty;
+        }
+    }
+
+    public bool HasCheckoutActionHint => !string.IsNullOrWhiteSpace(CheckoutActionHint);
+
     public bool IsVehicleDetailsDialogOpen
     {
         get => _isVehicleDetailsDialogOpen;
@@ -203,7 +239,13 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
     public bool IsCheckoutDialogOpen
     {
         get => _isCheckoutDialogOpen;
-        set => SetProperty(ref _isCheckoutDialogOpen, value);
+        set
+        {
+            if (SetProperty(ref _isCheckoutDialogOpen, value))
+            {
+                NotifyCheckoutValidationChanged();
+            }
+        }
     }
 
     public ProkatCarCard? DetailsVehicle
@@ -222,7 +264,7 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
 
     public string DetailsVehicleSummary => DetailsVehicle is null
         ? string.Empty
-        : $"{DetailsVehicle.EngineFuelTransmission} • Клас: {DetailsVehicle.CarClass} • В автопарку: {DetailsVehicle.FleetCount} шт. (доступно: {DetailsVehicle.FleetAvailableCount})";
+        : $"{DetailsVehicle.EngineFuelTransmission} • Клас: {DetailsVehicle.CarClass} • В автопарку: {DetailsVehicle.FleetCount} шт. (доступно на період: {DetailsVehicle.FleetAvailableCount})";
 
     public string DetailsVehiclePricingSummary => DetailsVehicle is null
         ? string.Empty
@@ -237,6 +279,7 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
             {
                 OnPropertyChanged(nameof(PickupLocationHeader));
                 OnPropertyChanged(nameof(CheckoutPeriodSummary));
+                NotifyCheckoutValidationChanged();
             }
         }
     }
@@ -251,6 +294,7 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
             if (SetProperty(ref _returnLocation, value))
             {
                 OnPropertyChanged(nameof(CheckoutPeriodSummary));
+                NotifyCheckoutValidationChanged();
             }
         }
     }
@@ -263,6 +307,8 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
             if (SetProperty(ref _pickupTime, value))
             {
                 OnPropertyChanged(nameof(CheckoutPeriodSummary));
+                NotifyCheckoutValidationChanged();
+                RequestPeriodAvailabilityRefresh();
             }
         }
     }
@@ -275,6 +321,8 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
             if (SetProperty(ref _returnTime, value))
             {
                 OnPropertyChanged(nameof(CheckoutPeriodSummary));
+                NotifyCheckoutValidationChanged();
+                RequestPeriodAvailabilityRefresh();
             }
         }
     }
@@ -288,6 +336,7 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
             {
                 OnPropertyChanged(nameof(SelectedVehicleVariantInfo));
                 OnPropertyChanged(nameof(CheckoutAmountSummary));
+                NotifyCheckoutValidationChanged();
             }
         }
     }
@@ -295,25 +344,56 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
     public string CardholderNameInput
     {
         get => _cardholderNameInput;
-        set => SetProperty(ref _cardholderNameInput, value);
+        set
+        {
+            var normalized = value.Length > CardholderNameMaxLength
+                ? value[..CardholderNameMaxLength]
+                : value;
+
+            if (SetProperty(ref _cardholderNameInput, normalized))
+            {
+                NotifyCheckoutValidationChanged();
+            }
+        }
     }
 
     public string CardNumberInput
     {
         get => _cardNumberInput;
-        set => SetProperty(ref _cardNumberInput, value);
+        set
+        {
+            var formatted = FormatCardNumberInput(value);
+            if (SetProperty(ref _cardNumberInput, formatted))
+            {
+                NotifyCheckoutValidationChanged();
+            }
+        }
     }
 
     public string CardExpiryInput
     {
         get => _cardExpiryInput;
-        set => SetProperty(ref _cardExpiryInput, value);
+        set
+        {
+            var formatted = FormatCardExpiryInput(value);
+            if (SetProperty(ref _cardExpiryInput, formatted))
+            {
+                NotifyCheckoutValidationChanged();
+            }
+        }
     }
 
     public string CardCvvInput
     {
         get => _cardCvvInput;
-        set => SetProperty(ref _cardCvvInput, value);
+        set
+        {
+            var formatted = FormatCardCvvInput(value);
+            if (SetProperty(ref _cardCvvInput, formatted))
+            {
+                NotifyCheckoutValidationChanged();
+            }
+        }
     }
 
     public string SelectedVehicleVariantInfo => SelectedVehicleVariant is null
@@ -446,11 +526,26 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
             return;
         }
 
+        await ReloadCatalogAsync(resetTransientState: true);
+    }
+
+    private async Task ReloadCatalogAsync(bool resetTransientState)
+    {
+        if (IsLoading)
+        {
+            return;
+        }
+
         IsLoading = true;
         try
         {
-            var now = DateTime.Now;
-            var selectedId = SelectedVehicle?.Id;
+            var selectedCardId = SelectedVehicle?.Id;
+            var detailsCardId = DetailsVehicle?.Id;
+            var selectedVariantVehicleId = SelectedVehicleVariant?.VehicleId;
+            var wasVehicleDetailsOpen = IsVehicleDetailsDialogOpen;
+            var wasCheckoutOpen = IsCheckoutDialogOpen;
+            var requestStart = BuildPickupDateTime();
+            var requestEnd = BuildReturnDateTime();
 
             var vehicles = await _dbContext.Vehicles
                 .AsNoTracking()
@@ -458,14 +553,17 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
                 .ThenBy(vehicle => vehicle.Model)
                 .ToListAsync();
 
-            var activeRentals = await _dbContext.Rentals
-                .AsNoTracking()
-                .Where(rental =>
-                    (rental.Status == RentalStatus.Active || rental.Status == RentalStatus.Booked) &&
-                    rental.EndDate >= now)
-                .OrderBy(rental => rental.StartDate)
-                .ToListAsync();
-            var rentalsByVehicleId = activeRentals
+            var overlappingRentals = requestEnd > requestStart
+                ? await _dbContext.Rentals
+                    .AsNoTracking()
+                    .Where(rental =>
+                        (rental.Status == RentalStatus.Active || rental.Status == RentalStatus.Booked) &&
+                        rental.StartDate <= requestEnd &&
+                        requestStart <= rental.EndDate)
+                    .OrderBy(rental => rental.StartDate)
+                    .ToListAsync()
+                : [];
+            var rentalsByVehicleId = overlappingRentals
                 .GroupBy(rental => rental.VehicleId)
                 .ToDictionary(
                     group => group.Key,
@@ -477,10 +575,11 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
                 rentalsByVehicleId.TryGetValue(vehicle.Id, out var vehicleRentals);
                 vehicleRentals ??= Array.Empty<Rental>();
 
-                var availableFrom = CalculateAvailableFrom(now, vehicleRentals);
-                var isAvailableNow = availableFrom <= now;
-
-                vehicleAvailability.Add(new VehicleAvailability(vehicle.Id, isAvailableNow, availableFrom));
+                vehicleAvailability.Add(ResolveVehicleAvailability(
+                    vehicle,
+                    requestStart,
+                    requestEnd,
+                    vehicleRentals));
             }
 
             var vehicleIds = vehicles.Select(vehicle => vehicle.Id).ToList();
@@ -499,25 +598,46 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
             _allCards.Clear();
             _allCards.AddRange(BuildShowcaseCards(vehicles, availabilityByVehicleId, damagesByVehicleId));
             ApplyFilters();
-            IsVehicleDetailsDialogOpen = false;
-            IsCheckoutDialogOpen = false;
-            VehicleVariants.Clear();
-            DetailsVehicle = null;
-            SelectedVehicleVariant = null;
-            ResetCardPaymentInputs();
 
-            SelectedVehicle = selectedId.HasValue
-                ? Vehicles.FirstOrDefault(item => item.Id == selectedId.Value)
+            SelectedVehicle = selectedCardId.HasValue
+                ? Vehicles.FirstOrDefault(item => item.Id == selectedCardId.Value) ??
+                  Vehicles.FirstOrDefault(item => item.IsAvailableNow) ??
+                  Vehicles.FirstOrDefault()
                 : Vehicles.FirstOrDefault(item => item.IsAvailableNow) ?? Vehicles.FirstOrDefault();
 
-            var totalFleetVehicles = CountFleetVehicles();
-            if (SelectedVehicle is not null)
+            if (resetTransientState)
             {
-                StatusMessage = $"Знайдено {totalFleetVehicles} авто у автопарку ({Vehicles.Count} моделей). Обране: {SelectedVehicle.Car}.";
+                IsVehicleDetailsDialogOpen = false;
+                IsCheckoutDialogOpen = false;
+                VehicleVariants.Clear();
+                DetailsVehicle = null;
+                SelectedVehicleVariant = null;
+                ResetCardPaymentInputs();
             }
             else
             {
-                StatusMessage = $"Знайдено {totalFleetVehicles} авто у автопарку ({Vehicles.Count} моделей).";
+                RestoreAvailabilityContext(detailsCardId, selectedVariantVehicleId, wasVehicleDetailsOpen, wasCheckoutOpen);
+            }
+
+            var totalFleetVehicles = CountFleetVehicles();
+            var availableOnSelectedPeriod = Vehicles.Count(item => item.IsAvailableNow);
+            if (resetTransientState)
+            {
+                StatusMessage = SelectedVehicle is not null
+                    ? $"Знайдено {totalFleetVehicles} авто у автопарку ({Vehicles.Count} моделей). Доступно на обраний період: {availableOnSelectedPeriod}. Обране: {SelectedVehicle.Car}."
+                    : $"Знайдено {totalFleetVehicles} авто у автопарку ({Vehicles.Count} моделей). Доступно на обраний період: {availableOnSelectedPeriod}.";
+            }
+            else if (IsCheckoutDialogOpen && SelectedVehicleVariant is not null && !SelectedVehicleVariant.CanSelect)
+            {
+                StatusMessage = $"Авто {SelectedVehicleVariant.LicensePlate} зайняте на обраний період.";
+            }
+            else if (IsVehicleDetailsDialogOpen && DetailsVehicle is not null && DetailsVehicle.FleetAvailableCount <= 0)
+            {
+                StatusMessage = $"Для {DetailsVehicle.Car} немає вільних варіантів на обраний період.";
+            }
+            else
+            {
+                StatusMessage = $"Знайдено {totalFleetVehicles} авто у автопарку ({Vehicles.Count} моделей). Доступно на обраний період: {availableOnSelectedPeriod}.";
             }
 
             MarkDataLoaded();
@@ -540,6 +660,15 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
 
     private async Task OpenVehicleDetailsAsync(ProkatCarCard? card)
     {
+        if (IsInitialized)
+        {
+            await ReloadCatalogAsync(resetTransientState: false);
+            if (card is not null)
+            {
+                card = _allCards.FirstOrDefault(item => item.Id == card.Id) ?? card;
+            }
+        }
+
         if (card is null)
         {
             StatusMessage = "Оберіть авто зі списку.";
@@ -564,9 +693,12 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
         }
 
         IsVehicleDetailsDialogOpen = true;
-        StatusMessage = card.FleetCount > 1
-            ? $"Для {card.Car} доступно {card.FleetCount} варіантів. Оберіть екземпляр."
-            : $"Деталі по {card.Car}: доступний 1 екземпляр.";
+        StatusMessage = card.FleetAvailableCount switch
+        {
+            <= 0 => $"Для {card.Car} немає вільних варіантів на обраний період.",
+            1 => $"Для {card.Car} доступний 1 варіант на обраний період.",
+            _ => $"Для {card.Car} доступно {card.FleetAvailableCount} варіанти на обраний період. Оберіть екземпляр."
+        };
         await Task.CompletedTask;
     }
 
@@ -636,6 +768,20 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
             return;
         }
 
+        if (ShouldWarnAboutCardNumber(CardNumberInput))
+        {
+            var warningResult = MessageBox.Show(
+                "Ймовірно, це не справжня картка. Продовжити?",
+                "Підозріла картка",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (warningResult != MessageBoxResult.Yes)
+            {
+                return;
+            }
+        }
+
         var pickupDateTime = BuildPickupDateTime();
         var returnDateTime = BuildReturnDateTime();
         var carName = DetailsVehicle?.Car ?? SelectedVehicle?.Car ?? "обране авто";
@@ -668,14 +814,18 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
     {
         if (pickupDateTime >= returnDateTime)
         {
-            StatusMessage = "Час повернення має бути пізніше часу подачі.";
+            const string message = "Час повернення має бути пізніше часу подачі.";
+            StatusMessage = message;
+            SetCheckoutAttemptHint(message);
             return false;
         }
 
         var clientId = await EnsureClientProfileAsync();
         if (clientId is null)
         {
-            StatusMessage = "Не вдалося створити профіль клієнта для оренди.";
+            const string message = "Не вдалося створити профіль клієнта для оренди.";
+            StatusMessage = message;
+            SetCheckoutAttemptHint(message);
             return false;
         }
 
@@ -711,9 +861,11 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
         if (!result.Success)
         {
             StatusMessage = result.Message;
+            SetCheckoutAttemptHint(result.Message);
             return false;
         }
 
+        SetCheckoutAttemptHint(string.Empty);
         _refreshCoordinator.Invalidate(PageRefreshArea.Fleet | PageRefreshArea.Rentals | PageRefreshArea.Prokat | PageRefreshArea.Reports | PageRefreshArea.UserRentals);
         await RefreshAsync();
         StatusMessage = $"Оренду оформлено. Договір: {result.ContractNumber}. Авто: {carName}.";
@@ -790,6 +942,16 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
 
     private string? ValidateCheckoutInputs()
     {
+        if (SelectedVehicleVariant is null)
+        {
+            return "Оберіть варіант авто.";
+        }
+
+        if (!SelectedVehicleVariant.CanSelect)
+        {
+            return "Обраний варіант уже зайнятий на обраний період.";
+        }
+
         if (string.IsNullOrWhiteSpace(ReturnLocation))
         {
             return "Оберіть пункт повернення.";
@@ -806,9 +968,9 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
         }
 
         var cardDigits = DigitsOnly(CardNumberInput);
-        if (cardDigits.Length < 13 || cardDigits.Length > 19 || !PassesLuhnCheck(cardDigits))
+        if (cardDigits.Length != CardNumberMaxDigits)
         {
-            return "Некоректний номер картки.";
+            return "Вкажіть 16-значний номер картки.";
         }
 
         if (!TryParseCardExpiry(CardExpiryInput, out var expiryDate))
@@ -833,6 +995,29 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
     private DateTime BuildPickupDateTime()
     {
         return CombineDateAndTime(StartDate, PickupTime, new TimeSpan(10, 0, 0));
+    }
+
+    private void NotifyCheckoutValidationChanged(bool preserveAttemptHint = false)
+    {
+        if (!preserveAttemptHint && !string.IsNullOrWhiteSpace(_checkoutAttemptHint))
+        {
+            _checkoutAttemptHint = string.Empty;
+        }
+
+        OnPropertyChanged(nameof(CheckoutActionHint));
+        OnPropertyChanged(nameof(HasCheckoutActionHint));
+    }
+
+    private void SetCheckoutAttemptHint(string? value)
+    {
+        var normalizedValue = value?.Trim() ?? string.Empty;
+        if (string.Equals(_checkoutAttemptHint, normalizedValue, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _checkoutAttemptHint = normalizedValue;
+        NotifyCheckoutValidationChanged(preserveAttemptHint: true);
     }
 
     private DateTime BuildReturnDateTime()
@@ -943,6 +1128,58 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
     private static string DigitsOnly(string value)
     {
         return string.Concat(value.Where(char.IsDigit));
+    }
+
+    private static string FormatCardNumberInput(string value)
+    {
+        var digits = DigitsOnly(value);
+        if (digits.Length > CardNumberMaxDigits)
+        {
+            digits = digits[..CardNumberMaxDigits];
+        }
+
+        var builder = new StringBuilder(CardNumberInputMaxLength);
+        for (var index = 0; index < digits.Length; index++)
+        {
+            if (index > 0 && index % 4 == 0)
+            {
+                builder.Append(' ');
+            }
+
+            builder.Append(digits[index]);
+        }
+
+        return builder.ToString();
+    }
+
+    private static string FormatCardExpiryInput(string value)
+    {
+        var digits = DigitsOnly(value);
+        if (digits.Length > CardExpiryMaxDigits)
+        {
+            digits = digits[..CardExpiryMaxDigits];
+        }
+
+        if (digits.Length <= 2)
+        {
+            return digits;
+        }
+
+        return $"{digits[..2]}/{digits[2..]}";
+    }
+
+    private static string FormatCardCvvInput(string value)
+    {
+        var digits = DigitsOnly(value);
+        return digits.Length > CardCvvMaxDigits
+            ? digits[..CardCvvMaxDigits]
+            : digits;
+    }
+
+    private static bool ShouldWarnAboutCardNumber(string value)
+    {
+        var digits = DigitsOnly(value);
+        return digits.Length == CardNumberMaxDigits && !PassesLuhnCheck(digits);
     }
 
     private static bool PassesLuhnCheck(string digits)
@@ -1090,29 +1327,110 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
         return client.Id;
     }
 
-    private static DateTime CalculateAvailableFrom(DateTime now, IReadOnlyList<Rental> rentals)
+    private void RequestPeriodAvailabilityRefresh()
     {
-        var current = now;
-
-        foreach (var rental in rentals.OrderBy(item => item.StartDate))
+        if (!IsInitialized)
         {
-            if (rental.EndDate <= current)
-            {
-                continue;
-            }
-
-            if (rental.StartDate > current)
-            {
-                break;
-            }
-
-            if (rental.EndDate > current)
-            {
-                current = rental.EndDate;
-            }
+            return;
         }
 
-        return current;
+        _periodAvailabilityRefreshPending = true;
+        if (IsLoading)
+        {
+            return;
+        }
+
+        RefreshPeriodAvailabilityAsync();
+    }
+
+    private async void RefreshPeriodAvailabilityAsync()
+    {
+        try
+        {
+            while (_periodAvailabilityRefreshPending)
+            {
+                _periodAvailabilityRefreshPending = false;
+                await ReloadCatalogAsync(resetTransientState: false);
+            }
+        }
+        catch (Exception exception)
+        {
+            StatusMessage = $"Не вдалося оновити доступність авто: {exception.Message}";
+        }
+    }
+
+    private void RestoreAvailabilityContext(
+        int? detailsCardId,
+        int? selectedVariantVehicleId,
+        bool wasVehicleDetailsOpen,
+        bool wasCheckoutOpen)
+    {
+        var detailsCard = detailsCardId.HasValue
+            ? _allCards.FirstOrDefault(item => item.Id == detailsCardId.Value)
+            : null;
+
+        DetailsVehicle = detailsCard;
+        VehicleVariants.Clear();
+        if (detailsCard is null || !_vehicleVariantsByCardId.TryGetValue(detailsCard.Id, out var variants) || variants.Count == 0)
+        {
+            SelectedVehicleVariant = null;
+            IsVehicleDetailsDialogOpen = false;
+            IsCheckoutDialogOpen = false;
+            return;
+        }
+
+        foreach (var variant in variants)
+        {
+            VehicleVariants.Add(variant);
+        }
+
+        SelectedVehicleVariant = selectedVariantVehicleId.HasValue
+            ? VehicleVariants.FirstOrDefault(item => item.VehicleId == selectedVariantVehicleId.Value)
+            : null;
+
+        IsVehicleDetailsDialogOpen = wasVehicleDetailsOpen && !wasCheckoutOpen;
+        IsCheckoutDialogOpen = wasCheckoutOpen && SelectedVehicleVariant is not null;
+    }
+
+    private static VehicleAvailability ResolveVehicleAvailability(
+        Vehicle vehicle,
+        DateTime requestStart,
+        DateTime requestEnd,
+        IReadOnlyList<Rental> conflictingRentals)
+    {
+        if (requestEnd <= requestStart)
+        {
+            return new VehicleAvailability(
+                vehicle.Id,
+                false,
+                requestStart,
+                "Вкажіть коректний період оренди.");
+        }
+
+        if (!vehicle.IsAvailable)
+        {
+            return new VehicleAvailability(
+                vehicle.Id,
+                false,
+                requestStart,
+                "Авто тимчасово недоступне в системі.");
+        }
+
+        if (conflictingRentals.Count == 0)
+        {
+            return new VehicleAvailability(
+                vehicle.Id,
+                true,
+                requestStart,
+                "Доступне на обраний період");
+        }
+
+        var availableFrom = conflictingRentals.Max(item => item.EndDate);
+        return new VehicleAvailability(
+            vehicle.Id,
+            false,
+            availableFrom,
+            $"Зайнято до {FormatAvailabilityMoment(availableFrom)}");
     }
 
     private void InitializeFilterCollections()
@@ -1235,7 +1553,7 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
 
         var availableNow = Vehicles.Count(item => item.IsAvailableNow);
         var totalFleetVehicles = CountFleetVehicles();
-        StatusMessage = $"Підібрано {totalFleetVehicles} авто у автопарку ({Vehicles.Count} моделей). Доступно моделей зараз: {availableNow}.";
+        StatusMessage = $"Підібрано {totalFleetVehicles} авто у автопарку ({Vehicles.Count} моделей). Доступно на обраний період: {availableNow}.";
         OnPropertyChanged(nameof(ActiveFiltersSummary));
     }
 
@@ -1365,6 +1683,13 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
         return fallback;
     }
 
+    private static string FormatAvailabilityMoment(DateTime value)
+    {
+        return value.TimeOfDay == TimeSpan.Zero
+            ? value.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)
+            : value.ToString("dd.MM.yyyy HH:mm", CultureInfo.InvariantCulture);
+    }
+
     private List<ProkatCarCard> BuildShowcaseCards(
         IReadOnlyList<Vehicle> fleetVehicles,
         IReadOnlyDictionary<int, VehicleAvailability> availabilityByVehicleId,
@@ -1404,6 +1729,7 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
                         condition,
                         availability?.IsAvailableNow ?? vehicle.IsAvailable,
                         availability?.AvailableFrom ?? DateTime.Today,
+                        availability?.AvailabilityLabel ?? "Доступне на обраний період",
                         vehicle.DailyRate);
                 })
                 .OrderByDescending(item => item.IsAvailableNow)
@@ -1426,6 +1752,11 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
             var nearestAvailableFrom = variantRows.Count == 0
                 ? DateTime.Today
                 : variantRows.Min(item => item.AvailableFrom);
+            var unavailableSummaryText = fleetAvailableCount <= 0
+                ? variantRows
+                    .Select(item => item.AvailabilityDisplay)
+                    .FirstOrDefault(text => !string.IsNullOrWhiteSpace(text)) ?? $"Зайнято до {FormatAvailabilityMoment(nearestAvailableFrom)}"
+                : string.Empty;
             var tariffBand = BuildTariffBand(variantRows);
 
             var displayName = ResolveCardDisplayName(representativeVehicle, seed);
@@ -1464,6 +1795,7 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
                 seed?.PrimaryBadgeColor ?? "#7E22CE",
                 seed?.SecondaryBadgeText ?? string.Empty,
                 seed?.SecondaryBadgeColor ?? "#FB923C",
+                unavailableSummaryText,
                 fleetCount,
                 fleetAvailableCount));
             nextCardId++;
@@ -1686,7 +2018,11 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
         return "Після ремонту";
     }
 
-    private sealed record VehicleAvailability(int VehicleId, bool IsAvailableNow, DateTime AvailableFrom);
+    private sealed record VehicleAvailability(
+        int VehicleId,
+        bool IsAvailableNow,
+        DateTime AvailableFrom,
+        string AvailabilityLabel);
 
     public void ReleaseTransientState()
     {
@@ -1736,6 +2072,7 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
         string PrimaryBadgeColor,
         string SecondaryBadgeText,
         string SecondaryBadgeColor,
+        string UnavailableSummaryText,
         int FleetCount,
         int FleetAvailableCount)
     {
@@ -1760,7 +2097,9 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
         public string ActionButtonText => FleetCount switch
         {
             <= 0 => "Немає в автопарку",
-            _ when FleetAvailableCount <= 0 => $"Зайнято до {AvailableFrom:dd.MM.yyyy}",
+            _ when FleetAvailableCount <= 0 => string.IsNullOrWhiteSpace(UnavailableSummaryText)
+                ? $"Зайнято до {FormatAvailabilityMoment(AvailableFrom)}"
+                : UnavailableSummaryText,
             1 => "Перейти до оформлення",
             _ => "Вибрати варіант"
         };
@@ -1783,13 +2122,10 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
         string Condition,
         bool IsAvailableNow,
         DateTime AvailableFrom,
+        string AvailabilityDisplay,
         decimal DailyRate)
     {
         public string MileageDisplay => $"{Mileage:N0} км";
-
-        public string AvailabilityDisplay => IsAvailableNow
-            ? "Доступний зараз"
-            : $"Зайнято до {AvailableFrom:dd.MM.yyyy}";
 
         public string SelectActionText => IsAvailableNow ? "Обрати" : "Недоступно";
 

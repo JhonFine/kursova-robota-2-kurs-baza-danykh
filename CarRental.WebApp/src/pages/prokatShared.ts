@@ -1,5 +1,5 @@
 import { Api } from '../api/client';
-import type { Rental, RentalAvailabilitySlot, RentalStatus, Vehicle } from '../api/types';
+import type { ClientProfile, Rental, RentalAvailabilitySlot, RentalStatus, Vehicle } from '../api/types';
 
 export const DEFAULT_MIN_PRICE = '20';
 export const DEFAULT_MAX_PRICE = '290';
@@ -8,6 +8,17 @@ export const SELF_SERVICE_CANCEL_REASON = 'Скасовано клієнтом �
 export const LOCATION_OPTIONS = ['Київ', 'Львів', 'Одеса', 'Дніпро', 'Харків'] as const;
 export const sortOptionValues = ['popular', 'priceAsc', 'priceDesc'] as const;
 export const timeOptions = Array.from({ length: 13 }, (_, index) => `${String(index + 8).padStart(2, '0')}:00`);
+export const CLIENT_FULL_NAME_MAX_LENGTH = 120;
+export const CLIENT_PHONE_MAX_LENGTH = 40;
+export const CLIENT_PASSPORT_MAX_LENGTH = 120;
+export const CLIENT_DRIVER_LICENSE_MAX_LENGTH = 80;
+export const PASSWORD_MAX_LENGTH = 128;
+export const CARDHOLDER_NAME_MAX_LENGTH = 120;
+export const CARD_NUMBER_MAX_DIGITS = 16;
+export const CARD_NUMBER_INPUT_MAX_LENGTH = 19;
+export const CARD_EXPIRY_MAX_DIGITS = 4;
+export const CARD_EXPIRY_INPUT_MAX_LENGTH = 5;
+export const CARD_CVV_MAX_DIGITS = 4;
 
 export type SortOption = (typeof sortOptionValues)[number];
 export type AvailabilityState = 'available' | 'busy';
@@ -308,6 +319,84 @@ export function rentalStatusClass(status: RentalStatus): 'ok' | 'bad' | 'wait' {
 
 export function digitsOnly(value: string): string {
   return value.replace(/\D+/g, '');
+}
+
+export function formatCardNumberInput(value: string): string {
+  const digits = digitsOnly(value).slice(0, CARD_NUMBER_MAX_DIGITS);
+  const groups = digits.match(/.{1,4}/g);
+  return groups ? groups.join(' ') : '';
+}
+
+export function formatCardExpiryInput(value: string): string {
+  const digits = digitsOnly(value).slice(0, CARD_EXPIRY_MAX_DIGITS);
+  if (digits.length <= 2) {
+    return digits;
+  }
+
+  return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+}
+
+export function formatCardCvvInput(value: string): string {
+  return digitsOnly(value).slice(0, CARD_CVV_MAX_DIGITS);
+}
+
+export function shouldWarnAboutCardNumber(cardNumber: string): boolean {
+  const digits = digitsOnly(cardNumber);
+  return digits.length === CARD_NUMBER_MAX_DIGITS && !passesLuhnCheck(digits);
+}
+
+export function isLegacyPassportData(value: string): boolean {
+  return value.trim().toUpperCase().startsWith('EMP-');
+}
+
+export function isLegacyDriverLicense(value: string): boolean {
+  return value.trim().toUpperCase().startsWith('USR-');
+}
+
+function isClientPhoneComplete(value: string): boolean {
+  const digits = digitsOnly(value);
+  return digits.length >= 10 && digits.length <= 15;
+}
+
+export function getClientProfileCompletionIssues(
+  profile: Pick<ClientProfile, 'fullName' | 'phone' | 'passportData' | 'driverLicense'> | null,
+): string[] {
+  if (!profile) {
+    return [];
+  }
+
+  const issues: string[] = [];
+
+  if (!profile.fullName.trim()) {
+    issues.push('вкажіть ПІБ');
+  }
+
+  if (!profile.phone.trim()) {
+    issues.push('вкажіть телефон');
+  } else if (!isClientPhoneComplete(profile.phone)) {
+    issues.push('вкажіть телефон у форматі 10-15 цифр');
+  }
+
+  if (!profile.passportData.trim()) {
+    issues.push('заповніть паспортні дані');
+  } else if (isLegacyPassportData(profile.passportData)) {
+    issues.push('замініть службове значення паспорта EMP-... на реальні дані');
+  }
+
+  if (!profile.driverLicense.trim()) {
+    issues.push('заповніть посвідчення водія');
+  } else if (isLegacyDriverLicense(profile.driverLicense)) {
+    issues.push('замініть службове значення посвідчення USR-... на реальні дані');
+  }
+
+  return issues;
+}
+
+export function getClientProfileCompletionMessage(
+  profile: Pick<ClientProfile, 'fullName' | 'phone' | 'passportData' | 'driverLicense'> | null,
+): string | null {
+  const issues = getClientProfileCompletionIssues(profile);
+  return issues.length > 0 ? `Щоб завершити профіль, ${issues.join(', ')}.` : null;
 }
 
 export function passesLuhnCheck(digits: string): boolean {

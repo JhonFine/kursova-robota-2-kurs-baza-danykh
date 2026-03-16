@@ -6,14 +6,19 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { LoadingView } from '../components/LoadingView';
 import { formatCurrency } from '../utils/format';
 import {
+  CARD_NUMBER_MAX_DIGITS,
+  CARDHOLDER_NAME_MAX_LENGTH,
+  CARD_NUMBER_INPUT_MAX_LENGTH,
   buildMaskedCardPaymentNote,
   compareAscByDate,
   compareDescByHistoryMoment,
   digitsOnly,
+  formatCardNumberInput,
   formatRentalPeriod,
   rentalStatusClass,
   rentalStatusLabel,
   SELF_SERVICE_CANCEL_REASON,
+  shouldWarnAboutCardNumber,
 } from './prokatShared';
 
 function toDateTimeInputValue(value: string): string {
@@ -214,6 +219,7 @@ export function ProkatBookingsPage() {
   const [cancelTarget, setCancelTarget] = useState<Rental | null>(null);
   const [rescheduleTarget, setRescheduleTarget] = useState<Rental | null>(null);
   const [payBalanceTarget, setPayBalanceTarget] = useState<Rental | null>(null);
+  const [cardWarningOpen, setCardWarningOpen] = useState(false);
   const [rescheduleStart, setRescheduleStart] = useState('');
   const [rescheduleEnd, setRescheduleEnd] = useState('');
   const [cardholderName, setCardholderName] = useState('');
@@ -284,9 +290,22 @@ export function ProkatBookingsPage() {
   const openPayBalanceDialog = (rental: Rental): void => {
     setMessage(null);
     setError(null);
+    setCardWarningOpen(false);
     setPayBalanceTarget(rental);
     setCardholderName('');
     setCardNumber('');
+  };
+
+  const handleCardholderNameChange = (value: string): void => {
+    setCardWarningOpen(false);
+    setError(null);
+    setCardholderName(value.slice(0, CARDHOLDER_NAME_MAX_LENGTH));
+  };
+
+  const handleCardNumberChange = (value: string): void => {
+    setCardWarningOpen(false);
+    setError(null);
+    setCardNumber(formatCardNumberInput(value));
   };
 
   const confirmCancelRental = async (): Promise<void> => {
@@ -353,6 +372,28 @@ export function ProkatBookingsPage() {
     }
   };
 
+  const performPayBalance = async (): Promise<void> => {
+    if (!payBalanceTarget) {
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      setError(null);
+      setCardWarningOpen(false);
+      const rental = payBalanceTarget;
+      setPayBalanceTarget(null);
+
+      await Api.settleRentalBalance(rental.id, buildMaskedCardPaymentNote(cardholderName, cardNumber));
+      setMessage(`Р—Р°Р»РёС€РѕРє РїРѕ РґРѕРіРѕРІРѕСЂСѓ ${rental.contractNumber} СЃРїР»Р°С‡РµРЅРѕ.`);
+      await loadBookings();
+    } catch (requestError) {
+      setError(Api.errorMessage(requestError));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const confirmPayBalance = async (): Promise<void> => {
     if (!payBalanceTarget) {
       return;
@@ -364,8 +405,13 @@ export function ProkatBookingsPage() {
     }
 
     const cardDigits = digitsOnly(cardNumber);
-    if (cardDigits.length < 13 || cardDigits.length > 19) {
+    if (cardDigits.length !== CARD_NUMBER_MAX_DIGITS) {
       setError('Вкажіть коректний номер картки.');
+      return;
+    }
+
+    if (shouldWarnAboutCardNumber(cardNumber)) {
+      setCardWarningOpen(true);
       return;
     }
 
@@ -537,6 +583,20 @@ export function ProkatBookingsPage() {
       />
 
       <ConfirmDialog
+        open={cardWarningOpen}
+        title="Ймовірно, це не справжня картка"
+        description={(
+          <p>
+            Номер картки не пройшов базову перевірку. Якщо це тестова або нестандартна картка, ви все одно можете продовжити оплату.
+          </p>
+        )}
+        confirmLabel="Продовжити"
+        cancelLabel="Змінити номер"
+        onConfirm={() => void performPayBalance()}
+        onCancel={() => setCardWarningOpen(false)}
+      />
+
+      <ConfirmDialog
         open={payBalanceTarget !== null}
         title="Оплатити залишок"
         description={payBalanceTarget ? (
@@ -549,12 +609,24 @@ export function ProkatBookingsPage() {
             <div className="form-grid">
               <label className="full-row">
                 Власник картки
-                <input value={cardholderName} onChange={(event) => setCardholderName(event.target.value)} />
+                <input
+                  value={cardholderName}
+                  onChange={(event) => handleCardholderNameChange(event.target.value)}
+                  maxLength={CARDHOLDER_NAME_MAX_LENGTH}
+                  autoComplete="cc-name"
+                />
               </label>
 
               <label className="full-row">
                 Номер картки
-                <input value={cardNumber} onChange={(event) => setCardNumber(event.target.value)} />
+                <input
+                  value={cardNumber}
+                  onChange={(event) => handleCardNumberChange(event.target.value)}
+                  inputMode="numeric"
+                  autoComplete="cc-number"
+                  maxLength={CARD_NUMBER_INPUT_MAX_LENGTH}
+                  spellCheck={false}
+                />
               </label>
             </div>
           </>
@@ -562,7 +634,10 @@ export function ProkatBookingsPage() {
         confirmLabel="Оплатити залишок"
         cancelLabel="Назад"
         onConfirm={() => void confirmPayBalance()}
-        onCancel={() => setPayBalanceTarget(null)}
+        onCancel={() => {
+          setCardWarningOpen(false);
+          setPayBalanceTarget(null);
+        }}
       />
     </div>
   );

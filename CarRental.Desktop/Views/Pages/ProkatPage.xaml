@@ -868,10 +868,12 @@
                                     <TextBlock Text="Власник картки" Foreground="#334155" />
                                     <TextBox Margin="0,4,0,8"
                                              Height="30"
+                                             MaxLength="120"
                                              Text="{Binding CardholderNameInput, UpdateSourceTrigger=PropertyChanged}" />
                                     <TextBlock Text="Номер картки" Foreground="#334155" />
                                     <TextBox Margin="0,4,0,8"
                                              Height="30"
+                                             MaxLength="19"
                                              Text="{Binding CardNumberInput, UpdateSourceTrigger=PropertyChanged}" />
                                     <Grid>
                                         <Grid.ColumnDefinitions>
@@ -882,6 +884,7 @@
                                             <TextBlock Text="Термін дії (MM/YY)" Foreground="#334155" />
                                             <TextBox Margin="0,4,0,0"
                                                      Height="30"
+                                                     MaxLength="5"
                                                      Text="{Binding CardExpiryInput, UpdateSourceTrigger=PropertyChanged}" />
                                         </StackPanel>
                                         <StackPanel Grid.Column="1">
@@ -905,15 +908,25 @@
                                    Foreground="#0F172A"
                                    FontSize="16"
                                    FontWeight="SemiBold" />
-                        <Button DockPanel.Dock="Right"
-                                Content="Оплатити та оформити"
-                                Padding="20,9"
-                                FontSize="16"
-                                FontWeight="SemiBold"
-                                Background="#19B98F"
-                                Foreground="White"
-                                BorderBrush="#139370"
-                                Command="{Binding CompleteCheckoutCommand}" />
+                        <StackPanel DockPanel.Dock="Right"
+                                    Orientation="Horizontal"
+                                    VerticalAlignment="Center">
+                            <Button Content="Оплатити та оформити"
+                                    Padding="20,9"
+                                    FontSize="16"
+                                    FontWeight="SemiBold"
+                                    Background="#19B98F"
+                                    Foreground="White"
+                                    BorderBrush="#139370"
+                                    Command="{Binding CompleteCheckoutCommand}" />
+                            <TextBlock Margin="12,0,0,0"
+                                       VerticalAlignment="Center"
+                                       MaxWidth="220"
+                                       TextWrapping="Wrap"
+                                       Foreground="#92400E"
+                                       Text="{Binding CheckoutActionHint}"
+                                       Visibility="{Binding HasCheckoutActionHint, Converter={StaticResource BoolToVisibilityConverter}}" />
+                        </StackPanel>
                     </DockPanel>
                 </Grid>
             </Border>

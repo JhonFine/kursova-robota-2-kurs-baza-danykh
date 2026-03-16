@@ -2392,6 +2392,8 @@ tbody tr:hover {
 }
 
 .prokat-review-card {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
   padding: 0;
 }
@@ -2399,7 +2401,11 @@ tbody tr:hover {
 .prokat-review-content {
   display: grid;
   gap: 16px;
+  max-height: min(74vh, 860px);
+  overflow: auto;
+  overscroll-behavior: contain;
   padding: 18px;
+  scrollbar-gutter: stable;
 }
 
 .prokat-review-vehicle {
@@ -2522,6 +2528,37 @@ tbody tr:hover {
 
 .prokat-payment-field-wide {
   grid-column: 1 / -1;
+}
+
+.prokat-profile-hints {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(42, 81, 88, 0.12);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.prokat-profile-hints ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+  color: var(--text-soft);
+  line-height: 1.5;
+}
+
+.prokat-field-hint,
+.prokat-checkout-hint {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.prokat-field-hint.warn,
+.prokat-checkout-hint.warn {
+  color: #914d2c;
 }
 
 .prokat-summary-note {
@@ -3033,6 +3070,12 @@ tbody tr:hover {
 
   .prokat-payment-grid {
     grid-template-columns: 1fr;
+  }
+
+  .prokat-review-content {
+    max-height: none;
+    overflow: visible;
+    scrollbar-gutter: auto;
   }
 
   .prokat-hero-filter-btn {
