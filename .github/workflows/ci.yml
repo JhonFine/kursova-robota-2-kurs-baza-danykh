@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  backend-and-database-tests:
+    name: Backend & Database Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: car_rental
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d car_rental"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      CAR_RENTAL_TEST_POSTGRES_CONNECTION: Host=localhost;Port=5432;Database=car_rental;Username=postgres;Password=postgres
+      CAR_RENTAL_JWT_SIGNING_KEY: github-actions-ci-signing-key-1234567890
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore backend test project
+        run: dotnet restore ./CarRental.WebApi.Tests/CarRental.WebApi.Tests.csproj
+
+      - name: Build backend test project
+        run: dotnet build ./CarRental.WebApi.Tests/CarRental.WebApi.Tests.csproj --configuration Release --no-restore
+
+      - name: Run backend database tests
+        run: dotnet test ./CarRental.WebApi.Tests/CarRental.WebApi.Tests.csproj --configuration Release --no-build --verbosity normal
+
+      # CarRental.Desktop.Tests targets net8.0-windows and references a WPF project.
+      # It cannot be executed reliably on ubuntu-latest.
+      # If desktop tests should run in CI, add a separate windows-latest job.
+
+  frontend-checks:
+    name: Frontend Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: CarRental.WebApp
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: CarRental.WebApp/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Build frontend
+        run: npm run build
