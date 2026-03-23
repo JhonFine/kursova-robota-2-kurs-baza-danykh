@@ -202,14 +202,14 @@ export function RentalsPage() {
     [ganttHorizon, rentalsByVehicleId, vehicles],
   );
 
-  const updateListParams = (updates: {
+  const updateListParams = useCallback((updates: {
     page?: number | null;
     search?: string | null;
     status?: RentalStatusFilter | null;
     day?: string | null;
   }): void => {
     setSearchParams((current) => withUpdatedSearchParams(current, updates));
-  };
+  }, [setSearchParams]);
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
@@ -624,33 +624,6 @@ export function RentalsPage() {
     setPendingScrollTarget(target);
   };
 
-  if (loading && rentals.length === 0 && clients.length === 0 && vehicles.length === 0) {
-    return <LoadingView text="Завантаження оренд..." />;
-  }
-
-  const operationsSections = [
-    {
-      key: 'pickups',
-      title: 'Видачі на вибрану дату',
-      subtitle: `${formatShortDate(`${selectedDate}T00:00:00`)} • ${pickups.length} записів`,
-      items: pickups,
-      emptyText: 'На вибрану дату немає видач.',
-    },
-    {
-      key: 'returns',
-      title: 'Повернення на вибрану дату',
-      subtitle: `${formatShortDate(`${selectedDate}T00:00:00`)} • ${dueReturns.length} записів`,
-      items: dueReturns,
-      emptyText: 'На вибрану дату немає повернень.',
-    },
-    {
-      key: 'overdue',
-      title: 'Прострочені повернення',
-      subtitle: `До ${formatShortDate(`${selectedDate}T00:00:00`)} • ${overdueReturns.length} записів`,
-      items: overdueReturns,
-      emptyText: 'Прострочених повернень немає.',
-    },
-  ] as const;
   const activeFilters = useMemo(() => {
     const items: ActiveFilterChipItem[] = [
       {
@@ -678,8 +651,35 @@ export function RentalsPage() {
     }
 
     return items;
-  }, [search, selectedDate, statusFilter]);
+  }, [search, selectedDate, statusFilter, updateListParams]);
 
+  if (loading && rentals.length === 0 && clients.length === 0 && vehicles.length === 0) {
+    return <LoadingView text="Завантаження оренд..." />;
+  }
+
+  const operationsSections = [
+    {
+      key: 'pickups',
+      title: 'Видачі на вибрану дату',
+      subtitle: `${formatShortDate(`${selectedDate}T00:00:00`)} • ${pickups.length} записів`,
+      items: pickups,
+      emptyText: 'На вибрану дату немає видач.',
+    },
+    {
+      key: 'returns',
+      title: 'Повернення на вибрану дату',
+      subtitle: `${formatShortDate(`${selectedDate}T00:00:00`)} • ${dueReturns.length} записів`,
+      items: dueReturns,
+      emptyText: 'На вибрану дату немає повернень.',
+    },
+    {
+      key: 'overdue',
+      title: 'Прострочені повернення',
+      subtitle: `До ${formatShortDate(`${selectedDate}T00:00:00`)} • ${overdueReturns.length} записів`,
+      items: overdueReturns,
+      emptyText: 'Прострочених повернень немає.',
+    },
+  ] as const;
   return (
     <div className="page-grid">
       <section className="stats-grid">
