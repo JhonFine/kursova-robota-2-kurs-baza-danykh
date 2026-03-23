@@ -199,9 +199,9 @@ export function ProkatSearchPage() {
     }
   }, []);
 
-  const clearFeedback = (): void => {
+  const clearFeedback = useCallback((): void => {
     setCreatedRental(null);
-  };
+  }, []);
 
   const resetCardInputs = (): void => {
     setCardholderName('');
@@ -210,11 +210,11 @@ export function ProkatSearchPage() {
     setCardCvv('');
   };
 
-  const beginInteraction = (): void => {
+  const beginInteraction = useCallback((): void => {
     clearFeedback();
     setCardWarningOpen(false);
     setError(null);
-  };
+  }, [clearFeedback]);
 
   const handleCardholderNameChange = (value: string): void => {
     beginInteraction();

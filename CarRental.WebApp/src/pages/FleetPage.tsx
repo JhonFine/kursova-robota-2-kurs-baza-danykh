@@ -94,6 +94,17 @@ export function FleetPage() {
   const sortBy = parseEnumParam(searchParams.get('sortBy'), sortByValues, 'name');
   const sortDir = parseEnumParam(searchParams.get('sortDir'), sortDirValues, 'asc');
 
+  const updateListParams = useCallback((updates: {
+    page?: number | null;
+    search?: string | null;
+    class?: ClassFilter | null;
+    status?: AvailabilityFilter | null;
+    sortBy?: SortBy | null;
+    sortDir?: SortDir | null;
+  }): void => {
+    setSearchParams((current) => withUpdatedSearchParams(current, updates));
+  }, [setSearchParams]);
+
   const selectedVehicle = useMemo(
     () => vehicles.find((item) => item.id === selectedId) ?? null,
     [vehicles, selectedId],
@@ -134,18 +145,7 @@ export function FleetPage() {
     }
 
     return items;
-  }, [search, selectedClass, selectedStatus, sortBy, sortDir]);
-
-  const updateListParams = (updates: {
-    page?: number | null;
-    search?: string | null;
-    class?: ClassFilter | null;
-    status?: AvailabilityFilter | null;
-    sortBy?: SortBy | null;
-    sortDir?: SortDir | null;
-  }): void => {
-    setSearchParams((current) => withUpdatedSearchParams(current, updates));
-  };
+  }, [search, selectedClass, selectedStatus, sortBy, sortDir, updateListParams]);
 
   const loadVehicles = useCallback(async (): Promise<void> => {
     const requestId = ++requestIdRef.current;

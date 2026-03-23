@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../auth/useAuth';
+import { useCallback } from 'react';
 import { Api } from '../api/client';
 import type { Employee } from '../api/types';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -79,26 +80,28 @@ export function AdminPage() {
     return items;
   }, [filterQuery]);
 
-  const load = async (): Promise<void> => {
+  const load = useCallback(async (): Promise<void> => {
     try {
       setLoading(true);
       setError(null);
       const data = await Api.getEmployees();
       setEmployees(data);
 
-      if (selectedId && !data.some((item) => item.id === selectedId)) {
-        setSelectedId(null);
-      }
+      setSelectedId((currentSelectedId) => (
+        currentSelectedId && !data.some((item) => item.id === currentSelectedId)
+          ? null
+          : currentSelectedId
+      ));
     } catch (requestError) {
       setError(Api.errorMessage(requestError));
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [load]);
 
   const runAction = async (callback: () => Promise<void>, successText: string): Promise<void> => {
     try {
@@ -396,4 +399,3 @@ export function AdminPage() {
     </>
   );
 }
-

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Api } from '../api/client';
 import type { Rental, ReportSummary, Vehicle } from '../api/types';
 import { FilterField, FilterToolbar, type ActiveFilterChipItem } from '../components/FilterToolbar';
@@ -112,7 +112,7 @@ export function ReportsPage() {
     [employeeId, fromDate, toDate, vehicleId],
   );
 
-  const load = async (pageToLoad = page): Promise<void> => {
+  const load = useCallback(async (pageToLoad: number): Promise<void> => {
     try {
       setLoading(true);
       setError(null);
@@ -149,11 +149,11 @@ export function ReportsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [reportParams]);
 
   useEffect(() => {
     void load(page);
-  }, [page, reportParams]);
+  }, [load, page]);
 
   const exportCsv = (): void => {
     downloadFile(`rentals_${fromDate}_${toDate}.csv`, toCsv(allRows), 'text/csv;charset=utf-8');
@@ -213,7 +213,7 @@ export function ReportsPage() {
     }
 
     return items;
-  }, [employeeId, employees, fromDate, selectedEmployeeLabel, selectedVehicleLabel, toDate, vehicleId]);
+  }, [fromDate, selectedEmployeeLabel, selectedVehicleLabel, toDate]);
 
   if (loading && !summary) {
     return <LoadingView text="Формування звітів..." />;

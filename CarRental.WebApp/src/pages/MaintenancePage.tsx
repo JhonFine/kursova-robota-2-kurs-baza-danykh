@@ -1,5 +1,6 @@
 ﻿import { useEffect, useState } from 'react';
 import { Api } from '../api/client';
+import { useCallback } from 'react';
 import type { MaintenanceDue, MaintenanceRecord, Vehicle } from '../api/types';
 import { LoadingView } from '../components/LoadingView';
 import { PaginationControls } from '../components/PaginationControls';
@@ -26,7 +27,7 @@ export function MaintenancePage() {
     nextServiceMileage: '',
   });
 
-  const load = async (pageToLoad = page): Promise<void> => {
+  const load = useCallback(async (pageToLoad: number): Promise<void> => {
     try {
       setLoading(true);
       setError(null);
@@ -45,11 +46,11 @@ export function MaintenancePage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     void load(page);
-  }, [page]);
+  }, [load, page]);
 
   const addRecord = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
@@ -191,4 +192,3 @@ export function MaintenancePage() {
     </div>
   );
 }
-

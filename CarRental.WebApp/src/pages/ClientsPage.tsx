@@ -44,6 +44,14 @@ export function ClientsPage() {
   const search = searchParams.get('search') ?? '';
   const blacklistFilter = parseEnumParam(searchParams.get('blacklisted'), blacklistFilterValues, 'all');
 
+  const updateListParams = useCallback((updates: {
+    page?: number | null;
+    search?: string | null;
+    blacklisted?: BlacklistFilter | null;
+  }): void => {
+    setSearchParams((current) => withUpdatedSearchParams(current, updates));
+  }, [setSearchParams]);
+
   const selected = useMemo(() => clients.find((item) => item.id === selectedId) ?? null, [clients, selectedId]);
   const activeFilters = useMemo(() => {
     const items: ActiveFilterChipItem[] = [];
@@ -65,15 +73,7 @@ export function ClientsPage() {
     }
 
     return items;
-  }, [blacklistFilter, search]);
-
-  const updateListParams = (updates: {
-    page?: number | null;
-    search?: string | null;
-    blacklisted?: BlacklistFilter | null;
-  }): void => {
-    setSearchParams((current) => withUpdatedSearchParams(current, updates));
-  };
+  }, [blacklistFilter, search, updateListParams]);
 
   const loadClients = useCallback(async (): Promise<void> => {
     const requestId = ++requestIdRef.current;
