@@ -4,7 +4,7 @@
 ![React 19](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14%2B-336791?logo=postgresql)
 ![WPF](https://img.shields.io/badge/WPF-Desktop-blue?logo=windows)
-![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker)
+![PostgreSQL in Docker](https://img.shields.io/badge/PostgreSQL%20in%20Docker-16-2496ED?logo=docker&logoColor=white)
 
 `CarRentalSystem` — монорепозиторій системи оренди автомобілів із трьома застосунками, спільною PostgreSQL-базою та єдиними seed/reference даними.
 
@@ -23,11 +23,11 @@
 
 - Windows + PowerShell для локальних скриптів і WPF-клієнта.
 - .NET SDK 8.
-- Node.js + npm.
+- Node.js 20+.
 - PostgreSQL 14+ локально або Docker Desktop.
 - `dotnet tool restore` для сценаріїв із `dotnet-ef`.
 
-Локальний Docker Compose сценарій використовує `postgres:16` з `deploy/docker-compose.postgres.yml`.
+Локальний Docker Compose сценарій використовує строго `postgres:16` з `deploy/docker-compose.postgres.yml`, навіть якщо мінімальна підтримувана версія PostgreSQL для локального оточення — `14+`.
 
 ## Installation
 
@@ -38,11 +38,11 @@ dotnet restore .\CarRentalSystem.sln
 dotnet tool restore
 ```
 
-Встановіть frontend-залежності:
+Встановіть frontend-залежності у відтворюваному режимі через lock-файл:
 
 ```powershell
 Set-Location .\CarRental.WebApp
-npm install
+npm ci
 Set-Location ..
 ```
 
@@ -167,17 +167,23 @@ Factory reset локального стану:
 - виконує `dotnet-ef database drop` і `dotnet-ef database update` для `RentalDbContext`;
 - залишає базу у factory state, після чого seed-дані відтворюються на наступному запуску API або застосунку.
 
+### Proof of Success (Перевірка успішного запуску)
+
+Відкрийте `http://localhost:5173`. Якщо міграції та seed пройшли успішно, ви побачите сторінку входу. Введіть логін `admin` та пароль `admin123`. Після входу має відкритися дашборд адміністратора.
+
 ## Environment Variables
 
 | Змінна / ключ | Призначення | Значення за замовчуванням |
 | --- | --- | --- |
-| `CAR_RENTAL_POSTGRES_CONNECTION` | connection string для `CarRental.Desktop` і design-time EF сценаріїв | `Host=localhost;Port=5432;Database=car_rental;Username=postgres;Password=postgres` |
+| `CAR_RENTAL_POSTGRES_CONNECTION` | connection string для `CarRental.Desktop` і design-time EF сценаріїв | `Host=localhost;Port=5432;Database=car_rental;Username=postgres;Password=postgres` **[LOCAL ENVIRONMENT]** |
 | `ConnectionStrings__Postgres` | connection string для `CarRental.WebApi` через стандартний ASP.NET Core environment override | значення з `CarRental.WebApi/appsettings*.json` |
-| `CAR_RENTAL_JWT_SIGNING_KEY` | JWT signing key для Web API, мінімум 32 символи | задається вручну або генерується в `RunWeb.ps1` |
-| `CAR_RENTAL_ADMIN_PASSWORD` | override seed-пароля для `admin` | `admin123` |
-| `CAR_RENTAL_MANAGER_PASSWORD` | override seed-пароля для `manager` | `manager123` |
-| `CAR_RENTAL_TEST_POSTGRES_CONNECTION` | connection string для .NET інтеграційних тестів | `Host=localhost;Port=5432;Database=car_rental;Username=postgres;Password=postgres` |
+| `CAR_RENTAL_JWT_SIGNING_KEY` | JWT signing key для Web API, мінімум 32 символи | задається вручну або **[DEV ONLY]** тимчасово генерується в `RunWeb.ps1` |
+| `CAR_RENTAL_ADMIN_PASSWORD` | override seed-пароля для `admin` | `admin123` **[DEV ONLY]** |
+| `CAR_RENTAL_MANAGER_PASSWORD` | override seed-пароля для `manager` | `manager123` **[DEV ONLY]** |
+| `CAR_RENTAL_TEST_POSTGRES_CONNECTION` | connection string для .NET інтеграційних тестів | `Host=localhost;Port=5432;Database=car_rental;Username=postgres;Password=postgres` **[LOCAL ENVIRONMENT]** |
 | `VITE_API_BASE_URL` | base URL для `CarRental.WebApp` | `http://localhost:5079` |
+
+**[DEV ONLY] / [LOCAL ENVIRONMENT]** значення на кшталт `admin123`, `manager123`, `postgres/postgres` і тимчасово згенерованих JWT-ключів категорично заборонено використовувати в production-середовищі; вони існують виключно для зручності локального старту та онбордингу.
 
 Додатково:
 
@@ -189,8 +195,10 @@ Factory reset локального стану:
 
 На порожній базі seed-логіка створює staff-акаунти:
 
-- `admin` / `admin123`
-- `manager` / `manager123`
+- `admin` / `admin123` **[DEV ONLY]**
+- `manager` / `manager123` **[DEV ONLY]**
+
+**[DEV ONLY]** seed-креди призначені тільки для локального середовища та демонстраційного старту. У production вони не мають використовуватися за жодних умов.
 
 Ролі:
 
@@ -243,6 +251,12 @@ npm run lint
 
 - `CarRental.WebApi.Tests` і `CarRental.Desktop.Tests` використовують PostgreSQL і створюють тимчасові тестові БД;
 - окремих frontend unit/integration тестів у репозиторії зараз не налаштовано, тому базова перевірка frontend — це `npm run build` і `npm run lint`.
+
+## Troubleshooting
+
+- Порт `5432` або `5079` зайнятий. Для PostgreSQL змініть port mapping у `deploy/docker-compose.postgres.yml` або зупиніть локальний інстанс БД; для Web API змініть `-ApiUrl` у `RunWeb.ps1` або вручну задайте інше значення в `$env:ASPNETCORE_URLS` і відповідно оновіть `VITE_API_BASE_URL`.
+- PowerShell блокує виконання скриптів. Виконайте `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`, а потім повторіть запуск `RunWeb.ps1`, `RunDesktopPostgres.ps1` або `FactoryReset.ps1`.
+- БД не існує або міграції розсинхронізовані. Запустіть `.\FactoryReset.ps1`, щоб повністю пересоздати локальну схему й повернути базу в узгоджений factory state.
 
 ## Project Structure
 
