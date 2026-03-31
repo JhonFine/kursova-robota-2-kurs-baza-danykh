@@ -60,6 +60,7 @@ function Wait-TcpPortOpen {
 }
 
 function Stop-StaleHostWindows {
+    # Закриваємо лише процеси, які явно були підняті для локального web stack, а не будь-який powershell у системі.
     $hostWindows = Get-CimInstance Win32_Process | Where-Object {
         $_.Name -eq 'powershell.exe' -and (
             $_.CommandLine -like '*CarRental.WebApi*' -or
@@ -80,6 +81,7 @@ function Stop-StaleHostWindows {
 function Stop-ProcessesByPort {
     param([Parameter(Mandatory = $true)][int[]]$Ports)
 
+    # Повторний запуск має бути ідемпотентним: якщо порт уже зайнятий нашим host-процесом, звільняємо його автоматично.
     foreach ($port in $Ports) {
         $connections = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -eq $port }
         if (-not $connections) {
@@ -157,6 +159,7 @@ if (-not $SkipNpmInstall -and -not (Test-Path (Join-Path $webAppDir "node_module
 
 "VITE_API_BASE_URL=$ApiUrl" | Set-Content $envLocalPath -Encoding UTF8
 
+# Frontend читає API URL із .env.local, тому скрипт щоразу переписує його під поточний локальний запуск.
 $jwtSigningKey = [Environment]::GetEnvironmentVariable("CAR_RENTAL_JWT_SIGNING_KEY")
 if ([string]::IsNullOrWhiteSpace($jwtSigningKey)) {
     $jwtSigningKey = ("{0}{1}" -f ([guid]::NewGuid().ToString("N")), ([guid]::NewGuid().ToString("N")))

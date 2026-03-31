@@ -4,6 +4,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CarRental.Desktop.Services.Maintenance;
 
+// Maintenance service відповідає не лише за запис ТО,
+// а й за розрахунок overdue-черги для staff-панелі обслуговування.
 public sealed class MaintenanceService(RentalDbContext dbContext) : IMaintenanceService
 {
     public async Task<MaintenanceResult> AddRecordAsync(MaintenanceRequest request, CancellationToken cancellationToken = default)
@@ -31,6 +33,7 @@ public sealed class MaintenanceService(RentalDbContext dbContext) : IMaintenance
 
     public async Task<IReadOnlyList<MaintenanceDueItem>> GetDueItemsAsync(CancellationToken cancellationToken = default)
     {
+        // Якщо явний next service mileage ще не записаний, беремо базовий інтервал від поточного пробігу.
         var vehicles = await dbContext.Vehicles
             .AsNoTracking()
             .OrderBy(item => item.Make)

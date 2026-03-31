@@ -57,6 +57,8 @@ public sealed class RentalDbContext(DbContextOptions<RentalDbContext> options) :
         return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
     }
 
+    // DbContext задає runtime-модель усієї системи: lookup-таблиці, soft-delete,
+    // audit-поля і обмеження цілісності, від яких залежать і API, і seed.
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ConfigureAccounts(modelBuilder);
@@ -96,6 +98,8 @@ public sealed class RentalDbContext(DbContextOptions<RentalDbContext> options) :
         });
     }
 
+    // Lookup-таблиці замінюють "магічні" int-коди стабільними довідниками,
+    // які однаково читаються з API, seed і майбутніх звітів.
     private static void ConfigureLookups(ModelBuilder modelBuilder)
     {
         ConfigureEnumLookup(modelBuilder.Entity<EmployeeRoleLookup>(), new Dictionary<UserRole, string>
@@ -232,6 +236,8 @@ public sealed class RentalDbContext(DbContextOptions<RentalDbContext> options) :
         });
     }
 
+    // Клієнти працюють через soft-delete, щоб історичні оренди не ламалися,
+    // навіть якщо профіль прибрали з активного реєстру.
     private static void ConfigureClients(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Client>(entity =>
@@ -624,6 +630,8 @@ public sealed class RentalDbContext(DbContextOptions<RentalDbContext> options) :
         });
     }
 
+    // Audit-мітки проставляємо централізовано перед кожним SaveChanges,
+    // щоб сутності не мусили дублювати цю логіку у сервісах.
     private void ApplyAuditMetadata()
     {
         EnsureLegacyIdentityCompatibility();
@@ -920,6 +928,8 @@ public sealed class RentalDbContext(DbContextOptions<RentalDbContext> options) :
     private static DateTime? NormalizeDateValue(DateTime? value)
         => value.HasValue ? DateTime.SpecifyKind(value.Value.Date, DateTimeKind.Unspecified) : null;
 
+    // Усі UTC-події тримаємо як timestamptz, щоб база коректно зберігала
+    // login-аудит, created/updated timestamps і службові часові мітки.
     private static void UseUtcTimestamp(PropertyBuilder<DateTime> propertyBuilder)
         => propertyBuilder.HasColumnType("timestamp with time zone");
 

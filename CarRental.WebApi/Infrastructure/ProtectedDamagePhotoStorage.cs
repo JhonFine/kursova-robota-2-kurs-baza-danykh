@@ -16,6 +16,8 @@ internal static class ProtectedDamagePhotoStorage
         out string? fullPath,
         out string? normalizedPath)
     {
+        // Дозволяємо лише наш внутрішній /protected/damages path і перевіряємо,
+        // що клієнт не зможе передати path traversal або зовнішній URL.
         fullPath = null;
         normalizedPath = null;
         if (string.IsNullOrWhiteSpace(storedPath))
@@ -63,6 +65,8 @@ internal static class ProtectedDamagePhotoStorage
         int vehicleId,
         CancellationToken cancellationToken)
     {
+        // Фото пошкоджень мають окремий storage namespace, щоб їх можна було
+        // роздавати і чистити незалежно від документів клієнта.
         if (file is null || file.Length <= 0)
         {
             return StoreDamagePhotoResult.FromFailure("Виберіть файл фото.");

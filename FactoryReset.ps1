@@ -63,6 +63,8 @@ $composePath = Join-Path $repoRoot "deploy\docker-compose.postgres.yml"
 
 Write-Host "Factory reset: $appDataDir"
 
+# Desktop кеш і локальні файли можуть тримати старі документи або налаштування,
+# тому перед скиданням зупиняємо застосунок і чистимо app data.
 $runningProcesses = Get-Process -Name "CarRental.Desktop" -ErrorAction SilentlyContinue
 if ($runningProcesses)
 {
@@ -80,6 +82,7 @@ New-Item -ItemType Directory -Path $appDataDir -Force | Out-Null
 
 if (-not $SkipDatabaseReset)
 {
+    # Скидання БД виконується через EF tooling web-проєкту, бо саме він містить актуальну схему міграцій.
     Assert-Command -Name "dotnet"
 
     if (-not $SkipDocker) {

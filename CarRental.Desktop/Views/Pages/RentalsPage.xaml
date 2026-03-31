@@ -16,6 +16,7 @@
                 Grid.Row="0"
                 Margin="0,0,0,12"
                 Style="{StaticResource FilterCardStyle}">
+            <!-- Верхня картка дає один статусний вхід у весь workspace договорів, платежів і календаря. -->
             <DockPanel>
                 <StackPanel DockPanel.Dock="Left">
                     <TextBlock Text="Керування орендами в одному робочому просторі"
@@ -45,6 +46,7 @@
                     <Border x:Name="CreateRentalGroup"
                             Grid.Row="0"
                             Style="{StaticResource FilterCardStyle}">
+                        <!-- Створення договору зібране в одну форму, бо live search і валідація дат залежать від спільного VM-стану. -->
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
@@ -194,6 +196,7 @@
                             <ScrollViewer VerticalScrollBarVisibility="Auto"
                                           HorizontalScrollBarVisibility="Disabled">
                                 <StackPanel>
+                                    <!-- Права колонка працює як inspector: деталі, закриття та платежі зав'язані на SelectedRental. -->
                                     <TextBlock Text="Інформація"
                                                Style="{StaticResource SectionTitleStyle}"
                                                FontSize="16" />

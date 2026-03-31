@@ -34,6 +34,8 @@ function toBarWidth(value: number, maxValue: number): string {
 }
 
 function buildSummary(rows: Rental[]): ReportSummary {
+  // Підсумок рахуємо на frontend від повної вибірки, щоб картки KPI і export
+  // ґрунтувалися на однаковому наборі договорів незалежно від поточної сторінки.
   return rows.reduce<ReportSummary>(
     (acc, item) => ({
       totalRentals: acc.totalRentals + 1,
@@ -124,6 +126,8 @@ export function ReportsPage() {
   );
 
   const load = useCallback(async (pageToLoad: number): Promise<void> => {
+    // Для звітів потрібні одночасно три джерела: paged table, повний набір рядків
+    // для KPI/export та довідники для людських labels у фільтрах.
     try {
       setLoading(true);
       setError(null);
@@ -193,6 +197,8 @@ export function ReportsPage() {
     [employeeId, employees],
   );
   const activeFilters = useMemo(() => {
+    // Діапазон завжди показуємо окремим chip, бо це базовий зріз для всіх звітів,
+    // навіть якщо решта фільтрів не вибрані.
     const items: ActiveFilterChipItem[] = [
       {
         key: 'range',

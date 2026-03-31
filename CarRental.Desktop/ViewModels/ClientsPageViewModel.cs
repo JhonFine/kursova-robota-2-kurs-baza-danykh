@@ -7,6 +7,8 @@ using System.Collections.ObjectModel;
 
 namespace CarRental.Desktop.ViewModels;
 
+// Екран клієнтів свідомо лишається thin CRUD-оболонкою:
+// тут важливі пагінація, blacklist та soft-delete guard-и, а не складний derived state.
 public sealed class ClientsPageViewModel : PageDataViewModelBase, ITransientStateOwner
 {
     private const int PageSize = 40;

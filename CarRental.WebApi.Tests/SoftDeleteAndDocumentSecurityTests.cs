@@ -12,6 +12,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CarRental.WebApi.Tests;
 
+// Тут зібрані сценарії, де важливо не тільки "працює/не працює",
+// а й те, що soft-delete та файлові шляхи не відкривають історичні або захищені дані назовні.
 public sealed class SoftDeleteAndDocumentSecurityTests
 {
     private const int MaxDamagePhotosPerAct = 5;
@@ -138,6 +140,7 @@ public sealed class SoftDeleteAndDocumentSecurityTests
     [Fact]
     public async Task ClientsUploadDocumentPhoto_ShouldStoreFileOutsidePublicRoot()
     {
+        // Storage root підміняється env-перемінною, щоб тест перевіряв реальний файловий запис, але в ізольованій папці.
         var previousRoot = Environment.GetEnvironmentVariable("CAR_RENTAL_DOCUMENTS_ROOT");
         var tempRoot = Path.Combine(Path.GetTempPath(), "car-rental-docs-tests", Guid.NewGuid().ToString("N"));
 
@@ -205,6 +208,7 @@ public sealed class SoftDeleteAndDocumentSecurityTests
     [Fact]
     public async Task DamagesAddMultipart_ShouldStoreMultiplePhotos_AndPersistRows()
     {
+        // Multipart flow окремо фіксуємо, бо тут одночасно перевіряються і файловий storage, і EF persistence.
         var previousRoot = Environment.GetEnvironmentVariable("CAR_RENTAL_DOCUMENTS_ROOT");
         var tempRoot = Path.Combine(Path.GetTempPath(), "car-rental-damage-tests", Guid.NewGuid().ToString("N"));
 

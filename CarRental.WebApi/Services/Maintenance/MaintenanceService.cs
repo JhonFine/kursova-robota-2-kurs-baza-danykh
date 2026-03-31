@@ -6,6 +6,8 @@ namespace CarRental.WebApi.Services.Maintenance;
 
 public sealed class MaintenanceService(RentalDbContext dbContext) : IMaintenanceService
 {
+    // Запис ТО валідований не лише по авто, а й по довіднику типів,
+    // щоб staff не міг зберегти "довільний" maintenance code поза reference data.
     public async Task<MaintenanceResult> AddRecordAsync(MaintenanceRequest request, CancellationToken cancellationToken = default)
     {
         var vehicle = await dbContext.Vehicles.FirstOrDefaultAsync(item => item.Id == request.VehicleId, cancellationToken);
@@ -43,6 +45,8 @@ public sealed class MaintenanceService(RentalDbContext dbContext) : IMaintenance
         return new MaintenanceResult(true, "Запис ТО додано.");
     }
 
+    // Прострочення визначаємо від останнього зафіксованого порога NextServiceMileage,
+    // а якщо записів ще не було — від штатного інтервалу самого авто.
     public async Task<IReadOnlyList<MaintenanceDueItem>> GetDueItemsAsync(CancellationToken cancellationToken = default)
     {
         var vehicles = await dbContext.Vehicles

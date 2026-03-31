@@ -2,6 +2,8 @@ using System.Collections.Concurrent;
 
 namespace CarRental.Desktop.ViewModels;
 
+// Координатор refresh розриває прямі залежності між сторінками:
+// зміна в одному модулі лише інвалідовує area, а фактичне перезавантаження відбувається при відкритті сторінки.
 public sealed class PageRefreshCoordinator(Func<CancellationToken, Task> refreshRentalStatusesAsync)
 {
     private readonly ConcurrentDictionary<PageRefreshArea, IPageDataLifecycle> _pages = new();
@@ -18,6 +20,7 @@ public sealed class PageRefreshCoordinator(Func<CancellationToken, Task> refresh
         IPageDataLifecycle page,
         CancellationToken cancellationToken = default)
     {
+        // Орендні статуси впливають одразу на staff rentals, self-service каталог і історію клієнта.
         if ((area & (PageRefreshArea.Rentals | PageRefreshArea.Prokat | PageRefreshArea.UserRentals)) != 0)
         {
             await EnsureRentalStatusesAsync(cancellationToken);
@@ -49,6 +52,7 @@ public sealed class PageRefreshCoordinator(Func<CancellationToken, Task> refresh
             return;
         }
 
+        // Перший виклик прогріває стан availability; усі наступні проходять без дублювання важкого sync.
         await _rentalStatusLock.WaitAsync(cancellationToken);
         try
         {

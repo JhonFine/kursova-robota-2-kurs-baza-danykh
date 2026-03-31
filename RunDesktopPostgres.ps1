@@ -60,6 +60,7 @@ $repoRoot = $PSScriptRoot
 $desktopProjectPath = Join-Path $repoRoot "CarRental.Desktop\CarRental.Desktop.csproj"
 $composePath = Join-Path $repoRoot "deploy\docker-compose.postgres.yml"
 
+# Скрипт піднімає desktop саме на PostgreSQL-профілі, щоб локальний WPF-клієнт тестував ту саму схему, що й web.
 Assert-Command -Name "dotnet"
 
 if (-not $SkipDocker) {

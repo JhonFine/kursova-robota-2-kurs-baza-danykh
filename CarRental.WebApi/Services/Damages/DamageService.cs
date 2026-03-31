@@ -13,6 +13,8 @@ public sealed class DamageService(RentalDbContext dbContext, ILogger<DamageServi
     private readonly ILogger<DamageService> logger = logger ?? NullLogger<DamageService>.Instance;
     private const int MaxActNumberSaveAttempts = 3;
 
+    // Акт пошкодження може існувати як сам по собі, так і в прив'язці до оренди.
+    // Якщо ввімкнено autoCharge, тут же переносимо суму в баланс договору.
     public async Task<DamageResult> AddDamageAsync(DamageRequest request, CancellationToken cancellationToken = default)
     {
         if (request.RepairCost <= 0)
@@ -80,6 +82,8 @@ public sealed class DamageService(RentalDbContext dbContext, ILogger<DamageServi
 
         dbContext.Damages.Add(damage);
 
+        // Номер акту має бути унікальним, але генерація спеціально лишається
+        // випадковою, тому колізії переживаємо тут локальним retry замість падіння всієї операції.
         for (var attempt = 1; attempt <= MaxActNumberSaveAttempts; attempt++)
         {
             try
@@ -150,6 +154,8 @@ public sealed class DamageService(RentalDbContext dbContext, ILogger<DamageServi
 
     private static bool TryMapPersistenceFailure(DbUpdateException exception, out string errorMessage)
     {
+        // Конвертуємо низькорівневі PostgreSQL constraint errors у повідомлення,
+        // які можна безпечно віддати UI без прив'язки до внутрішніх назв таблиць.
         if (exception.InnerException is not PostgresException postgresException)
         {
             errorMessage = string.Empty;

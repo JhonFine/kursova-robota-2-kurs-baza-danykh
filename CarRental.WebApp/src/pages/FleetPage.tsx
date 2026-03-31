@@ -92,6 +92,8 @@ export function FleetPage() {
   const sortBy = parseEnumParam(searchParams.get('sortBy'), sortByValues, 'name');
   const sortDir = parseEnumParam(searchParams.get('sortDir'), sortDirValues, 'asc');
 
+  // Реєстр автопарку живе в URL, тому фільтри, сортування і сторінка
+  // переживають reload та легко відкриваються повторно у тому ж стані.
   const updateListParams = useCallback((updates: {
     page?: number | null;
     search?: string | null;
@@ -148,6 +150,8 @@ export function FleetPage() {
   const loadVehicles = useCallback(async (): Promise<void> => {
     const requestId = ++requestIdRef.current;
 
+    // requestIdRef не дає повільнішій відповіді перетерти вже актуальну вибірку,
+    // якщо користувач швидко змінює пошук або сортування.
     try {
       setIsLoading(true);
       setError(null);

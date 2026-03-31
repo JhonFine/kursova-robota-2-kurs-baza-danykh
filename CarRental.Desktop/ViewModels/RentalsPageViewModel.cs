@@ -14,6 +14,8 @@ using System.IO;
 
 namespace CarRental.Desktop.ViewModels;
 
+// Операційний workspace для менеджера оренд:
+// тут в одному місці живуть створення договору, оплати, закриття та таймлайн завантаженості.
 public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStateOwner
 {
     private readonly RentalDbContext _dbContext;
@@ -48,9 +50,11 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
     private PaymentDirection _paymentDirection = PaymentDirection.Incoming;
     private bool _autoPrintContract;
     private int _guideRequestId;
+    // Живий пошук у комбобоксах перезапускає запит при кожному вводі, тому попередні пошуки треба скасовувати.
     private CancellationTokenSource? _clientSearchCancellationTokenSource;
     private CancellationTokenSource? _vehicleSearchCancellationTokenSource;
     private CancellationTokenSource? _paymentsLoadCancellationTokenSource;
+    // Під час програмної зміни вибору оренди не треба повторно вантажити платежі ще до завершення refresh.
     private bool _suppressSelectedRentalPaymentsLoad;
 
     public RentalsPageViewModel(

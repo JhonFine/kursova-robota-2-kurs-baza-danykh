@@ -24,6 +24,7 @@ public partial class ProkatPage : UserControl
 
     private void CityPickerButton_OnClick(object sender, RoutedEventArgs e)
     {
+        // City picker навмисно відкривається як context menu від кнопки, щоб не дублювати окремий popup-контрол.
         if (sender is Button { ContextMenu: { } contextMenu } button)
         {
             contextMenu.PlacementTarget = button;
@@ -47,6 +48,7 @@ public partial class ProkatPage : UserControl
 
     private void ProkatPage_OnUnloaded(object sender, RoutedEventArgs e)
     {
+        // При виході зі сторінки змиваємо тільки transient UI-стан, не чіпаючи кешовані дані каталогу.
         PageLifecycleUtilities.ReleaseTransientState(DataContext);
     }
 }

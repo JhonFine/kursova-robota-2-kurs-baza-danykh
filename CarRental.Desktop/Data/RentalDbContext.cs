@@ -5,6 +5,8 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace CarRental.Desktop.Data;
 
+// Desktop DbContext повторює canonical web-схему, але ще зберігає compatibility-шари для старих моделей
+// та convenience-властивостей, якими користуються WPF view-model-и.
 public sealed class RentalDbContext(DbContextOptions<RentalDbContext> options) : DbContext(options)
 {
     public DbSet<Account> Accounts => Set<Account>();
@@ -33,6 +35,7 @@ public sealed class RentalDbContext(DbContextOptions<RentalDbContext> options) :
     public DbSet<MaintenanceTypeLookup> MaintenanceTypes => Set<MaintenanceTypeLookup>();
     public DbSet<ContractSequence> ContractSequences => Set<ContractSequence>();
 
+    // Аудитні поля виставляються централізовано, щоб сервіси не дублювали CreatedAt/UpdatedAt вручну.
     public override int SaveChanges()
     {
         ApplyAuditMetadata();
@@ -59,6 +62,7 @@ public sealed class RentalDbContext(DbContextOptions<RentalDbContext> options) :
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        // Конфігурацію розбито по агрегатах, бо тут одночасно живуть lookup-таблиці, soft-delete та історичні зв'язки.
         ConfigureAccounts(modelBuilder);
         ConfigureLookups(modelBuilder);
         ConfigureEmployees(modelBuilder);
@@ -98,6 +102,7 @@ public sealed class RentalDbContext(DbContextOptions<RentalDbContext> options) :
 
     private static void ConfigureLookups(ModelBuilder modelBuilder)
     {
+        // Lookup-таблиці сідаються прямо з enum/reference data, щоб desktop і web говорили одними кодами.
         ConfigureEnumLookup(modelBuilder.Entity<EmployeeRoleLookup>(), new Dictionary<UserRole, string>
         {
             [UserRole.Admin] = "Admin",
@@ -236,6 +241,7 @@ public sealed class RentalDbContext(DbContextOptions<RentalDbContext> options) :
     {
         modelBuilder.Entity<Client>(entity =>
         {
+            // Soft-delete приховує клієнтів із робочих списків, але історичні оренди й документи залишаються читабельними.
             entity.HasQueryFilter(c => !c.IsDeleted);
             entity.Ignore(c => c.PassportData);
             entity.Ignore(c => c.PassportExpirationDate);
@@ -296,6 +302,7 @@ public sealed class RentalDbContext(DbContextOptions<RentalDbContext> options) :
     {
         modelBuilder.Entity<Vehicle>(entity =>
         {
+            // Vehicle також працює через soft-delete, бо старі договори мають і далі відображати назву й номер авто.
             entity.HasQueryFilter(v => !v.IsDeleted);
             entity.Ignore(v => v.IsAvailable);
             entity.Ignore(v => v.EngineDisplay);

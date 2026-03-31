@@ -8,6 +8,8 @@ using System.Text;
 
 namespace CarRental.Desktop.Services.Analytics;
 
+// Експорт будується з одного запиту-джерела для CSV і Excel,
+// щоб різні формати не роз'їжджались по складу колонок і правилах фільтрації.
 public sealed class AnalyticsExportService(RentalDbContext dbContext, string exportDirectory) : IAnalyticsExportService
 {
     public async Task<string> ExportRentalsCsvAsync(ExportRequest request, CancellationToken cancellationToken = default)
@@ -80,6 +82,7 @@ public sealed class AnalyticsExportService(RentalDbContext dbContext, string exp
     {
         var from = request.FromDate.Date;
         var to = request.ToDate.Date;
+        // Для аналітики беремо IgnoreQueryFilters, щоб soft-deleted клієнти/авто не ламали історичні рядки звіту.
         var clients = dbContext.Clients
             .AsNoTracking()
             .IgnoreQueryFilters();

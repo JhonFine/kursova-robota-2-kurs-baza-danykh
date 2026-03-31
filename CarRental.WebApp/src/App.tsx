@@ -25,6 +25,8 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/forbidden" element={<ForbiddenPage />} />
 
+          {/* Уся прикладна навігація проходить через один захищений shell, а доступ
+              до конкретних розділів додатково обмежується ролями на рівні маршрутів. */}
           <Route
             path="/"
             element={(

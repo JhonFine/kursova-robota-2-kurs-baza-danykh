@@ -56,6 +56,8 @@ export function ClientsPage() {
   }, [setSearchParams]);
 
   const selected = useMemo(() => clients.find((item) => item.id === selectedId) ?? null, [clients, selectedId]);
+  // Активні chips не тільки відображають поточний серверний зріз,
+  // а й дають користувачу короткий шлях швидко скинути конкретний фільтр.
   const activeFilters = useMemo(() => {
     const items: ActiveFilterChipItem[] = [];
 
@@ -81,6 +83,8 @@ export function ClientsPage() {
   const loadClients = useCallback(async (): Promise<void> => {
     const requestId = ++requestIdRef.current;
 
+    // Режим blacklist фільтрується на бекенді, щоб pagination і totalCount
+    // завжди відповідали фактичній вибірці, а не локальному підрахунку.
     try {
       setLoading(true);
       setError(null);
@@ -126,6 +130,8 @@ export function ClientsPage() {
   }, [loadClients]);
 
   useEffect(() => {
+    // Детальна форма редагування завжди віддзеркалює поточно вибраного клієнта,
+    // тому при зміні рядка таблиці чернетка перевантажується повністю.
     if (!selected) {
       setForm(emptyForm);
       return;

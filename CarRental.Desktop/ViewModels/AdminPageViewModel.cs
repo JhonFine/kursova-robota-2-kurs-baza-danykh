@@ -10,6 +10,8 @@ using System.Windows.Data;
 
 namespace CarRental.Desktop.ViewModels;
 
+// Адмін-сторінка концентрує керування доступом staff-акаунтів:
+// фільтрацію, блокування, активацію та примусову зміну пароля без окремих діалогів.
 public sealed class AdminPageViewModel : PageDataViewModelBase, ITransientStateOwner
 {
     private readonly RentalDbContext _dbContext;
@@ -43,6 +45,7 @@ public sealed class AdminPageViewModel : PageDataViewModelBase, ITransientStateO
         _authorizationService = authorizationService;
         _currentEmployee = currentEmployee;
 
+        // CollectionView дає локальний фільтр без повторного походу в БД на кожне введення в поле пошуку.
         EmployeesView = CollectionViewSource.GetDefaultView(Employees);
         EmployeesView.Filter = FilterEmployee;
 

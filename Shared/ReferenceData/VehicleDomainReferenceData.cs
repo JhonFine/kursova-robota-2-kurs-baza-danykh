@@ -2,6 +2,8 @@ using System.Text.RegularExpressions;
 
 namespace CarRental.Shared.ReferenceData;
 
+// Канонічні доменні обмеження для парку авто:
+// діапазон тарифів, класифікація та формат номерного знака використовуються в seed, desktop і web однаково.
 internal static partial class VehicleDomainReferenceData
 {
     public const decimal MinDailyRate = 1000m;
@@ -17,6 +19,7 @@ internal static partial class VehicleDomainReferenceData
 
     public static decimal NormalizeSeedDailyRate(decimal legacyDailyRate)
     {
+        // Історичні demo-ціни масштабуємо в новий діапазон і округлюємо до кроку, який зручний для UI та звітів.
         var clampedLegacyRate = decimal.Clamp(legacyDailyRate, LegacyMinDailyRate, LegacyMaxDailyRate);
         var scaledRate = MinDailyRate +
             ((clampedLegacyRate - LegacyMinDailyRate) / (LegacyMaxDailyRate - LegacyMinDailyRate)) *

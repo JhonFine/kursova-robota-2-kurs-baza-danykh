@@ -11,6 +11,8 @@ using QuestDocument = QuestPDF.Fluent.Document;
 
 namespace CarRental.Desktop.Services.Documents;
 
+// Генератор друкованих документів навмисно випускає три формати з одного ContractData:
+// plain text для швидкого перегляду, DOCX для редагування і PDF для фактичного друку.
 public sealed class SimpleContractGenerator(string contractsDirectory) : IDocumentGenerator
 {
     static SimpleContractGenerator()
@@ -22,6 +24,7 @@ public sealed class SimpleContractGenerator(string contractsDirectory) : IDocume
         ContractData data,
         CancellationToken cancellationToken = default)
     {
+        // Один timestamped stem тримає разом усі артефакти договору, щоб їх було легко знайти поряд у файловій системі.
         Directory.CreateDirectory(contractsDirectory);
 
         var stem = $"{data.ContractNumber}_{DateTime.UtcNow:yyyyMMdd_HHmmss}";

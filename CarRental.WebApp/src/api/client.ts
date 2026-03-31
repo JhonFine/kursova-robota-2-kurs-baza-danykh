@@ -29,6 +29,8 @@ import type {
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5079';
 const TOKEN_STORAGE_KEY = 'car_rental_token';
 
+// API історично віддає частину enum-полів або рядками, або числами.
+// Frontend зводить їх до одного канонічного string-представлення ще на межі клієнта.
 type WireEnum<T extends string> = T | number | `${number}`;
 
 type EmployeeWire = Omit<Employee, 'role'> & { role: WireEnum<UserRole> };
@@ -71,6 +73,8 @@ const api = axios.create({
   timeout: 20000,
 });
 
+// Токен підклеюється централізовано до кожного запиту, щоб сторінки не думали
+// про Authorization header і не дублювали одну й ту саму обгортку.
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem(TOKEN_STORAGE_KEY);
   if (token) {
@@ -100,6 +104,8 @@ type ApiErrorResponse = {
   errors?: Record<string, string[] | string | null | undefined>;
 };
 
+// Нормалізуємо різні форми помилок ASP.NET ProblemDetails, validation errors
+// і мережевих збоїв до одного рядка, придатного для banner/error-box у UI.
 function toErrorMessage(error: unknown): string {
   const axiosError = error as AxiosError<ApiErrorResponse>;
   const message = axiosError.response?.data?.message;
@@ -291,6 +297,9 @@ function normalizeDamage(damage: DamageWire): Damage {
   const photos = damage.photos ?? [];
   return {
     ...damage,
+    // Старі відповіді API можуть містити лише photoPath без масиву photos.
+    // Підставляємо головне фото з відсортованої галереї, щоб новий UI однаково
+    // працював і з новими, і з legacy payload'ами.
     photos,
     photoPath: damage.photoPath ?? photos
       .slice()
@@ -305,6 +314,8 @@ function resolvePagedResult<T>(
   headers: Record<string, unknown>,
   pagination: PaginationParams,
 ): PagedResult<T> {
+  // Бекенд віддає пагінацію через headers, але frontend усе одно має fallback,
+  // щоб не ламатися на ендпойнтах без paging metadata або в локальних моках.
   const parseHeader = (key: string, fallback: number): number => {
     const raw = headers[key];
     const value = Array.isArray(raw) ? raw[0] : raw;

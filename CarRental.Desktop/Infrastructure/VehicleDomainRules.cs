@@ -2,6 +2,8 @@ using CarRental.Shared.ReferenceData;
 
 namespace CarRental.Desktop.Infrastructure;
 
+// Desktop використовує shared reference data як canonical source of truth,
+// а цей адаптер лише додає локалізовані підписи для UI-рівня.
 internal static class VehicleDomainRules
 {
     public const decimal MinDailyRate = VehicleDomainReferenceData.MinDailyRate;

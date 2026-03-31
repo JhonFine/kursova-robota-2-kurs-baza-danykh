@@ -5,6 +5,7 @@ using FluentAssertions;
 
 namespace CarRental.Desktop.Tests;
 
+// Auth integration test фіксує shared lockout-поведінку, яка має бути однаковою для desktop і web.
 public sealed class AuthServiceIntegrationTests
 {
     [Fact]

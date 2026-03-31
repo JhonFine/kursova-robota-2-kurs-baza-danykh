@@ -19,6 +19,8 @@ public sealed class ProfileController(RentalDbContext dbContext) : ApiController
     [ProducesResponseType<ClientProfileDto>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    // Профіль повертається для "поточного клієнта", а не за довільним id:
+    // якщо claim clientId відсутній, ще є fallback через accountId поточного користувача.
     public async Task<IActionResult> GetClientProfile(CancellationToken cancellationToken)
     {
         var client = await GetCurrentClientAsync(cancellationToken);
@@ -36,6 +38,8 @@ public sealed class ProfileController(RentalDbContext dbContext) : ApiController
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
+    // Self-service не дає редагувати довільний набір полів напряму в Client.Documents:
+    // спочатку валідовуємо profile payload, а потім зводимо його до canonical document model.
     public async Task<IActionResult> UpdateClientProfile(
         [FromBody] UpdateClientProfileRequest request,
         CancellationToken cancellationToken)
@@ -80,6 +84,8 @@ public sealed class ProfileController(RentalDbContext dbContext) : ApiController
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    // Завантаження фото документа оновлює лише один активний документ потрібного типу
+    // і після успішного save прибирає попередній файл зі storage.
     public async Task<IActionResult> UploadClientDocumentPhoto(
         string documentType,
         [FromForm] IFormFile? file,

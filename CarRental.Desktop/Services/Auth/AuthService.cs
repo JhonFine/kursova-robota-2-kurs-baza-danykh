@@ -6,6 +6,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CarRental.Desktop.Services.Auth;
 
+// Desktop auth працює навколо shared account-моделі:
+// тут перевіряються lockout-правила, а за потреби staff-principal ліниво добудовується з client/account запису.
 public sealed class AuthService(RentalDbContext dbContext) : IAuthService
 {
     private const int MaxFailedAttempts = SecurityDefaults.MaxFailedAttempts;
@@ -18,6 +20,7 @@ public sealed class AuthService(RentalDbContext dbContext) : IAuthService
             return new AuthResult(false, "Потрібні логін і пароль.");
         }
 
+        // Логін нормалізується до одного canonical виду, щоб web/desktop не створювали дублікати по регістру.
         var normalizedLogin = login.Trim().ToLowerInvariant();
         var account = await dbContext.Accounts
             .Include(item => item.Employee)
@@ -41,6 +44,7 @@ public sealed class AuthService(RentalDbContext dbContext) : IAuthService
         var isValid = PasswordHasher.VerifyPassword(password, account.PasswordHash);
         if (!isValid)
         {
+            // Лічильник невдалих входів оновлюємо до будь-якого раннього виходу, інакше lockout можна обійти повторними спробами.
             account.FailedLoginAttempts += 1;
             if (account.FailedLoginAttempts >= MaxFailedAttempts)
             {
@@ -170,6 +174,8 @@ public sealed class AuthService(RentalDbContext dbContext) : IAuthService
 
     private async Task<Employee> EnsureDesktopEmployeeAsync(Account account, CancellationToken cancellationToken)
     {
+        // Desktop shell працює через Employee principal навіть для self-service користувача,
+        // тому акаунт клієнта при вході отримує або знаходить відповідний Employee-запис.
         if (account.Employee is not null)
         {
             if (account.Client is not null &&

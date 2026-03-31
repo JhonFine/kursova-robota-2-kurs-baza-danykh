@@ -9,6 +9,7 @@ on:
       - main
 
 jobs:
+  # Ubuntu job покриває web API і БД-контракти; WPF-тести свідомо винесені за межі цього pipeline.
   backend-and-database-tests:
     name: Backend & Database Tests
     runs-on: ubuntu-latest
@@ -55,6 +56,7 @@ jobs:
       # It cannot be executed reliably on ubuntu-latest.
       # If desktop tests should run in CI, add a separate windows-latest job.
 
+  # Frontend перевіряється окремо, щоб JS toolchain і .NET/PostgreSQL проблеми не змішувались в одному job.
   frontend-checks:
     name: Frontend Checks
     runs-on: ubuntu-latest

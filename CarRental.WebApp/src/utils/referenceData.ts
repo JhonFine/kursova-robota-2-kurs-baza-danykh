@@ -24,6 +24,8 @@ export const CONSUMPTION_UNIT_OPTIONS = [
   { value: 'KWH_PER_100KM', label: 'кВт·год/100 км' },
 ] as const;
 
+// Каталог для клієнта має окремий маркетинговий клас "Електромобілі",
+// тому тут є невелика евристика поверх звичайної rate-based класифікації.
 export function resolveCatalogVehicleClassLabel(make: string, model: string, dailyRate: number): string {
   const normalizedModel = `${make} ${model}`.toLowerCase();
   if (normalizedModel.includes('tesla') || normalizedModel.includes('ioniq') || normalizedModel.includes('ev')) {

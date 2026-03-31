@@ -17,6 +17,8 @@ public sealed class RentalsController(
 {
     [HttpGet]
     [ProducesResponseType<IReadOnlyList<RentalDto>>(StatusCodes.Status200OK)]
+    // Один endpoint обслуговує і staff-таблицю, і self-service історію клієнта:
+    // user-role автоматично звужується до власного ClientId, staff бачить повну вибірку.
     public async Task<ActionResult<IReadOnlyList<RentalDto>>> GetAll(
         [FromQuery] RentalStatus? status,
         [FromQuery] int? vehicleId,
@@ -132,6 +134,8 @@ public sealed class RentalsController(
     [ProducesResponseType<RentalDto>(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    // Створення оренди додатково перевіряє, що self-service користувач оформлює
+    // бронювання лише на себе і тільки з повністю заповненим клієнтським профілем.
     public async Task<IActionResult> Create([FromBody] CreateRentalRequest request, CancellationToken cancellationToken)
     {
         var actingEmployeeId = await ResolveActingEmployeeIdAsync(cancellationToken);

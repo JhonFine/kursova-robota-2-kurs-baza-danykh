@@ -137,6 +137,8 @@ export function ProkatSearchPage() {
   const defaultStartDate = useMemo(() => toDateInputValue(new Date()), []);
   const defaultEndDate = useMemo(() => toDateInputValue(new Date(Date.now() + 24 * 3_600_000)), []);
 
+  // У URL живе весь стан каталогу: період, сортування, фільтри й вибраний екземпляр.
+  // Це дозволяє оновлювати сторінку без втрати контексту і ділитися готовим пошуком.
   const startDate = resolveDateParam(searchParams.get('start'), defaultStartDate);
   const endDate = resolveDateParam(searchParams.get('end'), defaultEndDate);
   const pickupTime = parseEnumParam(searchParams.get('pickup'), timeOptions, '10:00');
@@ -152,6 +154,8 @@ export function ProkatSearchPage() {
 
   const currentMoment = new Date();
   const todayDateValue = toDateInputValue(currentMoment);
+  // Весь derived state сторінки спирається на один обраний часовий проміжок:
+  // від нього залежать доступні години, попередження і фактична доступність авто.
   const requestStart = useMemo(() => parseDateTime(startDate, pickupTime), [pickupTime, startDate]);
   const requestEnd = useMemo(() => parseDateTime(endDate, returnTime), [endDate, returnTime]);
   const pickupTimeOptions = getAvailableTimeOptionsForDate(startDate, currentMoment);
@@ -199,6 +203,8 @@ export function ProkatSearchPage() {
   const loadCatalog = useCallback(async (softRefresh = false): Promise<void> => {
     const requestId = ++requestIdRef.current;
 
+    // requestIdRef відсікає застарілі відповіді, якщо користувач швидко змінює
+    // параметри пошуку і попередній запит завершується пізніше за новий.
     try {
       if (!softRefresh) {
         setLoading(true);
@@ -268,6 +274,8 @@ export function ProkatSearchPage() {
     setCardCvv(formatCardCvvInput(value));
   };
 
+  // Карта доступності і картки каталогу будуються окремо, щоб UI міг одночасно
+  // показати групу моделей і точну причину, чому конкретний екземпляр недоступний.
   const availabilityByVehicleId = useMemo(
     () => buildAvailabilityMap(vehicles, availabilitySlots, requestStart, requestEnd),
     [availabilitySlots, requestEnd, requestStart, vehicles],

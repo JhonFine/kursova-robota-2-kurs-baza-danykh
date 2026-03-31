@@ -1,5 +1,7 @@
 namespace CarRental.WebApi.Tests;
 
+// Локально цей атрибут дає пропускати PostgreSQL integration tests без шуму,
+// але в CI вони мають виконуватись обов'язково, навіть якщо env-var не проброшений.
 public sealed class PostgresFactAttribute : FactAttribute
 {
     private const string ConnectionStringEnvVar = "CAR_RENTAL_TEST_POSTGRES_CONNECTION";

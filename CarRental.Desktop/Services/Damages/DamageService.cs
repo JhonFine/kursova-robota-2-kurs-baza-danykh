@@ -5,6 +5,8 @@ using System.Security.Cryptography;
 
 namespace CarRental.Desktop.Services.Damages;
 
+// Damage service фіксує сам акт пошкодження і, за бажанням оператора,
+// одразу прив'язує його до оренди як charge, не змішуючи це з payment flow.
 public sealed class DamageService(RentalDbContext dbContext) : IDamageService
 {
     public async Task<DamageResult> AddDamageAsync(DamageRequest request, CancellationToken cancellationToken = default)
@@ -50,6 +52,7 @@ public sealed class DamageService(RentalDbContext dbContext) : IDamageService
 
         if (request.AutoChargeToRental && rental is not null)
         {
+            // Автодонарахування піднімає total договору в момент реєстрації пошкодження, щоб баланс оновився без додаткових кроків.
             rental.TotalAmount += request.RepairCost;
             damage.ChargedAmount = request.RepairCost;
             damage.Status = DamageStatus.Charged;
@@ -62,6 +65,7 @@ public sealed class DamageService(RentalDbContext dbContext) : IDamageService
 
     private static string GenerateActNumber()
     {
+        // Timestamp плюс випадковий suffix дають стабільно унікальний номер навіть при серійному створенні актів.
         var randomSuffix = RandomNumberGenerator.GetInt32(100000, 1000000);
         return $"ACT-{DateTime.UtcNow:yyyyMMddHHmmssfff}-{randomSuffix}";
     }

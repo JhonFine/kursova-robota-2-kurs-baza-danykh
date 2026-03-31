@@ -29,6 +29,8 @@ export function MaintenancePage() {
   });
 
   const load = useCallback(async (pageToLoad: number): Promise<void> => {
+    // Модуль ТО щоразу збирає і журнал записів, і прострочені авто, і довідник машин,
+    // бо форма створення і праві статистики залежать від одного snapshot стану.
     try {
       setLoading(true);
       setError(null);
@@ -56,6 +58,8 @@ export function MaintenancePage() {
   const addRecord = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
 
+    // Після додавання запису оновлюємо весь модуль, щоб одразу перерахувати
+    // overdue-список і поточну історію ТО без локальних "ручних" патчів стану.
     try {
       await Api.addMaintenanceRecord({
         vehicleId: Number(form.vehicleId),

@@ -6,6 +6,8 @@ using Npgsql;
 
 namespace CarRental.WebApi.Tests;
 
+// Migration integration tests страхують саме структуру БД:
+// constraints, відсутність legacy-колонок і поведінку схеми після реальних insert/update сценаріїв.
 public sealed class PostgresMigrationIntegrationTests
 {
     private const string ConnectionStringEnvVar = "CAR_RENTAL_TEST_POSTGRES_CONNECTION";
@@ -18,6 +20,7 @@ public sealed class PostgresMigrationIntegrationTests
         await using var testDatabase = await PostgresTestDatabase.TryCreateAsync();
         await using var dbContext = testDatabase.CreateDbContext();
 
+        // Тут перевіряємо не лише наявність артефактів міграції, а й те, що legacy механіки availability остаточно прибрані.
         var hasChargeConsistencyConstraint = await dbContext.Database
             .SqlQueryRaw<int>(
                 """

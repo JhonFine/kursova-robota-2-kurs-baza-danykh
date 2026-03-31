@@ -16,6 +16,8 @@ public sealed class RentalService(
     private const string AutoRescheduleRefundNote = "System refund after rental reschedule";
     private const string AutoBalanceSettlementNote = "Self-service balance settlement";
 
+    // Конфлікт перевіряємо у "бізнес-часі": усі дати попередньо нормалізуються,
+    // щоб порівняння не залежали від випадкових timezone-конвертацій клієнта.
     public async Task<bool> HasDateConflictAsync(
         int vehicleId,
         DateTime startDate,
@@ -61,6 +63,8 @@ public sealed class RentalService(
             cancellationToken);
     }
 
+    // Закриття оренди не лише змінює статус, а й добудовує фінальний розрахунок:
+    // повернення переплати, фінальний inspection і оновлення пробігу авто.
     public async Task<CloseRentalResult> CloseRentalAsync(
         CloseRentalRequest request,
         CancellationToken cancellationToken = default)
@@ -158,6 +162,8 @@ public sealed class RentalService(
             totalAmount);
     }
 
+    // Скасування booked-оренди може автоматично повернути передоплату,
+    // тому тут живе і статусна логіка, і фінансовий side effect.
     public async Task<CancelRentalResult> CancelRentalAsync(
         CancelRentalRequest request,
         CancellationToken cancellationToken = default)
@@ -225,6 +231,8 @@ public sealed class RentalService(
         return new CancelRentalResult(true, "Оренду скасовано.");
     }
 
+    // Перенесення дозволене лише для booked-оренди і водночас перераховує
+    // різницю в оплаті, щоб після зсуву дат баланс не залишився "старим".
     public async Task<RescheduleRentalResult> RescheduleRentalAsync(
         RescheduleRentalRequest request,
         CancellationToken cancellationToken = default)
@@ -321,6 +329,8 @@ public sealed class RentalService(
             balance);
     }
 
+    // Окремий сценарій self-service доплати: клієнт може лише занулити поточний борг,
+    // але не змінити довільно суму чи напрям платежу.
     public async Task<SettleRentalBalanceResult> SettleRentalBalanceAsync(
         SettleRentalBalanceRequest request,
         CancellationToken cancellationToken = default)
@@ -417,6 +427,8 @@ public sealed class RentalService(
     public Task RefreshStatusesAsync(CancellationToken cancellationToken = default)
         => Task.CompletedTask;
 
+    // Бронювання з payment і без нього сходяться в один internal flow,
+    // щоб правила дат, конфліктів і стартових сум були ідентичними.
     private async Task<CreateRentalResult> CreateRentalInternalAsync(
         CreateRentalRequest request,
         PendingPayment? pendingPayment,
@@ -649,6 +661,8 @@ public sealed class RentalService(
         return $"{baseNote}. {suffix}";
     }
 
+    // У системі всі "операційні" DateTime зберігаються як UTC без timezone-компонента,
+    // тому тут відтинаємо зайву часову інформацію до узгодженого виду.
     private static DateTime NormalizeBusinessTimestamp(DateTime value)
     {
         return value.Kind switch
@@ -660,6 +674,8 @@ public sealed class RentalService(
         };
     }
 
+    // Inspection для видачі і повернення оновлюємо як upsert, щоб повторне
+    // підтвердження не плодило дублікати, а коригувало вже існуючий запис.
     private static void UpsertInspection(
         Rental rental,
         int performedByEmployeeId,

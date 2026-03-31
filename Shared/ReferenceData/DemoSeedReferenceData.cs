@@ -1,5 +1,7 @@
 namespace CarRental.Shared.ReferenceData;
 
+// Єдине джерело demo/reference значень для desktop і web:
+// сюди винесені масштаби seed-даних, локації, таймслоти й текстові шаблони, щоб канали не розходилися.
 internal static class DemoSeedReferenceData
 {
     public const int SeedRandomValue = 20260320;

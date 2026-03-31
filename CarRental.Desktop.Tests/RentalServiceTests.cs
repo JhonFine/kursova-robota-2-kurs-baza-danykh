@@ -7,6 +7,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CarRental.Desktop.Tests;
 
+// Regression-набір для desktop rental service:
+// перевіряє критичні сценарії життєвого циклу без UI-шару й без залежності від demo-seed.
 public sealed class RentalServiceTests
 {
     [Fact]
@@ -212,6 +214,7 @@ public sealed class RentalServiceTests
 
     private static void SeedMinimalData(RentalDbContext dbContext)
     {
+        // Мінімальний seed лишає під контролем лише ті інваріанти, які потрібні конкретним тестам сервісу.
         TestLookupSeed.SeedVehicleLookups(dbContext);
 
         dbContext.Employees.Add(new Employee

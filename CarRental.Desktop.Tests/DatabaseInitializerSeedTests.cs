@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CarRental.Desktop.Tests;
 
+// Перевіряє, що великий demo-seed лишається внутрішньо узгодженим і не роз'їжджається після змін у reference data.
 public sealed class DatabaseInitializerSeedTests
 {
     [Fact]

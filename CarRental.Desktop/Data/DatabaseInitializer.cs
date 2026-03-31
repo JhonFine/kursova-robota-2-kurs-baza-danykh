@@ -6,6 +6,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CarRental.Desktop.Data;
 
+// Seed desktop-бази виконується фазами: staff/login довідники, каталог, клієнти,
+// потім історичні операції. Це дозволяє повторно запускати ініціалізацію без дублювання runtime-даних.
 public static class DatabaseInitializer
 {
     private static readonly int SeedRandomValue = DemoSeedReferenceData.SeedRandomValue;
@@ -41,12 +43,14 @@ public static class DatabaseInitializer
 
     public static SeedCredentials? Seed(RentalDbContext dbContext)
     {
+        // Спочатку готуємо облікові записи й довідники, від яких залежить увесь інший seed.
         var seededCredentials = EnsureEmployees(dbContext);
         EnsureVehicleLookups(dbContext);
         EnsureClients(dbContext);
         EnsureVehicleCatalogSync(dbContext);
         dbContext.SaveChanges();
 
+        // Операційна історія додається лише в порожню базу, щоб не підмішувати demo-дані у вже робочий контур.
         if (!dbContext.Rentals.Any() &&
             !dbContext.Payments.Any() &&
             !dbContext.Damages.Any() &&
@@ -68,6 +72,7 @@ public static class DatabaseInitializer
             return null;
         }
 
+        // Паролі seed-акаунтів можна перевизначити env-перемінними, щоб локальна/demo база не вимагала жорстко зашитих секретів.
         var adminPassword = ResolvePassword("CAR_RENTAL_ADMIN_PASSWORD", DemoSeedReferenceData.AdminFallbackPassword);
         var managerPassword = ResolvePassword("CAR_RENTAL_MANAGER_PASSWORD", DemoSeedReferenceData.ManagerFallbackPassword);
         var passwordChangedAt = DateTime.UtcNow.Date.AddHours(8);
@@ -117,6 +122,7 @@ public static class DatabaseInitializer
 
     private static void EnsureClients(RentalDbContext dbContext)
     {
+        // Унікальність клієнтів тримаємо на рівні реальних документів і телефону, а не лише ПІБ.
         var existingDriverLicenses = dbContext.ClientDocuments
             .Where(document => !document.IsDeleted && document.DocumentTypeCode == ClientDocumentTypes.DriverLicense)
             .Select(document => document.DocumentNumber)
@@ -253,6 +259,8 @@ public static class DatabaseInitializer
 
     private static void EnsureVehicleCatalogSync(RentalDbContext dbContext)
     {
+        // Після появи реальної історії оренд не перетираємо характеристики парку wholesale,
+        // а лише добудовуємо відсутні seed-авто й нормалізуємо безпечні поля.
         var hasRentalHistory = dbContext.Rentals.Any();
         var vehicles = dbContext.Vehicles.ToList();
         var existingPlates = vehicles

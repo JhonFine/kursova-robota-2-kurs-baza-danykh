@@ -6,6 +6,7 @@
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
 
+        <!-- У верхньому hero-блоці комбінуються декоративні кисті й city-selector, які працюють разом із VM-фільтрами. -->
         <Style x:Key="CityLinkButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
@@ -153,6 +154,7 @@
                 Style="{StaticResource FilterCardStyle}">
             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel>
+                    <!-- Ліва панель задає період, локації та фільтри, від яких залежить і список карток, і checkout. -->
                     <Border Style="{StaticResource FilterSectionStyle}" Margin="0,0,0,10">
                         <StackPanel>
                             <TextBlock Text="Період і локації" Style="{StaticResource FilterHeaderTextStyle}" />

@@ -6,12 +6,15 @@ using System.Globalization;
 
 namespace CarRental.Desktop.Services.Documents;
 
+// Номер договору резервується прямо в БД по роках,
+// щоб паралельні створення оренд не породжували дублікати в desktop і web потоках.
 public sealed class ContractNumberService(RentalDbContext dbContext) : IContractNumberService
 {
     public async Task<string> NextNumberAsync(CancellationToken cancellationToken = default)
     {
         var year = DateTime.UtcNow.Year;
 
+        // Рядок sequence створюється ідемпотентно, після чого той самий запис атомарно інкрементується через SQL.
         await dbContext.Database.ExecuteSqlInterpolatedAsync(
             $"""INSERT INTO "ContractSequences" ("Year", "LastNumber") VALUES ({year}, 0) ON CONFLICT("Year") DO NOTHING;""",
             cancellationToken);
@@ -27,6 +30,7 @@ public sealed class ContractNumberService(RentalDbContext dbContext) : IContract
     private async Task<int> ExecuteScalarIntAsync(string sql, int year, CancellationToken cancellationToken)
     {
         var connection = dbContext.Database.GetDbConnection();
+        // Використовуємо поточну EF-транзакцію, якщо вона вже відкрита навколо створення оренди.
         var shouldCloseConnection = connection.State != ConnectionState.Open;
         if (shouldCloseConnection)
         {

@@ -179,6 +179,8 @@ export function RentalsPage() {
     () => rentals.find((item) => item.id === selectedId) ?? null,
     [rentals, selectedId],
   );
+  // Усі праві панелі staff-екрана синхронізовані з одним вибраним договором,
+  // тому блокування дій і стартові значення форм обчислюються від selectedRental.
   const pickupInspectionMissed = selectedRental?.status === 'Booked' && new Date(selectedRental.startDate) < new Date();
   const pickupInspectionDisabled = !selectedRental || selectedRental.status !== 'Booked' || pickupInspectionMissed;
   const currentMoment = new Date();
@@ -191,6 +193,8 @@ export function RentalsPage() {
   const createEndTimeOptions = getAvailableTimeOptionsForDate(createForm.endDate, createEndMinimumMoment);
   const createEndTimeValue = createEndTimeOptions.includes(createForm.endTime) ? createForm.endTime : '';
   const createEndDateTime = parseDateTime(createForm.endDate, createForm.endTime);
+  // Створення нової оренди використовує ту саму часову дисципліну, що й self-service:
+  // не можна створити видачу або повернення в минулому чи з "перевернутим" інтервалом.
   const createStartDateError = !createForm.startDate || Number.isNaN(createStartDateTime.getTime())
     ? 'Оберіть дату подачі.'
     : createStartTimeOptions.length === 0
@@ -213,6 +217,8 @@ export function RentalsPage() {
             : null;
   const hasCreateDateSelectionError = Boolean(createStartDateError || createEndDateError);
 
+  // Для Gantt-подібної сітки спочатку групуємо оренди за авто, а вже потім
+  // розкладаємо горизонт на умовні маркери по днях.
   const rentalsByVehicleId = useMemo(() => {
     const grouped = new Map<number, Rental[]>();
     scheduleRentals.forEach((rental) => {
@@ -263,6 +269,8 @@ export function RentalsPage() {
   const loadSupportingData = useCallback(async (): Promise<void> => {
     const requestId = ++supportingRequestIdRef.current;
 
+    // Довідники клієнтів і авто живуть окремим запитом, щоб їх можна було
+    // оновлювати незалежно від основної таблиці договорів.
     try {
       const [nextClients, nextVehicles] = await Promise.all([
         user?.role === 'User'
@@ -348,6 +356,8 @@ export function RentalsPage() {
     const dayStart = new Date(`${selectedDate}T00:00:00`);
     const dayEnd = new Date(`${selectedDate}T23:59:59.999`);
 
+    // Основна вибірка сторінки агрегує одразу кілька зрізів: пагіновану таблицю,
+    // оперативні картки на день і "бажаний" selectedId після mutation-операцій.
     try {
       setLoading(true);
       setError(null);

@@ -1,5 +1,6 @@
 -- Post-migration integrity checks for the redesigned schema
 
+-- Набір перевірок задуманий як after-migration audit: він не змінює дані, а лише показує, де схема або seed розійшлися з інваріантами.
 -- 1) no invalid rental ranges
 SELECT COUNT(*) AS invalid_rental_ranges
 FROM "Rentals"

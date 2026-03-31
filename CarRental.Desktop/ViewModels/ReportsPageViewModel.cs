@@ -9,6 +9,8 @@ using System.IO;
 
 namespace CarRental.Desktop.ViewModels;
 
+// Звітна сторінка навмисно будує легкий агрегований snapshot,
+// а деталізований експорт віддає окремому сервісу, щоб UI не дублював CSV/XLSX логіку.
 public sealed class ReportsPageViewModel : PageDataViewModelBase, ITransientStateOwner
 {
     private readonly RentalDbContext _dbContext;
@@ -128,6 +130,7 @@ public sealed class ReportsPageViewModel : PageDataViewModelBase, ITransientStat
             return;
         }
 
+        // Один refresh формує і KPI-картки, і довідники фільтрів, щоб експорт працював з тим самим зрізом даних.
         IsLoading = true;
         try
         {

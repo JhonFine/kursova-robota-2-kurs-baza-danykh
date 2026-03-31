@@ -17,6 +17,7 @@ public partial class MainWindow : Window
         {
             try
             {
+                // Ініціалізація shell відбувається після побудови вікна, щоб navigation VM міг безпечно прогріти першу сторінку.
                 await viewModel.InitializeAsync();
             }
             catch (Exception exception)
@@ -33,6 +34,7 @@ public partial class MainWindow : Window
 
     private void SettingsButton_OnClick(object sender, RoutedEventArgs e)
     {
+        // Налаштування відкриваються як context menu від кнопки, щоб не заводити окреме модальне вікно для простих дій.
         if (sender is Button { ContextMenu: { } contextMenu } button)
         {
             contextMenu.PlacementTarget = button;

@@ -166,6 +166,8 @@ export function ProkatProfilePage() {
   const completionIssues = getClientProfileCompletionIssues(profileDraft);
   const completionMessage = getClientProfileCompletionMessage(profileDraft);
   const localProfileFieldErrors = getLocalProfileFieldErrors(profileDraft);
+  // Після submit серверні помилки мають пріоритет над локальними підказками,
+  // щоб користувач бачив реальну причину відмови API, а не лише frontend-checklist.
   const visibleProfileFieldErrors: ProfileFieldErrors = {
     fullName: serverProfileFieldErrors.fullName ?? (profileSubmitAttempted ? localProfileFieldErrors.fullName : undefined),
     phone: serverProfileFieldErrors.phone ?? (profileSubmitAttempted ? localProfileFieldErrors.phone : undefined),
@@ -184,6 +186,8 @@ export function ProkatProfilePage() {
   const loadProfile = useCallback(async (): Promise<void> => {
     const requestId = ++requestIdRef.current;
 
+    // requestIdRef захищає форму від стану "старий профіль перезаписав новий",
+    // якщо користувач встиг ініціювати повторне завантаження.
     try {
       setLoading(true);
       setError(null);
@@ -223,6 +227,8 @@ export function ProkatProfilePage() {
     event.preventDefault();
     setProfileSubmitAttempted(true);
 
+    // Спочатку відсікаємо локально очевидні проблеми формату, а вже потім
+    // показуємо точніші конфлікти унікальності та доменні помилки від API.
     try {
       setSavingProfile(true);
       setError(null);

@@ -18,6 +18,8 @@ using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Дозволяємо environment override для signing key, але жорстко відсікаємо
+// короткі або явно dev-placeholder значення ще до побудови pipeline.
 var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
     ?? throw new InvalidOperationException("JWT configuration section is missing.");
 var signingKeyFromEnvironment = Environment.GetEnvironmentVariable("CAR_RENTAL_JWT_SIGNING_KEY");
@@ -87,6 +89,8 @@ builder.Services.AddCors(options =>
             return;
         }
 
+        // Локальний fallback спрощує старт у development-середовищі,
+        // але в production очікується явний whitelist origins у конфігурації.
         policy.AllowAnyOrigin()
             .AllowAnyHeader()
             .AllowAnyMethod();
@@ -160,6 +164,8 @@ static async Task EnsureDatabaseAsync(WebApplication app)
     using var scope = app.Services.CreateScope();
     var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DatabaseBootstrap");
     var dbContext = scope.ServiceProvider.GetRequiredService<RentalDbContext>();
+    // Web API є джерелом істини для runtime-схеми, тому саме він піднімає
+    // migrations і deterministic seed під час старту всього web stack.
     logger.LogInformation("Applying database migrations.");
     await dbContext.Database.MigrateAsync();
     DatabaseInitializer.Seed(dbContext);

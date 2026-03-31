@@ -5,6 +5,8 @@ using Npgsql;
 
 namespace CarRental.Desktop.Tests;
 
+// Кожен integration test отримує окрему тимчасову PostgreSQL-базу.
+// Схема накочується через WebApi DbContext, щоб desktop тести завжди працювали по канонічній моделі даних.
 internal sealed class DesktopPostgresTestDatabase : IAsyncDisposable
 {
     private const string ConnectionStringEnvVar = "CAR_RENTAL_TEST_POSTGRES_CONNECTION";
@@ -42,6 +44,7 @@ internal sealed class DesktopPostgresTestDatabase : IAsyncDisposable
         {
             Database = databaseName
         };
+        // Desktop навмисно мігрує БД через web-модель, бо саме вона є джерелом істини для схеми.
         var webApiContextOptions = new DbContextOptionsBuilder<WebApiRentalDbContext>()
             .UseNpgsql(builder.ConnectionString)
             .Options;
@@ -61,6 +64,7 @@ internal sealed class DesktopPostgresTestDatabase : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        // Перед DROP DATABASE завершуємо всі активні сесії, інакше PostgreSQL залишить тестову базу заблокованою.
         await using var adminConnection = new NpgsqlConnection(_adminConnectionString);
         await adminConnection.OpenAsync();
         await using var terminateConnectionsCommand = new NpgsqlCommand(

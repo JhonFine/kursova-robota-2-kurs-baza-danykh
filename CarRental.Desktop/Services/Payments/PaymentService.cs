@@ -4,6 +4,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CarRental.Desktop.Services.Payments;
 
+// Платіжний сервіс лишається thin навмисно:
+// бізнес-сума договору рахується сервісом оренд, а тут лише фіксуються рухи грошей і виводиться баланс.
 public sealed class PaymentService(RentalDbContext dbContext) : IPaymentService
 {
     public async Task<PaymentResult> AddPaymentAsync(PaymentRequest request, CancellationToken cancellationToken = default)
@@ -51,6 +53,7 @@ public sealed class PaymentService(RentalDbContext dbContext) : IPaymentService
 
     public async Task<decimal> GetRentalBalanceAsync(int rentalId, CancellationToken cancellationToken = default)
     {
+        // Refund зменшує net paid, тому баланс рахується як TotalAmount мінус signed потоки платежів.
         var rentalAmount = await dbContext.Rentals
             .AsNoTracking()
             .Where(item => item.Id == rentalId)

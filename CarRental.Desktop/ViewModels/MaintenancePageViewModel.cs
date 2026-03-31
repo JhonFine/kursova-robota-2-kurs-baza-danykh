@@ -8,6 +8,8 @@ using System.Globalization;
 
 namespace CarRental.Desktop.ViewModels;
 
+// Екран ТО з'єднує ручне внесення сервісних записів з автоматичним списком автомобілів,
+// які вже вийшли за межі наступного пробігу на обслуговування.
 public sealed class MaintenancePageViewModel : PageDataViewModelBase, ITransientStateOwner
 {
     private readonly RentalDbContext _dbContext;
@@ -109,6 +111,8 @@ public sealed class MaintenancePageViewModel : PageDataViewModelBase, ITransient
             return;
         }
 
+        // Завантаження списку авто, історії ТО і overdue-черги виконується разом,
+        // щоб оператор бачив узгоджений стан після кожної нової записи.
         IsLoading = true;
         try
         {

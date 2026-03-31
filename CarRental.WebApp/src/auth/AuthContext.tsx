@@ -8,12 +8,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() => getStoredToken());
   const [isLoading, setIsLoading] = useState(true);
 
+  // Тримаємо оновлення React-стану і localStorage в одній точці, щоб login,
+  // logout і silent invalidation токена поводилися однаково.
   const applyAuthState = useCallback((accessToken: string | null, authenticatedUser: AuthenticatedUser | null) => {
     setToken(accessToken);
     setUser(authenticatedUser);
     setAuthToken(accessToken);
   }, []);
 
+  // Використовується після змін профілю/ролі, коли треба перевитягнути актуального
+  // користувача без повного перезапуску застосунку.
   const refreshUser = useCallback(async () => {
     if (!token) {
       applyAuthState(null, null);
@@ -31,6 +35,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let isMounted = true;
 
+    // На старті застосунку перевіряємо, чи збережений токен ще дійсний.
+    // Якщо ні, прибираємо його одразу, щоб guards не працювали з "мертвою" сесією.
     const initialize = async (): Promise<void> => {
       try {
         if (token) {

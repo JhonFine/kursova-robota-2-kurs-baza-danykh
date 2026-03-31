@@ -4,6 +4,8 @@ using Npgsql;
 
 namespace CarRental.WebApi.Tests;
 
+// WebApi integration tests працюють із одноразовою PostgreSQL-базою на тест,
+// щоб migration/constraint сценарії не залежали від порядку запуску.
 internal sealed class WebApiPostgresTestDatabase : IAsyncDisposable
 {
     private const string ConnectionStringEnvVar = "CAR_RENTAL_TEST_POSTGRES_CONNECTION";
@@ -52,6 +54,7 @@ internal sealed class WebApiPostgresTestDatabase : IAsyncDisposable
 
         await using (var dbContext = new RentalDbContext(contextOptions))
         {
+            // Частина тестів перевіряє саме migrations, інша лише швидко піднімає схему через EnsureCreated.
             if (applyMigrations)
             {
                 await dbContext.Database.MigrateAsync();
@@ -69,6 +72,7 @@ internal sealed class WebApiPostgresTestDatabase : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        // Після тесту насильно закриваємо сесії до тимчасової БД, щоб DROP DATABASE не падав на lock.
         await using var adminConnection = new NpgsqlConnection(_adminConnectionString);
         await adminConnection.OpenAsync();
         await using var terminateConnectionsCommand = new NpgsqlCommand(

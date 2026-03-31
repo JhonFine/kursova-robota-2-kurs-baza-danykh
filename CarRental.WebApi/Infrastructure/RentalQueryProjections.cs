@@ -7,6 +7,8 @@ namespace CarRental.WebApi.Infrastructure;
 
 public static class RentalQueryProjections
 {
+    // DTO будуємо проєкцією в SQL замість каскаду Include, щоб таблиці оренд,
+    // звітів і self-service списки забирали лише потрібні колонки.
     public static IQueryable<RentalDto> ProjectToRentalDto(this IQueryable<Rental> query, RentalDbContext dbContext)
     {
         var clients = dbContext.Clients.IgnoreQueryFilters();

@@ -17,6 +17,8 @@ const clientTabs = [
   { label: 'Профіль', path: '/prokat/profile' },
 ] as const;
 
+// Клієнтський shell не має лівого staff-меню, тому заголовок і help-view
+// повністю залежать від поточного підрозділу self-service сценарію.
 function resolveClientHeader(pathname: string): {
   title: string;
   description: string;
@@ -62,6 +64,8 @@ export function AppShell() {
     navigate('/login', { replace: true });
   };
 
+  // Один shell обслуговує одразу дві різні інформаційні архітектури:
+  // клієнтський self-service і staff/admin кабінет.
   if (!showStaffShell) {
     return (
       <div className="client-shell">

@@ -79,6 +79,8 @@ export function DamagesPage() {
 
     let isCancelled = false;
 
+    // Список оренд залежить від вибраного авто: це дозволяє пов'язати акт
+    // саме з тим договором, під час якого могло виникнути пошкодження.
     const loadVehicleRentals = async (): Promise<void> => {
       try {
         setRentals([]);
@@ -131,6 +133,8 @@ export function DamagesPage() {
     const objectUrls: string[] = [];
     setGalleryUrls([]);
 
+    // Галерея завантажує захищені фото в blob/object URL лише на час відкритого modal,
+    // щоб не тягнути бінарні дані для всіх актів одразу.
     const loadGalleryPhotos = async (): Promise<void> => {
       try {
         setGalleryLoading(true);
@@ -223,6 +227,8 @@ export function DamagesPage() {
     setError(null);
     setSuccessMessage(null);
 
+    // Після створення акту журнал навмисно повертається на першу сторінку,
+    // щоб користувач одразу бачив щойно доданий запис у верхній частині списку.
     try {
       await Api.addDamage({
         vehicleId: Number(form.vehicleId),

@@ -57,6 +57,8 @@ internal static class ProtectedDocumentStorage
         out string? fullPath,
         out string? normalizedPath)
     {
+        // Розв'язуємо лише наш внутрішній /protected/documents path і додатково
+        // перевіряємо, що результат не виводить нас за межі storage root.
         fullPath = null;
         normalizedPath = null;
         if (string.IsNullOrWhiteSpace(storedPath))
@@ -105,6 +107,8 @@ internal static class ProtectedDocumentStorage
         ClientDocumentPhotoType documentType,
         CancellationToken cancellationToken)
     {
+        // Завантаження документа проходить через жорстку перевірку розміру і типу,
+        // бо ці файли потім роздаються як захищені персональні дані клієнта.
         if (file is null || file.Length <= 0)
         {
             return StoreDocumentPhotoResult.FromFailure("Виберіть файл документа.");

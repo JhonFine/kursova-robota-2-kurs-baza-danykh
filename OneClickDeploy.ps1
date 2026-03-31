@@ -61,6 +61,7 @@ function Wait-TcpPortOpen {
 }
 
 function Stop-StaleHostWindows {
+    # Скрипт вбиває лише наші локальні host-вікна, щоб не зачепити довільні powershell-сесії користувача.
     $hostWindows = Get-CimInstance Win32_Process | Where-Object {
         $_.Name -eq 'powershell.exe' -and (
             $_.CommandLine -like '*CarRental.WebApi*' -or
@@ -81,6 +82,7 @@ function Stop-StaleHostWindows {
 function Stop-ProcessesByPort {
     param([Parameter(Mandatory = $true)][int[]]$Ports)
 
+    # При повторному запуску звільняємо API/frontend порти незалежно від того, який саме host їх зайняв.
     foreach ($port in $Ports) {
         $connections = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -eq $port }
         if (-not $connections) {
@@ -142,6 +144,7 @@ Stop-ProcessesByPort -Ports @($apiPort, $FrontendPort)
 
 Write-Host "[2/5] Ensuring PostgreSQL..."
 if (-not $SkipDocker) {
+    # One-click сценарій очікує локальний PostgreSQL у відомому контейнері, щоб desktop і web стартували на тих самих даних.
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
         throw "Docker command is not available in PATH."
     }

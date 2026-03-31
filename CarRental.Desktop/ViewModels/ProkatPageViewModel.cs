@@ -14,6 +14,8 @@ using System.Windows;
 
 namespace CarRental.Desktop.ViewModels;
 
+// Self-service каталог прокату тримає одночасно маркетингове представлення картки авто
+// і реальний вибір конкретного екземпляра під період бронювання.
 public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientStateOwner
 {
     private const string AvailableStatusKey = "Вільні";
@@ -46,6 +48,7 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
     private string _maxPriceInput = "3500";
     private double _minPriceValue = DefaultMinPrice;
     private double _maxPriceValue = DefaultMaxPrice;
+    // Картка агрегує модель, а checkout уже працює з конкретними машинами, доступними на вибраний період.
     private readonly List<ProkatCarCard> _allCards = [];
     private readonly Dictionary<int, IReadOnlyList<VehicleVariantRow>> _vehicleVariantsByCardId = [];
     private bool _isVehicleDetailsDialogOpen;
@@ -57,6 +60,7 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
     private string _cardExpiryInput = string.Empty;
     private string _cardCvvInput = string.Empty;
     private string _checkoutAttemptHint = string.Empty;
+    // Зміна дат чи локацій може прилетіти серією setter-ів, тому availability-refresh згортається в один прохід.
     private bool _periodAvailabilityRefreshPending;
     private bool _suppressFilterApply;
 

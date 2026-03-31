@@ -11,6 +11,8 @@ public sealed class AuthService(RentalDbContext dbContext) : IAuthService
     private const int MaxFailedAttempts = SecurityDefaults.MaxFailedAttempts;
     private static readonly TimeSpan LockoutDuration = TimeSpan.FromMinutes(SecurityDefaults.LockoutMinutes);
 
+    // Тут зібрано весь login-flow: валідація вводу, lockout, перевірка пароля,
+    // міграція legacy-хешів і оновлення audit-полів успішного входу.
     public async Task<AuthResult> AuthenticateAsync(string login, string password, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(login) || string.IsNullOrWhiteSpace(password))
@@ -43,6 +45,8 @@ public sealed class AuthService(RentalDbContext dbContext) : IAuthService
         if (!isValid)
         {
             var newLockoutTime = DateTime.UtcNow.Add(LockoutDuration);
+            // Лічильник невдалих спроб оновлюємо без завантаження сутності повторно,
+            // щоб lockout працював атомарно навіть під конкурентними спробами входу.
             await dbContext.Accounts
                 .Where(a => a.Id == account.Id)
                 .ExecuteUpdateAsync(updates =>
@@ -88,6 +92,8 @@ public sealed class AuthService(RentalDbContext dbContext) : IAuthService
         string password,
         CancellationToken cancellationToken = default)
     {
+        // Реєстрація створює окремі Account і Client, щоб авторизація і бізнес-профіль
+        // залишалися розділеними так само, як для staff-акаунтів.
         if (string.IsNullOrWhiteSpace(fullName))
         {
             return new RegistrationResult(false, "Вкажіть ПІБ.");
@@ -175,6 +181,8 @@ public sealed class AuthService(RentalDbContext dbContext) : IAuthService
 
     private static string? TryNormalizePhone(string? phone)
     {
+        // Телефон зводимо до єдиного "+digits" формату ще до перевірки унікальності,
+        // щоб різні варіанти запису одного номера не проходили як різні значення.
         if (string.IsNullOrWhiteSpace(phone))
         {
             return null;

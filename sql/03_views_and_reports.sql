@@ -1,5 +1,6 @@
 -- Views and analytical SQL queries for the redesigned schema
 
+-- View акумулює signed платежі, щоб борг/баланс можна було перевикористовувати у звітах без копіювання CASE-логіки.
 CREATE OR REPLACE VIEW vw_rental_balance AS
 SELECT
     r."Id" AS rental_id,

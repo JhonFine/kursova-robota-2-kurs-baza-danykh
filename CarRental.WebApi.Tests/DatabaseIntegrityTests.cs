@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CarRental.WebApi.Tests;
 
+// Набір доменних regression-тестів, який перевіряє, що runtime-сервіси не ламають ключові бізнес-інваріанти БД.
 public sealed class DatabaseIntegrityTests
 {
     [Fact]
@@ -53,6 +54,7 @@ public sealed class DatabaseIntegrityTests
         var service = new RentalService(dbContext, new StubContractNumberService("CR-2026-000099"));
         await service.RefreshStatusesAsync();
 
+        // Тест повторює те саме обчислення availability, яке очікує UI після refresh статусів.
         var hasActiveRental = await dbContext.Rentals
             .AsNoTracking()
             .AnyAsync(item => item.VehicleId == 1 && item.Status == RentalStatus.Active);

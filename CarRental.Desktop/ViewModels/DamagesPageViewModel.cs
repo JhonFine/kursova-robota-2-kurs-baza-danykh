@@ -9,6 +9,8 @@ using System.Globalization;
 
 namespace CarRental.Desktop.ViewModels;
 
+// Екран пошкоджень тримає зв'язок між авто, конкретною орендою і можливим автоматичним донарахуванням,
+// тому вибір vehicle/rental синхронізується обережно, без зайвих повторних запитів.
 public sealed class DamagesPageViewModel : PageDataViewModelBase, ITransientStateOwner
 {
     private static readonly RentalOption SelectVehiclePromptRental = new(null, "Спершу оберіть авто");
@@ -27,6 +29,7 @@ public sealed class DamagesPageViewModel : PageDataViewModelBase, ITransientStat
     private bool _autoChargeToRental;
     private string _statusMessage = string.Empty;
     private int _guideRequestId;
+    // Версія запиту відсікає застарілі відповіді, якщо користувач швидко перемикає автомобілі.
     private int _rentalLoadVersion;
 
     public DamagesPageViewModel(

@@ -237,6 +237,8 @@ export function ProkatBookingsPage() {
   const loadBookings = useCallback(async (): Promise<void> => {
     const requestId = ++requestIdRef.current;
 
+    // Профіль і список бронювань підтягуються разом, бо обмеження self-service
+    // залежать від того, чи належить оренда саме поточному клієнту.
     try {
       setLoading(true);
       setError(null);
@@ -269,6 +271,8 @@ export function ProkatBookingsPage() {
     void loadBookings();
   }, [loadBookings]);
 
+  // Сторінка навмисно розділяє майбутні, активні й історичні оренди,
+  // щоб не змішувати сценарії дії з архівом і фінальними підсумками.
   const upcomingRentals = useMemo(() => (
     [...myRentals]
       .filter((rental) => rental.status === 'Booked')
@@ -287,6 +291,8 @@ export function ProkatBookingsPage() {
       .sort(compareDescByHistoryMoment)
   ), [myRentals]);
 
+  // Помилки перенесення вираховуються окремо для старту і кінця,
+  // щоб у модалці можна було адресно підсвітити, що саме блокує reschedule.
   const rescheduleStartError = useMemo(() => {
     if (!rescheduleTarget) {
       return null;

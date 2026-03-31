@@ -1,5 +1,7 @@
 namespace CarRental.Shared.ReferenceData;
 
+// Канонічний seed-каталог моделей:
+// тут зберігається маркетинговий опис і legacy-атрибути, з яких далі синхронізуються desktop/web каталоги.
 internal static class VehicleCatalogReferenceData
 {
     public static IReadOnlyList<VehicleCatalogRecord> All { get; } =

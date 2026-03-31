@@ -7,6 +7,8 @@ using Npgsql;
 
 namespace CarRental.Desktop.Services.Rentals;
 
+// Центральний доменний сервіс оренд:
+// тут зібрані правила конфлікту дат, створення договору, повернення, скасування, перенесення і інспекцій.
 public sealed class RentalService(
     RentalDbContext dbContext,
     IContractNumberService contractNumberService) : IRentalService
@@ -22,6 +24,8 @@ public sealed class RentalService(
         int? excludeRentalId = null,
         CancellationToken cancellationToken = default)
     {
+        // Усі перевірки конфліктів працюють уже з business-normalized timestamp,
+        // щоб UI не міг обійти правила різницею в часовій складовій.
         var normalizedStart = NormalizeBusinessTimestamp(startDate);
         var normalizedEnd = NormalizeBusinessTimestamp(endDate);
 
@@ -64,6 +68,7 @@ public sealed class RentalService(
         CloseRentalRequest request,
         CancellationToken cancellationToken = default)
     {
+        // Закриття договору перераховує фінал оренди з фактичної дати повернення та вже зафіксованих damage charge-ів.
         var rental = await dbContext.Rentals
             .Include(item => item.Vehicle)
             .Include(item => item.Damages)
@@ -135,6 +140,7 @@ public sealed class RentalService(
         CancelRentalRequest request,
         CancellationToken cancellationToken = default)
     {
+        // Для бронювання до видачі відкатуємо переплату системним refund-платежем, щоб баланс договору лишався прозорим.
         var rental = await dbContext.Rentals
             .Include(item => item.Vehicle)
             .Include(item => item.Payments)
@@ -200,6 +206,7 @@ public sealed class RentalService(
         RescheduleRentalRequest request,
         CancellationToken cancellationToken = default)
     {
+        // Перенесення дозволене лише для booked-оренди: активний чи вже закритий договір не можна "переписувати" заднім числом.
         var now = NormalizeBusinessTimestamp(DateTime.UtcNow);
         var normalizedStart = NormalizeBusinessTimestamp(request.StartDate);
         var normalizedEnd = NormalizeBusinessTimestamp(request.EndDate);

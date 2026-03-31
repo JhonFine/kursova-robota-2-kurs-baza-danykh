@@ -11,6 +11,8 @@ using System.IO;
 
 namespace CarRental.Desktop.ViewModels;
 
+// Staff-екран автопарку поєднує каталог, пошук, фільтри та сторінку деталей,
+// тому тут зібрано багато derived state, який не варто дублювати у view.
 public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateOwner
 {
     private const string AppDataRootDirectoryName = "CarRentalSystem";
@@ -30,6 +32,7 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
     private const string SearchByServiceIntervalKey = "serviceInterval";
     private const int PageSize = 40;
 
+    // Дозволяємо тільки ті розширення, які далі коректно відобразяться у WPF і не зламають імпорт фото.
     private static readonly HashSet<string> SupportedPhotoExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".jpg",
@@ -58,6 +61,7 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
     private int _guideRequestId;
     private int _currentPage = 1;
     private int _totalVehicles;
+    // Під час відновлення query-стану не можна тригерити ще один fetch на кожну зміну окремого фільтра.
     private bool _suppressQueryRefresh;
 
     public FleetPageViewModel(

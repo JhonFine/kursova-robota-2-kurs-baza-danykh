@@ -1,3 +1,5 @@
+// Утиліти цього файлу тримають URL-state "чистим": некоректні параметри
+// зводяться до fallback-значень, а порожні ключі не роздувають query string.
 export function parsePositiveIntParam(value: string | null, fallback: number): number {
   const parsed = Number.parseInt(value ?? '', 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -51,6 +53,8 @@ export function withUpdatedSearchParams(
   const next = new URLSearchParams(current);
 
   Object.entries(updates).forEach(([key, value]) => {
+    // Видаляємо "порожні" фільтри з URL замість запису значень на кшталт "" або null,
+    // щоб посилання залишалося стабільним і придатним для повторного відкриття.
     if (value === null || value === undefined || value === '') {
       next.delete(key);
       return;

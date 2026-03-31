@@ -20,6 +20,8 @@ public sealed class AuthController(
     [ProducesResponseType<AuthTokenResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status423Locked)]
+    // Login endpoint свідомо приховує деталі помилки, окрім окремого locked-case,
+    // щоб не підказувати зловмиснику, чи існує конкретний обліковий запис.
     public async Task<IActionResult> Login([FromBody] LoginRequest request, CancellationToken cancellationToken)
     {
         var result = await authService.AuthenticateAsync(request.Login, request.Password, cancellationToken);
@@ -49,6 +51,8 @@ public sealed class AuthController(
     [HttpPost("register")]
     [ProducesResponseType<AuthTokenResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    // Після login/register frontend завжди отримує однаковий token payload з повним
+    // account context, щоб не робити додатковий bootstrap-запит перед стартом shell.
     public async Task<IActionResult> Register([FromBody] RegisterRequest request, CancellationToken cancellationToken)
     {
         var result = await authService.RegisterAsync(
@@ -77,6 +81,8 @@ public sealed class AuthController(
     [HttpGet("me")]
     [ProducesResponseType<AccountContextDto>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    // /me є канонічним способом "перевидати" себе на frontend після refresh токена,
+    // зміни ролі або bootstrap старту застосунку.
     public async Task<IActionResult> Me(
         [FromServices] RentalDbContext dbContext,
         CancellationToken cancellationToken)

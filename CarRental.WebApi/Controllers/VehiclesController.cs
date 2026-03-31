@@ -17,6 +17,8 @@ public sealed class VehiclesController(RentalDbContext dbContext) : ApiControlle
     [Authorize(Policy = ApiAuthorization.ManageRentals)]
     [HttpGet]
     [ProducesResponseType<IReadOnlyList<VehicleDto>>(StatusCodes.Status200OK)]
+    // Доступність авто складається з двох джерел істини: поточного статусу машини
+    // і факту активної оренди, тому обидва критерії враховуємо прямо у вибірці.
     public async Task<ActionResult<IReadOnlyList<VehicleDto>>> GetAll(
         [FromQuery] string? search,
         [FromQuery] bool? availability,
@@ -102,6 +104,8 @@ public sealed class VehiclesController(RentalDbContext dbContext) : ApiControlle
     [HttpGet("{id:int}/photo")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    // Фото авто роздається окремим публічним endpoint, але шлях до файлу
+    // все одно проходить через safe resolver, а не довіряється значенню з БД напряму.
     public async Task<IActionResult> GetPhoto(int id, CancellationToken cancellationToken)
     {
         var photoPath = await dbContext.VehiclePhotos
@@ -132,6 +136,8 @@ public sealed class VehiclesController(RentalDbContext dbContext) : ApiControlle
     [ProducesResponseType<VehicleDto>(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
+    // Create і Update використовують один і той самий validation flow,
+    // щоб правила номерних знаків, довідників і фото не розходилися між сценаріями.
     public async Task<IActionResult> Create([FromBody] VehicleUpsertRequest request, CancellationToken cancellationToken)
     {
         var validation = await ValidateVehicleRequestAsync(request, null, cancellationToken);

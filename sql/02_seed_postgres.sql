@@ -1,5 +1,6 @@
 -- Minimal seed data for the redesigned schema
 
+-- Спочатку сідаємо довідники й lookup-и, щоб всі наступні INSERT-и працювали по тих самих кодах, що й застосунок.
 INSERT INTO "EmployeeRoles" ("Id", "DisplayName")
 VALUES
     (1, 'Admin'),
@@ -91,6 +92,7 @@ VALUES
     ('client_demo', 'PBKDF2$120000$demo$demo', TRUE, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 ON CONFLICT ("Login") DO NOTHING;
 
+-- Базові demo-акаунти і клієнти дають мінімальний робочий контур для ручної перевірки системи після розгортання.
 INSERT INTO "Employees" ("AccountId", "FullName", "Role", "CreatedAtUtc", "UpdatedAtUtc")
 SELECT a."Id", v.full_name, v.role_id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 FROM (
@@ -162,6 +164,7 @@ VALUES
     ('Renault', 'Trafic', 1.60, 'L', 'DIESEL', 'MANUAL', 'MAINTENANCE', 4, 9.00, 'SEATS', 7.70, 'L_PER_100KM', TRUE, 'BH1865AX', 36400, 1300.00, FALSE, 12000, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 ON CONFLICT ("LicensePlate") WHERE "IsDeleted" = FALSE DO NOTHING;
 
+-- Далі додаємо мінімальний набір пов'язаних operational записів, щоб звіти й баланси не були порожніми.
 INSERT INTO "VehiclePhotos" ("VehicleId", "StoredPath", "SortOrder", "IsPrimary", "CreatedAtUtc")
 SELECT v."Id", concat('/protected/vehicles/', lower(replace(v."LicensePlate", ' ', '')), '.jpg'), 0, TRUE, CURRENT_TIMESTAMP
 FROM "Vehicles" v

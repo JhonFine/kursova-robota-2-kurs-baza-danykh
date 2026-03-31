@@ -9,6 +9,8 @@ using System.Globalization;
 
 namespace CarRental.Desktop.ViewModels;
 
+// Self-service історія договорів для клієнта:
+// відображає бронювання за статусами та дає безпечні callbacks у каталог і сценарій повторного бронювання.
 public sealed class UserRentalsPageViewModel : PageDataViewModelBase, ITransientStateOwner
 {
     private const string SelfServiceCancelReason = DemoSeedReferenceData.SelfServiceCancelReasonDesktop;
@@ -64,6 +66,7 @@ public sealed class UserRentalsPageViewModel : PageDataViewModelBase, ITransient
 
     public Func<int, Task>? RebookRequestedAsync { get; set; }
 
+    // ViewModel не знає про конкретну навігацію shell, тому просить зовнішній обробник відкрити каталог.
     public Func<Task>? OpenCatalogRequestedAsync { get; set; }
 
     public bool IsLoading
@@ -150,6 +153,7 @@ public sealed class UserRentalsPageViewModel : PageDataViewModelBase, ITransient
             return;
         }
 
+        // Профіль клієнта може бути створений ліниво під staff/account модель, тому сторінка сама self-heal-ить цей зв'язок.
         IsLoading = true;
         try
         {

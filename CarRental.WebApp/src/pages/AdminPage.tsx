@@ -61,6 +61,8 @@ export function AdminPage() {
     () => filteredEmployees.find((item) => item.id === selectedId) ?? employees.find((item) => item.id === selectedId) ?? null,
     [filteredEmployees, employees, selectedId],
   );
+  // Вибір працівника не губиться навіть після фільтрації:
+  // якщо рядок тимчасово зник з filteredEmployees, беремо його з повного списку.
   const isSelfSelected = selectedEmployee?.id === user?.employeeId;
   const canMutate = true;
 
@@ -84,6 +86,8 @@ export function AdminPage() {
   }, [filterQuery]);
 
   const load = useCallback(async (): Promise<void> => {
+    // Панель адміністратора працює від повного списку працівників без пагінації,
+    // бо тут важливі швидкі безпекові дії над конкретним акаунтом.
     try {
       setLoading(true);
       setError(null);
@@ -125,6 +129,8 @@ export function AdminPage() {
     action: () => Promise<void>,
     tone: 'default' | 'danger' = 'default',
   ): void => {
+    // Усі ризикові зміни доступів зводимо до однієї confirm-модалки,
+    // щоб не дублювати діалогові шаблони для кожної окремої дії.
     setPendingAction({
       title,
       description,

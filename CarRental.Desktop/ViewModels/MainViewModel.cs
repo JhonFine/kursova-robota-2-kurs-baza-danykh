@@ -5,6 +5,8 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace CarRental.Desktop.ViewModels;
 
+// Центральний shell desktop-клієнта: тримає активну сторінку, синхронізує навігацію з роллю
+// та делегує refresh тільки тій області, яку користувач реально відкрив.
 public sealed class MainViewModel : ViewModelBase
 {
     private readonly IAuthorizationService _authorizationService;
@@ -60,6 +62,7 @@ public sealed class MainViewModel : ViewModelBase
         ChangeSelfRoleCommand = new RelayCommand<string?>(_ => { });
         LogoutCommand = new RelayCommand(RequestLogout);
 
+        // Координатор refresh знає про залежності між сторінками, тому реєстрація виконується один раз у shell.
         _refreshCoordinator.Register(PageRefreshArea.Fleet, FleetPage);
         _refreshCoordinator.Register(PageRefreshArea.Clients, ClientsPage);
         _refreshCoordinator.Register(PageRefreshArea.Rentals, RentalsPage);
@@ -70,6 +73,7 @@ public sealed class MainViewModel : ViewModelBase
         _refreshCoordinator.Register(PageRefreshArea.Damages, DamagesPage);
         _refreshCoordinator.Register(PageRefreshArea.Admin, AdminPage);
 
+        // Користувач self-service потрапляє одразу в каталог, staff бачить операційний інтерфейс автопарку.
         if (IsUser)
         {
             ActivateProkatPage();

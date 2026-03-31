@@ -56,6 +56,8 @@ function normalizeAlphaNumeric(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '');
 }
 
+// Для каталогу групуємо автомобілі за моделлю, а не за окремим екземпляром,
+// щоб клієнт бачив одну картку "Toyota Corolla" замість десятків однакових записів.
 function buildCatalogGroupKey(vehicle: Vehicle): string {
   return `${normalizeAlphaNumeric(vehicle.make)}|${normalizeAlphaNumeric(vehicle.model)}`;
 }
@@ -71,6 +73,9 @@ function pickRepresentativeVehicle(
   vehicles: Vehicle[],
   availabilityByVehicleId: Map<number, AvailabilityInfo>,
 ): Vehicle {
+  // Репрезентативний екземпляр потрібен лише для картки каталогу:
+  // спочатку показуємо доступні авто, а всередині них віддаємо перевагу
+  // найсвіжішому за пробігом і з нижчою ставкою.
   return [...vehicles].sort((left, right) => {
     const leftAvailable = isVehicleAvailable(left.id, availabilityByVehicleId) ? 1 : 0;
     const rightAvailable = isVehicleAvailable(right.id, availabilityByVehicleId) ? 1 : 0;
@@ -153,6 +158,8 @@ export function localImage(vehicle: Vehicle): string | null {
     return null;
   }
 
+  // Підтримуємо три джерела фото: зовнішній URL/data URI, статичні assets API
+  // і захищений vehicle-photo endpoint для випадків, коли зберігається лише факт наявності фото.
   if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:')) {
     return path;
   }
@@ -172,6 +179,8 @@ export function parseDateTime(date: string, time: string): Date {
   return new Date(`${date}T${time}:00`);
 }
 
+// Список часових слотів будується відносно обраної дати, щоб заборонити
+// бронювання "в минулому" лише для поточного дня, а не для всього календаря.
 export function getAvailableTimeOptionsForDate(date: string, minimumDateTime: Date = new Date()): string[] {
   return timeOptions.filter((time) => parseDateTime(date, time) >= minimumDateTime);
 }
@@ -189,6 +198,8 @@ function roundMoney(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
+// Self-service показує попередню суму пропорційно годинам, навіть якщо остаточний
+// бекенд-розрахунок може скоригувати її після закриття оренди чи донарахувань.
 export function estimateRentalAmount(dailyRate: number, requestStart: Date, requestEnd: Date): number {
   const rentalHours = (requestEnd.getTime() - requestStart.getTime()) / 3_600_000;
   if (!Number.isFinite(rentalHours) || rentalHours <= 0) {
@@ -358,6 +369,8 @@ export function getClientProfileCompletionIssues(
     return [];
   }
 
+  // Це не серверна валідація, а checklist для self-service сценарію бронювання:
+  // підказуємо, чого бракує, ще до спроби оформлення оренди.
   const issues: string[] = [];
 
   if (!profile.fullName.trim()) {
@@ -400,6 +413,8 @@ export function getClientProfileCompletionMessage(
   return issues.length > 0 ? `Щоб завершити профіль, ${issues.join(', ')}.` : null;
 }
 
+// Luhn тут використовується лише як м'яке UX-попередження для маски картки.
+// Реальне списання не виконується, але помітні друкарські помилки відсіюємо завчасно.
 export function passesLuhnCheck(digits: string): boolean {
   let sum = 0;
   let alternate = false;
@@ -477,6 +492,8 @@ export function buildAvailabilityMap(
   const requestWindowValid = requestEnd > requestStart;
   const requestStartInPast = requestStart < new Date();
 
+  // Будуємо пояснюваний статус для кожного авто: не просто available/busy,
+  // а з конкретною причиною, яку потім показуємо в каталозі і картці екземпляра.
   vehicles.forEach((vehicle) => {
     if (!requestWindowValid || requestStartInPast) {
       map.set(vehicle.id, {
@@ -524,6 +541,8 @@ export function pickVehicleId(
   availabilityByVehicleId: Map<number, AvailabilityInfo>,
   preferredVehicleId: number | null,
 ): number | null {
+  // Якщо користувач уже обрав екземпляр, намагаємося не скидати його вибір
+  // при перезавантаженні каталогу, навіть коли список доступності оновився.
   if (preferredVehicleId && vehicles.some((vehicle) => vehicle.id === preferredVehicleId)) {
     return preferredVehicleId;
   }

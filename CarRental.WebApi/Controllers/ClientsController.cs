@@ -17,6 +17,8 @@ public sealed class ClientsController(RentalDbContext dbContext) : ApiController
 {
     [HttpGet]
     [ProducesResponseType<IReadOnlyList<ClientDto>>(StatusCodes.Status200OK)]
+    // Пошук по клієнтах охоплює і базові поля профілю, і номери документів,
+    // тому server-side pagination завжди рахується вже по відфільтрованій множині.
     public async Task<ActionResult<IReadOnlyList<ClientDto>>> GetAll(
         [FromQuery] string? search,
         [FromQuery] bool? blacklisted,
@@ -78,6 +80,8 @@ public sealed class ClientsController(RentalDbContext dbContext) : ApiController
     [ProducesResponseType<ClientDto>(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
+    // Create і Update працюють через одну нормалізацію документів та телефону,
+    // щоб CRM-режим і self-service профіль не роз'їжджалися по правилах збереження.
     public async Task<IActionResult> Create([FromBody] ClientUpsertRequest request, CancellationToken cancellationToken)
     {
         var validation = await ValidateClientRequestAsync(

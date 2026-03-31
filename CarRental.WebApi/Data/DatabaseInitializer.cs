@@ -39,6 +39,8 @@ public static class DatabaseInitializer
     private static readonly IReadOnlySet<int> ChargedDamageIndices = DemoSeedReferenceData.ChargedDamageIndices;
     private static readonly IReadOnlyList<PlateLocation> WeightedPlateLocations = BuildPlateLocations();
 
+    // Seed іде фазами: staff-акаунти, довідники, клієнти, каталог авто,
+    // а історичні оренди/платежі генеруються лише для порожньої operational частини.
     public static SeedCredentials? Seed(RentalDbContext dbContext)
     {
         var seededCredentials = EnsureEmployees(dbContext);
@@ -61,6 +63,8 @@ public static class DatabaseInitializer
         return seededCredentials;
     }
 
+    // Працівників створюємо один раз на "чистій" базі, бо їх логіни і ролі
+    // використовуються як стартова точка для всього staff-режиму.
     private static SeedCredentials? EnsureEmployees(RentalDbContext dbContext)
     {
         if (dbContext.Employees.Any())
@@ -115,6 +119,8 @@ public static class DatabaseInitializer
             managerPassword.IsGenerated);
     }
 
+    // Демо-клієнти генеруються детерміновано, щоб телефон, паспорт і водійське
+    // залишалися стабільними між factory reset та тестовими сценаріями.
     private static void EnsureClients(RentalDbContext dbContext)
     {
         var existingDriverLicenses = dbContext.ClientDocuments
@@ -251,6 +257,8 @@ public static class DatabaseInitializer
         }
     }
 
+    // Каталог авто синхронізується акуратно: якщо в системі вже є орендна історія,
+    // не можна бездумно перегенерувати номерні знаки чи набір машин.
     private static void EnsureVehicleCatalogSync(RentalDbContext dbContext)
     {
         var hasRentalHistory = dbContext.Rentals.Any();
@@ -320,6 +328,8 @@ public static class DatabaseInitializer
         EnsureCatalogPhotoPaths(vehicles);
     }
 
+    // Операційну історію домальовуємо лише на повністю "порожню" бізнес-частину,
+    // щоб не домішувати demo-оренди до вже існуючих реальних даних.
     private static void SeedOperationalHistory(RentalDbContext dbContext)
     {
         var random = new Random(SeedRandomValue);
@@ -932,6 +942,8 @@ public static class DatabaseInitializer
         }
     }
 
+    // Послідовності договорів відновлюємо в кінці, коли вже відома фактична
+    // максимальна нумерація після seed-оренд і каталогу.
     private static void EnsureContractSequences(RentalDbContext dbContext)
     {
         var rentalsByYear = dbContext.Rentals
