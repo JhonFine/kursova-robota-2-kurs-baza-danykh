@@ -1,4 +1,5 @@
-﻿<UserControl x:Class="CarRental.Desktop.Views.Pages.FleetPage"
+﻿<?xml version="1.0" encoding="utf-8"?>
+<UserControl x:Class="CarRental.Desktop.Views.Pages.FleetPage"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <UserControl.Resources>
@@ -174,8 +175,11 @@
                           ItemsSource="{Binding Vehicles}"
                           SelectedItem="{Binding SelectedVehicle}"
                           AutoGenerateColumns="False"
-                          IsReadOnly="True"
-                          MouseDoubleClick="VehiclesGrid_OnMouseDoubleClick">
+                          IsReadOnly="True">
+                    <DataGrid.InputBindings>
+                        <MouseBinding MouseAction="LeftDoubleClick"
+                                      Command="{Binding OpenVehicleDetailsCommand}" />
+                    </DataGrid.InputBindings>
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="60" />
                         <DataGridTextColumn Header="Авто" Binding="{Binding Car}" Width="220" />

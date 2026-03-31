@@ -2,6 +2,9 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:models="clr-namespace:CarRental.Desktop.Models">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+    </UserControl.Resources>
     <Grid x:Name="RentalsRoot" Margin="8">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -59,8 +62,8 @@
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="2*" />
                                     <ColumnDefinition Width="2*" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="1.4*" />
+                                    <ColumnDefinition Width="1.4*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
 
@@ -91,13 +94,45 @@
                                 </StackPanel>
 
                                 <StackPanel Grid.Column="2" Margin="0,0,10,0">
-                                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Дата початку" />
-                                    <DatePicker SelectedDate="{Binding StartDate}" />
+                                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Початок" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="90" />
+                                        </Grid.ColumnDefinitions>
+                                        <DatePicker DisplayDateStart="{Binding MinCreateStartDate, Mode=OneWay}"
+                                                    SelectedDate="{Binding StartDate}" />
+                                        <ComboBox Grid.Column="1"
+                                                  Margin="8,0,0,0"
+                                                  ItemsSource="{Binding TimeOptions}"
+                                                  SelectedItem="{Binding StartTime}" />
+                                    </Grid>
+                                    <TextBlock Margin="0,4,0,0"
+                                               Foreground="{StaticResource DangerBrush}"
+                                               Text="{Binding CreateStartDateValidationMessage}"
+                                               TextWrapping="Wrap"
+                                               Visibility="{Binding HasCreateStartDateValidationMessage, Converter={StaticResource BoolToVisibilityConverter}}" />
                                 </StackPanel>
 
                                 <StackPanel Grid.Column="3" Margin="0,0,10,0">
-                                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Дата завершення" />
-                                    <DatePicker SelectedDate="{Binding EndDate}" />
+                                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Повернення" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="90" />
+                                        </Grid.ColumnDefinitions>
+                                        <DatePicker DisplayDateStart="{Binding MinCreateEndDate, Mode=OneWay}"
+                                                    SelectedDate="{Binding EndDate}" />
+                                        <ComboBox Grid.Column="1"
+                                                  Margin="8,0,0,0"
+                                                  ItemsSource="{Binding TimeOptions}"
+                                                  SelectedItem="{Binding EndTime}" />
+                                    </Grid>
+                                    <TextBlock Margin="0,4,0,0"
+                                               Foreground="{StaticResource DangerBrush}"
+                                               Text="{Binding CreateEndDateValidationMessage}"
+                                               TextWrapping="Wrap"
+                                               Visibility="{Binding HasCreateEndDateValidationMessage, Converter={StaticResource BoolToVisibilityConverter}}" />
                                 </StackPanel>
 
                                 <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Bottom">
@@ -134,8 +169,8 @@
                                     <DataGridTextColumn Header="Договір" Binding="{Binding ContractNumber}" Width="120" />
                                     <DataGridTextColumn Header="Клієнт" Binding="{Binding ClientName}" Width="180" />
                                     <DataGridTextColumn Header="Авто" Binding="{Binding VehicleName}" Width="170" />
-                                    <DataGridTextColumn Header="Початок" Binding="{Binding StartDate, StringFormat=dd.MM.yyyy}" Width="108" />
-                                    <DataGridTextColumn Header="Кінець" Binding="{Binding EndDate, StringFormat=dd.MM.yyyy}" Width="108" />
+                                    <DataGridTextColumn Header="Початок" Binding="{Binding StartDate, StringFormat=dd.MM.yyyy HH:mm}" Width="132" />
+                                    <DataGridTextColumn Header="Кінець" Binding="{Binding EndDate, StringFormat=dd.MM.yyyy HH:mm}" Width="132" />
                                     <DataGridTextColumn Header="Сума" Binding="{Binding TotalAmount, StringFormat={}{0:C}}" Width="110" />
                                     <DataGridTextColumn Header="Сплачено" Binding="{Binding PaidAmount, StringFormat={}{0:C}}" Width="110" />
                                     <DataGridTextColumn Header="Залишок" Binding="{Binding Balance, StringFormat={}{0:C}}" Width="110" />
@@ -272,8 +307,8 @@
                                     <DataGridTextColumn Header="Договір" Binding="{Binding ContractNumber}" Width="120" />
                                     <DataGridTextColumn Header="Клієнт" Binding="{Binding ClientName}" Width="180" />
                                     <DataGridTextColumn Header="Авто" Binding="{Binding VehicleName}" Width="160" />
-                                    <DataGridTextColumn Header="Початок" Binding="{Binding StartDate, StringFormat=dd.MM.yyyy}" Width="100" />
-                                    <DataGridTextColumn Header="Кінець" Binding="{Binding EndDate, StringFormat=dd.MM.yyyy}" Width="100" />
+                                    <DataGridTextColumn Header="Початок" Binding="{Binding StartDate, StringFormat=dd.MM.yyyy HH:mm}" Width="124" />
+                                    <DataGridTextColumn Header="Кінець" Binding="{Binding EndDate, StringFormat=dd.MM.yyyy HH:mm}" Width="124" />
                                     <DataGridTextColumn Header="Залишок" Binding="{Binding Balance, StringFormat={}{0:C}}" Width="100" />
                                     <DataGridTemplateColumn Header="Статус" Width="128">
                                         <DataGridTemplateColumn.CellTemplate>

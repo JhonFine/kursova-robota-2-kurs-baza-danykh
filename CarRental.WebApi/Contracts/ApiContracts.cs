@@ -1,4 +1,6 @@
 using System.ComponentModel.DataAnnotations;
+using CarRental.Shared.ReferenceData;
+using CarRental.WebApi.Infrastructure;
 using CarRental.WebApi.Models;
 
 namespace CarRental.WebApi.Contracts;
@@ -42,73 +44,263 @@ public sealed class ChangeOwnRoleRequest
     public UserRole Role { get; set; } = UserRole.User;
 }
 
+public sealed record AccountDto(
+    int Id,
+    string Login,
+    bool IsActive,
+    DateTime? LastLoginUtc,
+    DateTime? LockoutUntilUtc,
+    DateTime CreatedAtUtc,
+    DateTime UpdatedAtUtc);
+
 public sealed record EmployeeDto(
     int Id,
     string FullName,
-    string Login,
     UserRole Role,
-    bool IsActive,
-    DateTime? LastLoginUtc,
-    DateTime? LockoutUntilUtc);
+    AccountDto Account,
+    DateTime CreatedAtUtc,
+    DateTime UpdatedAtUtc)
+{
+    public string Login => Account.Login;
+
+    public bool IsActive => Account.IsActive;
+
+    public DateTime? LastLoginUtc => Account.LastLoginUtc;
+
+    public DateTime? LockoutUntilUtc => Account.LockoutUntilUtc;
+}
+
+public sealed record ClientDocumentDto(
+    int Id,
+    string DocumentTypeCode,
+    string DocumentNumber,
+    DateTime? ExpirationDate,
+    string? StoredPath);
+
+public sealed class ClientDocumentUpsertRequest
+{
+    [Required, MaxLength(30)]
+    public string DocumentTypeCode { get; set; } = string.Empty;
+
+    [Required, MaxLength(120)]
+    public string DocumentNumber { get; set; } = string.Empty;
+
+    public DateTime? ExpirationDate { get; set; }
+
+    [MaxLength(500)]
+    public string? StoredPath { get; set; }
+}
+
+public sealed record ClientSummaryDto(
+    int Id,
+    string FullName,
+    string Phone);
+
+public sealed record AccountContextDto(
+    AccountDto Account,
+    UserRole Role,
+    EmployeeDto? Employee,
+    ClientSummaryDto? Client);
 
 public sealed record AuthTokenResponse(
     string AccessToken,
     DateTime ExpiresAtUtc,
-    EmployeeDto Employee);
+    AccountContextDto User,
+    EmployeeDto? Employee = null);
 
 public sealed class ClientUpsertRequest
 {
     [Required, MaxLength(120)]
     public string FullName { get; set; } = string.Empty;
 
-    [Required, MaxLength(120)]
-    public string PassportData { get; set; } = string.Empty;
-
-    [Required, MaxLength(80)]
-    public string DriverLicense { get; set; } = string.Empty;
-
     [Required, MaxLength(40)]
     public string Phone { get; set; } = string.Empty;
 
-    public bool Blacklisted { get; set; }
+    public bool IsBlacklisted { get; set; }
+
+    [MaxLength(400)]
+    public string? BlacklistReason { get; set; }
+
+    public List<ClientDocumentUpsertRequest> Documents { get; set; } = new();
+
+    [MaxLength(120)]
+    public string PassportData { get; set; } = string.Empty;
+
+    public DateTime? PassportExpirationDate { get; set; }
+
+    [MaxLength(500)]
+    public string? PassportPhotoPath { get; set; }
+
+    [MaxLength(80)]
+    public string DriverLicense { get; set; } = string.Empty;
+
+    public DateTime? DriverLicenseExpirationDate { get; set; }
+
+    [MaxLength(500)]
+    public string? DriverLicensePhotoPath { get; set; }
+
+    public bool Blacklisted
+    {
+        get => IsBlacklisted;
+        set => IsBlacklisted = value;
+    }
+
+    public IReadOnlyList<ClientDocumentUpsertRequest> ResolveDocuments()
+    {
+        if (Documents.Count > 0)
+        {
+            return Documents;
+        }
+
+        var documents = new List<ClientDocumentUpsertRequest>();
+        if (!string.IsNullOrWhiteSpace(PassportData) || PassportExpirationDate.HasValue || !string.IsNullOrWhiteSpace(PassportPhotoPath))
+        {
+            documents.Add(new ClientDocumentUpsertRequest
+            {
+                DocumentTypeCode = ClientDocumentTypes.Passport,
+                DocumentNumber = PassportData,
+                ExpirationDate = PassportExpirationDate?.Date,
+                StoredPath = PassportPhotoPath
+            });
+        }
+
+        if (!string.IsNullOrWhiteSpace(DriverLicense) || DriverLicenseExpirationDate.HasValue || !string.IsNullOrWhiteSpace(DriverLicensePhotoPath))
+        {
+            documents.Add(new ClientDocumentUpsertRequest
+            {
+                DocumentTypeCode = ClientDocumentTypes.DriverLicense,
+                DocumentNumber = DriverLicense,
+                ExpirationDate = DriverLicenseExpirationDate?.Date,
+                StoredPath = DriverLicensePhotoPath
+            });
+        }
+
+        return documents;
+    }
 }
 
 public sealed class SetBlacklistRequest
 {
-    public bool Blacklisted { get; set; }
+    public bool IsBlacklisted { get; set; }
+
+    [MaxLength(400)]
+    public string? BlacklistReason { get; set; }
+
+    public bool Blacklisted
+    {
+        get => IsBlacklisted;
+        set => IsBlacklisted = value;
+    }
 }
 
 public sealed record ClientDto(
     int Id,
     string FullName,
-    string PassportData,
-    string DriverLicense,
     string Phone,
-    bool Blacklisted);
+    bool IsBlacklisted,
+    string? BlacklistReason,
+    DateTime? BlacklistedAtUtc,
+    int? AccountId,
+    IReadOnlyList<ClientDocumentDto> Documents)
+{
+    public string PassportData => Documents.FirstOrDefault(item => item.DocumentTypeCode == ClientDocumentTypes.Passport)?.DocumentNumber ?? string.Empty;
+
+    public DateTime? PassportExpirationDate => Documents.FirstOrDefault(item => item.DocumentTypeCode == ClientDocumentTypes.Passport)?.ExpirationDate;
+
+    public string? PassportPhotoPath => Documents.FirstOrDefault(item => item.DocumentTypeCode == ClientDocumentTypes.Passport)?.StoredPath;
+
+    public string DriverLicense => Documents.FirstOrDefault(item => item.DocumentTypeCode == ClientDocumentTypes.DriverLicense)?.DocumentNumber ?? string.Empty;
+
+    public DateTime? DriverLicenseExpirationDate => Documents.FirstOrDefault(item => item.DocumentTypeCode == ClientDocumentTypes.DriverLicense)?.ExpirationDate;
+
+    public string? DriverLicensePhotoPath => Documents.FirstOrDefault(item => item.DocumentTypeCode == ClientDocumentTypes.DriverLicense)?.StoredPath;
+
+    public bool Blacklisted => IsBlacklisted;
+}
 
 public sealed class UpdateClientProfileRequest
 {
     [Required, MaxLength(120)]
     public string FullName { get; set; } = string.Empty;
 
-    [Required, MaxLength(120)]
-    public string PassportData { get; set; } = string.Empty;
-
-    [Required, MaxLength(80)]
-    public string DriverLicense { get; set; } = string.Empty;
-
     [Required, MaxLength(40)]
     public string Phone { get; set; } = string.Empty;
+
+    public List<ClientDocumentUpsertRequest> Documents { get; set; } = new();
+
+    [MaxLength(120)]
+    public string PassportData { get; set; } = string.Empty;
+
+    public DateTime? PassportExpirationDate { get; set; }
+
+    [MaxLength(500)]
+    public string? PassportPhotoPath { get; set; }
+
+    [MaxLength(80)]
+    public string DriverLicense { get; set; } = string.Empty;
+
+    public DateTime? DriverLicenseExpirationDate { get; set; }
+
+    [MaxLength(500)]
+    public string? DriverLicensePhotoPath { get; set; }
+
+    public IReadOnlyList<ClientDocumentUpsertRequest> ResolveDocuments()
+        => new ClientUpsertRequest
+        {
+            FullName = FullName,
+            Phone = Phone,
+            Documents = Documents,
+            PassportData = PassportData,
+            PassportExpirationDate = PassportExpirationDate,
+            PassportPhotoPath = PassportPhotoPath,
+            DriverLicense = DriverLicense,
+            DriverLicenseExpirationDate = DriverLicenseExpirationDate,
+            DriverLicensePhotoPath = DriverLicensePhotoPath
+        }.ResolveDocuments();
 }
 
 public sealed record ClientProfileDto(
     int Id,
     string FullName,
-    string PassportData,
-    string DriverLicense,
     string Phone,
-    bool Blacklisted,
-    bool IsComplete);
+    bool IsBlacklisted,
+    string? BlacklistReason,
+    DateTime? BlacklistedAtUtc,
+    int? AccountId,
+    IReadOnlyList<ClientDocumentDto> Documents,
+    bool IsComplete)
+{
+    public string PassportData => Documents.FirstOrDefault(item => item.DocumentTypeCode == ClientDocumentTypes.Passport)?.DocumentNumber ?? string.Empty;
+
+    public DateTime? PassportExpirationDate => Documents.FirstOrDefault(item => item.DocumentTypeCode == ClientDocumentTypes.Passport)?.ExpirationDate;
+
+    public string? PassportPhotoPath => Documents.FirstOrDefault(item => item.DocumentTypeCode == ClientDocumentTypes.Passport)?.StoredPath;
+
+    public string DriverLicense => Documents.FirstOrDefault(item => item.DocumentTypeCode == ClientDocumentTypes.DriverLicense)?.DocumentNumber ?? string.Empty;
+
+    public DateTime? DriverLicenseExpirationDate => Documents.FirstOrDefault(item => item.DocumentTypeCode == ClientDocumentTypes.DriverLicense)?.ExpirationDate;
+
+    public string? DriverLicensePhotoPath => Documents.FirstOrDefault(item => item.DocumentTypeCode == ClientDocumentTypes.DriverLicense)?.StoredPath;
+
+    public bool Blacklisted => IsBlacklisted;
+}
+
+public sealed record MediaAssetDto(
+    int Id,
+    string StoredPath,
+    int SortOrder,
+    bool IsPrimary = false,
+    DateTime? CreatedAtUtc = null);
+
+public sealed class MediaAssetUpsertRequest
+{
+    [Required, MaxLength(500)]
+    public string StoredPath { get; set; } = string.Empty;
+
+    public int SortOrder { get; set; }
+
+    public bool IsPrimary { get; set; }
+}
 
 public sealed class VehicleUpsertRequest
 {
@@ -118,23 +310,41 @@ public sealed class VehicleUpsertRequest
     [Required, MaxLength(80)]
     public string Model { get; set; } = string.Empty;
 
-    [Required, MaxLength(40)]
-    public string EngineDisplay { get; set; } = string.Empty;
+    [DecimalRangeInvariant("0.01", "1000000")]
+    public decimal PowertrainCapacityValue { get; set; }
 
-    [Required, MaxLength(30)]
-    public string FuelType { get; set; } = string.Empty;
+    [Required, MaxLength(16)]
+    public string PowertrainCapacityUnit { get; set; } = VehicleSpecificationUnits.Liters;
 
-    [Required, MaxLength(30)]
-    public string TransmissionType { get; set; } = string.Empty;
+    [MaxLength(30)]
+    public string? FuelTypeCode { get; set; }
+
+    [MaxLength(30)]
+    public string? FuelType { get; set; }
+
+    [MaxLength(30)]
+    public string? TransmissionTypeCode { get; set; }
+
+    [MaxLength(30)]
+    public string? TransmissionType { get; set; }
+
+    [MaxLength(30)]
+    public string? VehicleStatusCode { get; set; }
 
     [Range(1, 8)]
     public int DoorsCount { get; set; } = 4;
 
-    [Required, MaxLength(40)]
-    public string CargoCapacityDisplay { get; set; } = string.Empty;
+    [DecimalRangeInvariant("0.01", "1000000")]
+    public decimal CargoCapacityValue { get; set; }
 
-    [Required, MaxLength(40)]
-    public string ConsumptionDisplay { get; set; } = string.Empty;
+    [Required, MaxLength(16)]
+    public string CargoCapacityUnit { get; set; } = VehicleSpecificationUnits.Liters;
+
+    [DecimalRangeInvariant("0.01", "1000000")]
+    public decimal ConsumptionValue { get; set; }
+
+    [Required, MaxLength(24)]
+    public string ConsumptionUnit { get; set; } = VehicleSpecificationUnits.LitersPer100Km;
 
     public bool HasAirConditioning { get; set; } = true;
 
@@ -144,21 +354,67 @@ public sealed class VehicleUpsertRequest
     [Range(0, int.MaxValue)]
     public int Mileage { get; set; }
 
-    [Range(typeof(decimal), "0.01", "1000000")]
+    [DecimalRangeInvariant("0.01", "1000000")]
     public decimal DailyRate { get; set; }
 
-    public bool IsAvailable { get; set; } = true;
+    public bool? IsBookable { get; set; }
 
     [Range(1000, 200000)]
     public int ServiceIntervalKm { get; set; } = 10000;
 
     [MaxLength(500)]
     public string? PhotoPath { get; set; }
+
+    public List<MediaAssetUpsertRequest> Photos { get; set; } = new();
+
+    public string ResolveFuelTypeCode()
+        => (FuelTypeCode ?? FuelType ?? string.Empty).Trim();
+
+    public string ResolveTransmissionTypeCode()
+        => (TransmissionTypeCode ?? TransmissionType ?? string.Empty).Trim();
+
+    public string ResolveVehicleStatusCode()
+    {
+        if (!string.IsNullOrWhiteSpace(VehicleStatusCode))
+        {
+            return VehicleStatusCode.Trim().ToUpperInvariant();
+        }
+
+        if (IsBookable.HasValue)
+        {
+            return IsBookable.Value ? VehicleStatuses.Ready : VehicleStatuses.Inactive;
+        }
+
+        return VehicleStatuses.Ready;
+    }
+
+    public IReadOnlyList<MediaAssetUpsertRequest> ResolvePhotos()
+    {
+        if (Photos.Count > 0)
+        {
+            return Photos;
+        }
+
+        if (string.IsNullOrWhiteSpace(PhotoPath))
+        {
+            return Array.Empty<MediaAssetUpsertRequest>();
+        }
+
+        return
+        [
+            new MediaAssetUpsertRequest
+            {
+                StoredPath = PhotoPath,
+                SortOrder = 0,
+                IsPrimary = true
+            }
+        ];
+    }
 }
 
 public sealed class UpdateVehicleRateRequest
 {
-    [Range(typeof(decimal), "0.01", "1000000")]
+    [DecimalRangeInvariant("0.01", "1000000")]
     public decimal DailyRate { get; set; }
 }
 
@@ -166,19 +422,36 @@ public sealed record VehicleDto(
     int Id,
     string Make,
     string Model,
-    string EngineDisplay,
-    string FuelType,
-    string TransmissionType,
+    decimal PowertrainCapacityValue,
+    string PowertrainCapacityUnit,
+    string FuelTypeCode,
+    string TransmissionTypeCode,
+    string VehicleStatusCode,
     int DoorsCount,
-    string CargoCapacityDisplay,
-    string ConsumptionDisplay,
+    decimal CargoCapacityValue,
+    string CargoCapacityUnit,
+    decimal ConsumptionValue,
+    string ConsumptionUnit,
     bool HasAirConditioning,
     string LicensePlate,
     int Mileage,
     decimal DailyRate,
     bool IsAvailable,
     int ServiceIntervalKm,
-    string? PhotoPath);
+    IReadOnlyList<MediaAssetDto> Photos)
+{
+    public string FuelType => FuelTypeCode;
+
+    public string TransmissionType => TransmissionTypeCode;
+
+    public bool IsBookable => string.Equals(VehicleStatusCode, VehicleStatuses.Ready, StringComparison.OrdinalIgnoreCase);
+
+    public string? PhotoPath => Photos
+        .OrderByDescending(item => item.IsPrimary)
+        .ThenBy(item => item.SortOrder)
+        .Select(item => item.StoredPath)
+        .FirstOrDefault();
+}
 
 public sealed class CreateRentalRequest
 {
@@ -237,8 +510,12 @@ public sealed record RentalDto(
     string ClientName,
     int VehicleId,
     string VehicleName,
-    int EmployeeId,
-    string EmployeeName,
+    int CreatedByEmployeeId,
+    string CreatedByEmployeeName,
+    int? ClosedByEmployeeId,
+    string? ClosedByEmployeeName,
+    int? CanceledByEmployeeId,
+    string? CanceledByEmployeeName,
     DateTime StartDate,
     DateTime EndDate,
     string PickupLocation,
@@ -257,9 +534,18 @@ public sealed record RentalDto(
     DateTime? PickupInspectionCompletedAtUtc,
     int? PickupFuelPercent,
     string? PickupInspectionNotes,
+    int? PickupInspectionPerformedByEmployeeId,
+    string? PickupInspectionPerformedByEmployeeName,
     DateTime? ReturnInspectionCompletedAtUtc,
     int? ReturnFuelPercent,
-    string? ReturnInspectionNotes);
+    string? ReturnInspectionNotes,
+    int? ReturnInspectionPerformedByEmployeeId,
+    string? ReturnInspectionPerformedByEmployeeName)
+{
+    public int EmployeeId => CreatedByEmployeeId;
+
+    public string EmployeeName => CreatedByEmployeeName;
+}
 
 public sealed class RescheduleRentalRequest
 {
@@ -288,7 +574,7 @@ public sealed class AddPaymentRequest
     [Range(1, int.MaxValue)]
     public int RentalId { get; set; }
 
-    [Range(typeof(decimal), "0.01", "1000000")]
+    [DecimalRangeInvariant("0.01", "1000000")]
     public decimal Amount { get; set; }
 
     [EnumDataType(typeof(PaymentMethod))]
@@ -296,6 +582,12 @@ public sealed class AddPaymentRequest
 
     [EnumDataType(typeof(PaymentDirection))]
     public PaymentDirection Direction { get; set; } = PaymentDirection.Incoming;
+
+    [EnumDataType(typeof(PaymentStatus))]
+    public PaymentStatus Status { get; set; } = PaymentStatus.Completed;
+
+    [MaxLength(120)]
+    public string? ExternalTransactionId { get; set; }
 
     [MaxLength(300)]
     public string Notes { get; set; } = string.Empty;
@@ -305,9 +597,12 @@ public sealed record PaymentDto(
     int Id,
     int RentalId,
     int EmployeeId,
+    string EmployeeName,
     decimal Amount,
     PaymentMethod Method,
     PaymentDirection Direction,
+    PaymentStatus Status,
+    string? ExternalTransactionId,
     DateTime CreatedAtUtc,
     string Notes);
 
@@ -323,13 +618,38 @@ public sealed class AddDamageRequest
     [Required, MaxLength(500)]
     public string Description { get; set; } = string.Empty;
 
-    [Range(typeof(decimal), "0.01", "1000000")]
+    [DecimalRangeInvariant("0.01", "1000000")]
     public decimal RepairCost { get; set; }
 
     [MaxLength(500)]
     public string? PhotoPath { get; set; }
 
+    public List<MediaAssetUpsertRequest> Photos { get; set; } = new();
+
     public bool AutoChargeToRental { get; set; }
+
+    public IReadOnlyList<MediaAssetUpsertRequest> ResolvePhotos()
+    {
+        if (Photos.Count > 0)
+        {
+            return Photos;
+        }
+
+        if (string.IsNullOrWhiteSpace(PhotoPath))
+        {
+            return Array.Empty<MediaAssetUpsertRequest>();
+        }
+
+        return
+        [
+            new MediaAssetUpsertRequest
+            {
+                StoredPath = PhotoPath,
+                SortOrder = 0,
+                IsPrimary = true
+            }
+        ];
+    }
 }
 
 public sealed record DamageDto(
@@ -338,14 +658,23 @@ public sealed record DamageDto(
     string VehicleName,
     int? RentalId,
     string? ContractNumber,
+    int ReportedByEmployeeId,
+    string ReportedByEmployeeName,
     string Description,
     DateTime DateReported,
     decimal RepairCost,
-    string? PhotoPath,
     string ActNumber,
     decimal ChargedAmount,
-    bool IsChargedToClient,
-    DamageStatus Status);
+    DamageStatus Status,
+    IReadOnlyList<MediaAssetDto> Photos)
+{
+    public bool IsChargedToClient => ChargedAmount > 0m;
+
+    public string? PhotoPath => Photos
+        .OrderBy(item => item.SortOrder)
+        .Select(item => item.StoredPath)
+        .FirstOrDefault();
+}
 
 public sealed class AddMaintenanceRecordRequest
 {
@@ -360,22 +689,32 @@ public sealed class AddMaintenanceRecordRequest
     [Required, MaxLength(500)]
     public string Description { get; set; } = string.Empty;
 
-    [Range(typeof(decimal), "0", "1000000")]
+    [DecimalRangeInvariant("0", "1000000")]
     public decimal Cost { get; set; }
 
     [Range(1, int.MaxValue)]
     public int NextServiceMileage { get; set; }
+
+    [Required, MaxLength(30)]
+    public string MaintenanceTypeCode { get; set; } = MaintenanceTypes.Scheduled;
+
+    [MaxLength(120)]
+    public string? ServiceProviderName { get; set; }
 }
 
 public sealed record MaintenanceRecordDto(
     int Id,
     int VehicleId,
     string VehicleName,
+    int? PerformedByEmployeeId,
+    string? PerformedByEmployeeName,
     DateTime ServiceDate,
     int MileageAtService,
     string Description,
     decimal Cost,
-    int NextServiceMileage);
+    int NextServiceMileage,
+    string MaintenanceTypeCode,
+    string? ServiceProviderName);
 
 public sealed record MaintenanceDueDto(
     int VehicleId,

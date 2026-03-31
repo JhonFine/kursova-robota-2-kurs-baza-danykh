@@ -34,18 +34,10 @@ public sealed class MaintenanceController(
 
         var records = await query
             .ApplyPagination(pagination)
-            .Select(item => new MaintenanceRecordDto(
-                item.Id,
-                item.VehicleId,
-                item.Vehicle != null ? $"{item.Vehicle.Make} {item.Vehicle.Model} [{item.Vehicle.LicensePlate}]" : string.Empty,
-                item.ServiceDate,
-                item.MileageAtService,
-                item.Description,
-                item.Cost,
-                item.NextServiceMileage))
+            .Include(item => item.Vehicle)
+            .Include(item => item.PerformedByEmployee)
             .ToListAsync(cancellationToken);
-
-        return Ok(records);
+        return Ok(records.Select(item => item.ToDto()).ToList());
     }
 
     [HttpGet("due")]
@@ -64,16 +56,26 @@ public sealed class MaintenanceController(
     [HttpPost("records")]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> AddRecord([FromBody] AddMaintenanceRecordRequest request, CancellationToken cancellationToken)
     {
+        var employeeId = GetCurrentEmployeeId();
+        if (!employeeId.HasValue)
+        {
+            return Unauthorized();
+        }
+
         var result = await maintenanceService.AddRecordAsync(
             new MaintenanceRequest(
                 request.VehicleId,
+                employeeId.Value,
                 request.ServiceDate,
                 request.MileageAtService,
                 request.Description,
                 request.Cost,
-                request.NextServiceMileage),
+                request.NextServiceMileage,
+                request.MaintenanceTypeCode,
+                request.ServiceProviderName),
             cancellationToken);
 
         if (!result.Success)

@@ -59,15 +59,68 @@ function Wait-TcpPortOpen {
     return $false
 }
 
+function Stop-StaleHostWindows {
+    $hostWindows = Get-CimInstance Win32_Process | Where-Object {
+        $_.Name -eq 'powershell.exe' -and (
+            $_.CommandLine -like '*CarRental.WebApi*' -or
+            $_.CommandLine -like '*npm run dev -- --host localhost --port*'
+        )
+    }
+
+    foreach ($window in $hostWindows) {
+        try {
+            Stop-Process -Id $window.ProcessId -Force -ErrorAction Stop
+        }
+        catch {
+            Write-Warning "Failed to stop stale host window PID=$($window.ProcessId): $($_.Exception.Message)"
+        }
+    }
+}
+
+function Stop-ProcessesByPort {
+    param([Parameter(Mandatory = $true)][int[]]$Ports)
+
+    foreach ($port in $Ports) {
+        $connections = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -eq $port }
+        if (-not $connections) {
+            continue
+        }
+
+        $processIds = $connections | Select-Object -ExpandProperty OwningProcess -Unique
+        foreach ($processId in $processIds) {
+            if ($processId -le 0) {
+                continue
+            }
+
+            try {
+                $process = Get-Process -Id $processId -ErrorAction Stop
+                if ($process.ProcessName -in @('dotnet', 'node', 'powershell', 'cmd')) {
+                    Stop-Process -Id $processId -Force -ErrorAction Stop
+                }
+            }
+            catch {
+                Write-Warning "Failed to stop process PID=$processId on port ${port}: $($_.Exception.Message)"
+            }
+        }
+    }
+}
+
 $repoRoot = $PSScriptRoot
 $solutionPath = Join-Path $repoRoot "CarRentalSystem.sln"
 $apiProjectPath = Join-Path $repoRoot "CarRental.WebApi\\CarRental.WebApi.csproj"
 $webAppDir = Join-Path $repoRoot "CarRental.WebApp"
 $envLocalPath = Join-Path $webAppDir ".env.local"
 $composePath = Join-Path $repoRoot "deploy\\docker-compose.postgres.yml"
+$apiUri = [Uri]$ApiUrl
+$apiHost = $apiUri.Host
+$apiPort = if ($apiUri.IsDefaultPort) { if ($apiUri.Scheme -eq 'https') { 443 } else { 80 } } else { $apiUri.Port }
 
 Assert-Command -Name "dotnet"
 Assert-Command -Name "npm"
+
+Write-Host "Stopping previous local hosts on API/frontend ports..."
+Stop-StaleHostWindows
+Stop-ProcessesByPort -Ports @($apiPort, $FrontendPort)
 
 if (-not $SkipDocker) {
     if (Get-Command docker -ErrorAction SilentlyContinue) {
@@ -111,7 +164,7 @@ if ([string]::IsNullOrWhiteSpace($jwtSigningKey)) {
 $jwtSigningKeyEscaped = $jwtSigningKey.Replace("'", "''")
 
 $apiCommand = "Set-Location '$repoRoot'; `$env:ASPNETCORE_ENVIRONMENT='Development'; `$env:ASPNETCORE_URLS='$ApiUrl'; `$env:CAR_RENTAL_JWT_SIGNING_KEY='$jwtSigningKeyEscaped'; dotnet run --project '.\\CarRental.WebApi\\CarRental.WebApi.csproj'"
-$webCommand = "Set-Location '$webAppDir'; `$env:VITE_API_BASE_URL='$ApiUrl'; npm run dev -- --host localhost --port $FrontendPort"
+$webCommand = "Set-Location '$webAppDir'; `$env:VITE_API_BASE_URL='$ApiUrl'; npm run dev -- --host localhost --port $FrontendPort --strictPort"
 
 Write-Host "Starting API window..."
 Start-Process powershell -WorkingDirectory $repoRoot -ArgumentList @(
@@ -126,6 +179,14 @@ Start-Process powershell -WorkingDirectory $webAppDir -ArgumentList @(
     "-ExecutionPolicy", "Bypass",
     "-Command", $webCommand
 ) | Out-Null
+
+if (-not (Wait-TcpPortOpen -TargetHost $apiHost -Port $apiPort -TimeoutSec 45)) {
+    throw "API did not start on $ApiUrl within the expected time."
+}
+
+if (-not (Wait-TcpPortOpen -TargetHost "127.0.0.1" -Port $FrontendPort -TimeoutSec 45)) {
+    throw "Frontend did not start on http://localhost:$FrontendPort within the expected time."
+}
 
 Write-Host ""
 Write-Host "Web stack started."

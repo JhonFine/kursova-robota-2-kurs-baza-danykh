@@ -1,13 +1,18 @@
 import { Api } from '../api/client';
 import type { ClientProfile, Rental, RentalAvailabilitySlot, RentalStatus, Vehicle } from '../api/types';
+import {
+  DEFAULT_MAX_PRICE,
+  DEFAULT_MIN_PRICE,
+  LOCATION_OPTIONS,
+  resolveCatalogVehicleClassLabel,
+  SELF_SERVICE_CANCEL_REASON,
+  TIME_OPTIONS,
+} from '../utils/referenceData';
 
-export const DEFAULT_MIN_PRICE = '20';
-export const DEFAULT_MAX_PRICE = '290';
+export { DEFAULT_MAX_PRICE, DEFAULT_MIN_PRICE, LOCATION_OPTIONS, SELF_SERVICE_CANCEL_REASON };
 export const VEHICLE_PAGE_SIZE = 20;
-export const SELF_SERVICE_CANCEL_REASON = 'Скасовано клієнтом через сайт';
-export const LOCATION_OPTIONS = ['Київ', 'Львів', 'Одеса', 'Дніпро', 'Харків'] as const;
 export const sortOptionValues = ['popular', 'priceAsc', 'priceDesc'] as const;
-export const timeOptions = Array.from({ length: 13 }, (_, index) => `${String(index + 8).padStart(2, '0')}:00`);
+export const timeOptions = TIME_OPTIONS;
 export const CLIENT_FULL_NAME_MAX_LENGTH = 120;
 export const CLIENT_PHONE_MAX_LENGTH = 40;
 export const CLIENT_PASSPORT_MAX_LENGTH = 120;
@@ -40,45 +45,11 @@ export interface CatalogVehicleCard {
 }
 
 export function classifyVehicle(vehicle: Vehicle): string {
-  const model = `${vehicle.make} ${vehicle.model}`.toLowerCase();
-  if (model.includes('tesla') || model.includes('ioniq') || model.includes('ev')) {
-    return 'Електромобілі';
-  }
-
-  if (vehicle.dailyRate >= 95) {
-    return 'Преміум';
-  }
-
-  if (vehicle.dailyRate >= 75) {
-    return 'Бізнес';
-  }
-
-  if (vehicle.dailyRate >= 55) {
-    return 'Середній';
-  }
-
-  return 'Економ';
+  return resolveCatalogVehicleClassLabel(vehicle.make, vehicle.model, vehicle.dailyRate);
 }
 
 export function classifyVehicleBySpec(make: string, model: string, dailyRate: number): string {
-  return classifyVehicle({
-    id: 0,
-    make,
-    model,
-    engineDisplay: '',
-    fuelType: '',
-    transmissionType: '',
-    doorsCount: 0,
-    cargoCapacityDisplay: '',
-    consumptionDisplay: '',
-    hasAirConditioning: false,
-    licensePlate: '',
-    mileage: 0,
-    dailyRate,
-    isAvailable: false,
-    serviceIntervalKm: 0,
-    photoPath: null,
-  });
+  return resolveCatalogVehicleClassLabel(make, model, dailyRate);
 }
 
 function normalizeAlphaNumeric(value: string): string {
@@ -199,6 +170,14 @@ export function overlaps(requestStart: Date, requestEnd: Date, rentalStart: Date
 
 export function parseDateTime(date: string, time: string): Date {
   return new Date(`${date}T${time}:00`);
+}
+
+export function getAvailableTimeOptionsForDate(date: string, minimumDateTime: Date = new Date()): string[] {
+  return timeOptions.filter((time) => parseDateTime(date, time) >= minimumDateTime);
+}
+
+export function isDateTimeInPast(date: string, time: string, referenceDate: Date = new Date()): boolean {
+  return parseDateTime(date, time) < referenceDate;
 }
 
 export function toDateInputValue(date: Date): string {
@@ -358,8 +337,22 @@ function isClientPhoneComplete(value: string): boolean {
   return digits.length >= 10 && digits.length <= 15;
 }
 
+function isDateInputValueValid(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value.trim());
+}
+
+function isDateTodayOrFuture(value: string): boolean {
+  if (!isDateInputValueValid(value)) {
+    return false;
+  }
+
+  const today = new Date();
+  const todayValue = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  return value.trim() >= todayValue;
+}
+
 export function getClientProfileCompletionIssues(
-  profile: Pick<ClientProfile, 'fullName' | 'phone' | 'passportData' | 'driverLicense'> | null,
+  profile: Pick<ClientProfile, 'fullName' | 'phone' | 'passportData' | 'driverLicense' | 'driverLicenseExpirationDate'> | null,
 ): string[] {
   if (!profile) {
     return [];
@@ -389,11 +382,19 @@ export function getClientProfileCompletionIssues(
     issues.push('замініть службове значення посвідчення USR-... на реальні дані');
   }
 
+  if (!profile.driverLicenseExpirationDate?.trim()) {
+    issues.push('вкажіть термін дії посвідчення водія');
+  } else if (!isDateInputValueValid(profile.driverLicenseExpirationDate)) {
+    issues.push('вкажіть коректну дату дії посвідчення водія');
+  } else if (!isDateTodayOrFuture(profile.driverLicenseExpirationDate)) {
+    issues.push('посвідчення водія має бути чинним на сьогодні');
+  }
+
   return issues;
 }
 
 export function getClientProfileCompletionMessage(
-  profile: Pick<ClientProfile, 'fullName' | 'phone' | 'passportData' | 'driverLicense'> | null,
+  profile: Pick<ClientProfile, 'fullName' | 'phone' | 'passportData' | 'driverLicense' | 'driverLicenseExpirationDate'> | null,
 ): string | null {
   const issues = getClientProfileCompletionIssues(profile);
   return issues.length > 0 ? `Щоб завершити профіль, ${issues.join(', ')}.` : null;
@@ -474,12 +475,15 @@ export function buildAvailabilityMap(
 ): Map<number, AvailabilityInfo> {
   const map = new Map<number, AvailabilityInfo>();
   const requestWindowValid = requestEnd > requestStart;
+  const requestStartInPast = requestStart < new Date();
 
   vehicles.forEach((vehicle) => {
-    if (!requestWindowValid) {
+    if (!requestWindowValid || requestStartInPast) {
       map.set(vehicle.id, {
         state: 'busy',
-        note: 'Вкажіть коректний період, щоб побачити доступність авто.',
+        note: requestStartInPast
+          ? 'Оберіть час початку не в минулому.'
+          : 'Вкажіть коректний період, щоб побачити доступність авто.',
       });
       return;
     }
@@ -498,7 +502,7 @@ export function buildAvailabilityMap(
       return;
     }
 
-    if (!vehicle.isAvailable) {
+    if (!vehicle.isBookable) {
       map.set(vehicle.id, {
         state: 'busy',
         note: 'Авто тимчасово недоступне для видачі в системі.',

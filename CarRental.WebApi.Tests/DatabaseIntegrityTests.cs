@@ -18,7 +18,7 @@ public sealed class DatabaseIntegrityTests
         await using var dbContext = testDatabase.CreateDbContext();
         SeedMinimalData(dbContext);
 
-        var now = DateTime.Now;
+        var now = DateTime.UtcNow;
         dbContext.Rentals.AddRange(
             new Rental
             {
@@ -53,8 +53,81 @@ public sealed class DatabaseIntegrityTests
         var service = new RentalService(dbContext, new StubContractNumberService("CR-2026-000099"));
         await service.RefreshStatusesAsync();
 
+        var hasActiveRental = await dbContext.Rentals
+            .AsNoTracking()
+            .AnyAsync(item => item.VehicleId == 1 && item.Status == RentalStatus.Active);
         var vehicle = await dbContext.Vehicles.AsNoTracking().SingleAsync(item => item.Id == 1);
-        vehicle.IsAvailable.Should().BeFalse();
+        var isAvailable = !vehicle.IsDeleted && vehicle.IsBookable && !hasActiveRental;
+        isAvailable.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task CreateRentalAsync_ShouldRejectNonBookableVehicle()
+    {
+        await using var testDatabase = await WebApiPostgresTestDatabase.CreateAsync();
+        await using var dbContext = testDatabase.CreateDbContext();
+        SeedMinimalData(dbContext);
+
+        var vehicle = await dbContext.Vehicles.SingleAsync(item => item.Id == 1);
+        vehicle.IsBookable = false;
+        vehicle.IsAvailable = false;
+        await dbContext.SaveChangesAsync();
+
+        var service = new RentalService(dbContext, new StubContractNumberService("CR-2026-000090"));
+        var start = DateTime.UtcNow.AddDays(2);
+        var result = await service.CreateRentalAsync(new CreateRentalRequest(
+            ClientId: 1,
+            VehicleId: 1,
+            EmployeeId: 1,
+            StartDate: start,
+            EndDate: start.AddDays(1),
+            PickupLocation: "Kyiv"));
+
+        result.Success.Should().BeFalse();
+        (await dbContext.Rentals.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task CompletePickupInspectionAsync_ShouldRejectNonBookableVehicle()
+    {
+        await using var testDatabase = await WebApiPostgresTestDatabase.CreateAsync();
+        await using var dbContext = testDatabase.CreateDbContext();
+        SeedMinimalData(dbContext);
+
+        var start = DateTime.UtcNow.AddMinutes(20);
+        dbContext.Rentals.Add(new Rental
+        {
+            ClientId = 1,
+            VehicleId = 1,
+            EmployeeId = 1,
+            ContractNumber = "CR-2026-000091",
+            StartDate = start,
+            EndDate = start.AddDays(1),
+            PickupLocation = "Kyiv",
+            ReturnLocation = "Kyiv",
+            StartMileage = 1000,
+            TotalAmount = 70m,
+            Status = RentalStatus.Booked,
+            IsClosed = false,
+            CreatedAtUtc = DateTime.UtcNow
+        });
+        await dbContext.SaveChangesAsync();
+
+        var vehicle = await dbContext.Vehicles.SingleAsync(item => item.Id == 1);
+        vehicle.IsBookable = false;
+        vehicle.IsAvailable = false;
+        await dbContext.SaveChangesAsync();
+
+        var rentalId = await dbContext.Rentals.Select(item => item.Id).SingleAsync();
+        var service = new RentalService(dbContext, new StubContractNumberService("CR-2026-000092"));
+        var result = await service.CompletePickupInspectionAsync(new PickupInspectionRequest(
+            rentalId,
+            80,
+            "blocked"));
+
+        result.Success.Should().BeFalse();
+        (await dbContext.RentalInspections.CountAsync()).Should().Be(0);
+        (await dbContext.Rentals.AsNoTracking().SingleAsync(item => item.Id == rentalId)).Status.Should().Be(RentalStatus.Booked);
     }
 
     [Fact]
@@ -90,6 +163,70 @@ public sealed class DatabaseIntegrityTests
             .ToListAsync();
         numbers.Should().HaveCount(2);
         numbers[0].Should().NotBe(numbers[1]);
+    }
+
+    [Fact]
+    public async Task AddDamageAsync_ShouldRejectRentalForDifferentVehicle()
+    {
+        await using var testDatabase = await WebApiPostgresTestDatabase.CreateAsync();
+        await using var dbContext = testDatabase.CreateDbContext();
+        SeedMinimalData(dbContext);
+
+        dbContext.Vehicles.Add(new Vehicle
+        {
+            Id = 2,
+            Make = "BMW",
+            Model = "M5",
+            FuelType = "Бензин",
+            TransmissionType = "Автомат",
+            PowertrainCapacityValue = 4.4m,
+            PowertrainCapacityUnit = "L",
+            CargoCapacityValue = 530m,
+            CargoCapacityUnit = "L",
+            ConsumptionValue = 11m,
+            ConsumptionUnit = "L_PER_100KM",
+            LicensePlate = "AA0022AA",
+            Mileage = 1500,
+            DailyRate = 120m,
+            IsBookable = true,
+            IsAvailable = true,
+            ServiceIntervalKm = 10000
+        });
+        dbContext.Rentals.Add(new Rental
+        {
+            ClientId = 1,
+            VehicleId = 2,
+            EmployeeId = 1,
+            ContractNumber = "CR-2026-000079",
+            StartDate = DateTime.UtcNow.AddDays(-2),
+            EndDate = DateTime.UtcNow.AddDays(1),
+            PickupLocation = "Kyiv",
+            ReturnLocation = "Kyiv",
+            StartMileage = 1500,
+            TotalAmount = 500m,
+            Status = RentalStatus.Active,
+            IsClosed = false,
+            CreatedAtUtc = DateTime.UtcNow
+        });
+        await dbContext.SaveChangesAsync();
+
+        var rentalId = await dbContext.Rentals
+            .AsNoTracking()
+            .Where(item => item.VehicleId == 2)
+            .Select(item => item.Id)
+            .SingleAsync();
+
+        var service = new DamageService(dbContext);
+        var result = await service.AddDamageAsync(new DamageRequest(
+            VehicleId: 1,
+            RentalId: rentalId,
+            Description: "Wrong rental for vehicle",
+            RepairCost: 450m,
+            PhotoPath: null,
+            AutoChargeToRental: false));
+
+        result.Success.Should().BeFalse();
+        (await dbContext.Damages.CountAsync()).Should().Be(0);
     }
 
     [Fact]
@@ -195,7 +332,7 @@ public sealed class DatabaseIntegrityTests
         SeedMinimalData(dbContext);
         var service = new RentalService(dbContext, new StubContractNumberService("CR-2026-000012"));
 
-        var start = DateTime.Today.AddDays(2);
+        var start = DateTime.UtcNow.AddDays(2);
         var createResult = await service.CreateRentalWithPaymentAsync(new CreateRentalWithPaymentRequest(
             ClientId: 1,
             VehicleId: 1,
@@ -240,7 +377,7 @@ public sealed class DatabaseIntegrityTests
         SeedMinimalData(dbContext);
         var service = new RentalService(dbContext, new StubContractNumberService("CR-2026-000013"));
 
-        var start = DateTime.Today.AddDays(3);
+        var start = DateTime.UtcNow.AddDays(3);
         var createResult = await service.CreateRentalWithPaymentAsync(new CreateRentalWithPaymentRequest(
             ClientId: 1,
             VehicleId: 1,
@@ -283,7 +420,7 @@ public sealed class DatabaseIntegrityTests
         SeedMinimalData(dbContext);
         var service = new RentalService(dbContext, new StubContractNumberService("CR-2026-000014"));
 
-        var start = DateTime.Today.AddDays(2);
+        var start = DateTime.UtcNow.AddDays(2);
         var createResult = await service.CreateRentalAsync(new CreateRentalRequest(
             ClientId: 1,
             VehicleId: 1,
@@ -321,8 +458,8 @@ public sealed class DatabaseIntegrityTests
             VehicleId = 1,
             EmployeeId = 1,
             ContractNumber = "CR-2026-000015",
-            StartDate = DateTime.Now.AddMinutes(-15),
-            EndDate = DateTime.Now.AddDays(1),
+            StartDate = DateTime.UtcNow.AddMinutes(15),
+            EndDate = DateTime.UtcNow.AddDays(1),
             PickupLocation = "Київ",
             ReturnLocation = "Київ",
             StartMileage = 1000,
@@ -345,9 +482,57 @@ public sealed class DatabaseIntegrityTests
 
         var rental = await dbContext.Rentals.AsNoTracking().SingleAsync(item => item.Id == rentalId);
         rental.Status.Should().Be(RentalStatus.Active);
-        rental.PickupFuelPercent.Should().Be(85);
-        rental.PickupInspectionNotes.Should().Be("Ready for pickup");
-        rental.PickupInspectionCompletedAtUtc.Should().NotBeNull();
+
+        var inspection = await dbContext.RentalInspections
+            .AsNoTracking()
+            .SingleAsync(item => item.RentalId == rentalId && item.Type == RentalInspectionType.Pickup);
+        inspection.FuelPercent.Should().Be(85);
+        inspection.Notes.Should().Be("Ready for pickup");
+        inspection.CompletedAtUtc.Should().NotBe(default);
+    }
+
+    [Fact]
+    public async Task CompletePickupInspectionAsync_ShouldRejectLatePickup()
+    {
+        await using var testDatabase = await WebApiPostgresTestDatabase.CreateAsync();
+        await using var dbContext = testDatabase.CreateDbContext();
+        SeedMinimalData(dbContext);
+
+        dbContext.Rentals.Add(new Rental
+        {
+            ClientId = 1,
+            VehicleId = 1,
+            EmployeeId = 1,
+            ContractNumber = "CR-2026-000016",
+            StartDate = DateTime.UtcNow.AddMinutes(-15),
+            EndDate = DateTime.UtcNow.AddDays(1),
+            PickupLocation = "Kyiv",
+            ReturnLocation = "Kyiv",
+            StartMileage = 1000,
+            TotalAmount = 70m,
+            Status = RentalStatus.Booked,
+            IsClosed = false,
+            CreatedAtUtc = DateTime.UtcNow
+        });
+        await dbContext.SaveChangesAsync();
+
+        var rentalId = await dbContext.Rentals.Select(item => item.Id).SingleAsync();
+        var service = new RentalService(dbContext, new StubContractNumberService("CR-2026-000017"));
+
+        var result = await service.CompletePickupInspectionAsync(new PickupInspectionRequest(
+            rentalId,
+            85,
+            "Late pickup"));
+
+        result.Success.Should().BeFalse();
+
+        var rental = await dbContext.Rentals.AsNoTracking().SingleAsync(item => item.Id == rentalId);
+        rental.Status.Should().Be(RentalStatus.Booked);
+
+        var hasPickupInspection = await dbContext.RentalInspections
+            .AsNoTracking()
+            .AnyAsync(item => item.RentalId == rentalId && item.Type == RentalInspectionType.Pickup);
+        hasPickupInspection.Should().BeFalse();
     }
 
     [Fact]
@@ -358,18 +543,19 @@ public sealed class DatabaseIntegrityTests
         SeedMinimalData(dbContext);
         var service = new RentalService(dbContext, new StubContractNumberService("CR-2026-000050"));
 
+        var start = DateTime.UtcNow.AddMinutes(30);
         var createResult = await service.CreateRentalAsync(new CreateRentalRequest(
             ClientId: 1,
             VehicleId: 1,
             EmployeeId: 1,
-            StartDate: DateTime.Today,
-            EndDate: DateTime.Today.AddDays(2),
+            StartDate: start,
+            EndDate: start.AddDays(2),
             PickupLocation: "Київ"));
         createResult.Success.Should().BeTrue();
 
         var closeResult = await service.CloseRentalAsync(new CloseRentalRequest(
             RentalId: createResult.RentalId,
-            ActualEndDate: DateTime.Today,
+            ActualEndDate: start.Date,
             EndMileage: 1200));
 
         closeResult.Success.Should().BeTrue();
@@ -385,7 +571,7 @@ public sealed class DatabaseIntegrityTests
         SeedMinimalData(dbContext);
         var service = new RentalService(dbContext, new StubContractNumberService("CR-2026-000051"));
 
-        var start = DateTime.Today.AddHours(10);
+        var start = DateTime.UtcNow.AddHours(2);
         var createResult = await service.CreateRentalAsync(new CreateRentalRequest(
             ClientId: 1,
             VehicleId: 1,
@@ -407,6 +593,8 @@ public sealed class DatabaseIntegrityTests
 
     private static void SeedMinimalData(RentalDbContext dbContext)
     {
+        TestLookupSeed.SeedVehicleLookups(dbContext);
+
         dbContext.Employees.Add(new Employee
         {
             Id = 1,
@@ -422,6 +610,8 @@ public sealed class DatabaseIntegrityTests
             FullName = "Client",
             PassportData = "PP1",
             DriverLicense = "DL1",
+            PassportExpirationDate = DateTime.UtcNow.AddYears(5),
+            DriverLicenseExpirationDate = DateTime.UtcNow.AddYears(5),
             Phone = "123",
             Blacklisted = false
         });
@@ -430,9 +620,18 @@ public sealed class DatabaseIntegrityTests
             Id = 1,
             Make = "Toyota",
             Model = "Camry",
+            FuelType = "Бензин",
+            TransmissionType = "Автомат",
+            PowertrainCapacityValue = 2m,
+            PowertrainCapacityUnit = "L",
+            CargoCapacityValue = 500m,
+            CargoCapacityUnit = "L",
+            ConsumptionValue = 7m,
+            ConsumptionUnit = "L_PER_100KM",
             LicensePlate = "AA0011AA",
             Mileage = 1000,
             DailyRate = 70m,
+            IsBookable = true,
             IsAvailable = true,
             ServiceIntervalKm = 10000
         });

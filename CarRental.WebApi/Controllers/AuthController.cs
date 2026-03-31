@@ -1,10 +1,12 @@
 using CarRental.WebApi.Auth;
 using CarRental.WebApi.Contracts;
 using CarRental.WebApi.Data;
+using CarRental.WebApi.Infrastructure;
 using CarRental.WebApi.Models;
 using CarRental.WebApi.Services.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace CarRental.WebApi.Controllers;
 
@@ -21,7 +23,7 @@ public sealed class AuthController(
     public async Task<IActionResult> Login([FromBody] LoginRequest request, CancellationToken cancellationToken)
     {
         var result = await authService.AuthenticateAsync(request.Login, request.Password, cancellationToken);
-        if (!result.Success || result.Employee is null)
+        if (!result.Success || result.Account is null)
         {
             if (result.IsLockedOut)
             {
@@ -35,8 +37,12 @@ public sealed class AuthController(
             return Unauthorized(new { message = "Invalid login or password." });
         }
 
-        var token = tokenService.Create(result.Employee);
-        return Ok(new AuthTokenResponse(token.AccessToken, token.ExpiresAtUtc, ToEmployeeDto(result.Employee)));
+        var token = tokenService.Create(result.Account, result.Employee, result.Client, result.Role);
+        return Ok(new AuthTokenResponse(
+            token.AccessToken,
+            token.ExpiresAtUtc,
+            result.Account.ToAccountContextDto(result.Employee, result.Client, result.Role),
+            result.Employee?.ToDto()));
     }
 
     [AllowAnonymous]
@@ -52,38 +58,48 @@ public sealed class AuthController(
             request.Password,
             cancellationToken);
 
-        if (!result.Success || result.Employee is null)
+        if (!result.Success || result.Account is null)
         {
             return BadRequest(new { message = "Registration failed. Check input data or duplicate login." });
         }
 
-        var token = tokenService.Create(result.Employee);
+        var token = tokenService.Create(result.Account, result.Employee, result.Client, result.Role);
         return CreatedAtAction(
             nameof(Me),
-            new AuthTokenResponse(token.AccessToken, token.ExpiresAtUtc, ToEmployeeDto(result.Employee)));
+            new AuthTokenResponse(
+                token.AccessToken,
+                token.ExpiresAtUtc,
+                result.Account.ToAccountContextDto(result.Employee, result.Client, result.Role),
+                result.Employee?.ToDto()));
     }
 
     [Authorize]
     [HttpGet("me")]
-    [ProducesResponseType<EmployeeDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<AccountContextDto>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> Me(
-        [FromServices] CarRental.WebApi.Data.RentalDbContext dbContext,
+        [FromServices] RentalDbContext dbContext,
         CancellationToken cancellationToken)
     {
-        var employeeId = GetCurrentEmployeeId();
-        if (!employeeId.HasValue)
+        var accountId = GetCurrentAccountId();
+        if (!accountId.HasValue)
         {
             return Unauthorized();
         }
 
-        var employee = await dbContext.Employees.FindAsync([employeeId.Value], cancellationToken);
-        if (employee is null)
+        var account = await dbContext.Accounts
+            .Include(item => item.Employee)
+                .ThenInclude(item => item!.Account)
+            .Include(item => item.Client)
+                .ThenInclude(item => item!.Documents)
+            .FirstOrDefaultAsync(item => item.Id == accountId.Value, cancellationToken);
+        if (account is null)
         {
             return Unauthorized();
         }
 
-        return Ok(ToEmployeeDto(employee));
+        var role = account.Employee?.Role ?? Models.UserRole.User;
+        return Ok(account.ToAccountContextDto(account.Employee, account.Client, role));
     }
 
     [Authorize]
@@ -93,14 +109,14 @@ public sealed class AuthController(
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request, CancellationToken cancellationToken)
     {
-        var employeeId = GetCurrentEmployeeId();
-        if (!employeeId.HasValue)
+        var accountId = GetCurrentAccountId();
+        if (!accountId.HasValue)
         {
             return Unauthorized();
         }
 
         var result = await authService.ChangePasswordAsync(
-            employeeId.Value,
+            accountId.Value,
             request.CurrentPassword,
             request.NewPassword,
             cancellationToken);
@@ -129,7 +145,9 @@ public sealed class AuthController(
             return Unauthorized();
         }
 
-        var employee = await dbContext.Employees.FindAsync([employeeId.Value], cancellationToken);
+        var employee = await dbContext.Employees
+            .Include(item => item.Account)
+            .FirstOrDefaultAsync(item => item.Id == employeeId.Value, cancellationToken);
         if (employee is null)
         {
             return Unauthorized();
@@ -137,20 +155,19 @@ public sealed class AuthController(
 
         if (employee.Role != request.Role)
         {
+            if (employee.Role == Models.UserRole.Admin && request.Role != Models.UserRole.Admin)
+            {
+                var adminCount = await dbContext.Employees.CountAsync(e => e.IsActive && e.Role == Models.UserRole.Admin, cancellationToken);
+                if (adminCount <= 1)
+                {
+                    return BadRequest(new { message = "Неможливо змінити роль. Ви єдиний активний адміністратор у системі." });
+                }
+            }
+            
             employee.Role = request.Role;
             await dbContext.SaveChangesAsync(cancellationToken);
         }
 
-        return Ok(ToEmployeeDto(employee));
+        return Ok(employee.ToDto());
     }
-
-    private static EmployeeDto ToEmployeeDto(Employee employee)
-        => new(
-            employee.Id,
-            employee.FullName,
-            employee.Login,
-            employee.Role,
-            employee.IsActive,
-            employee.LastLoginUtc,
-            employee.LockoutUntilUtc);
 }

@@ -6,3 +6,4 @@ public enum DamageStatus
     Charged = 2,
     Resolved = 3
 }
+

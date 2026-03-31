@@ -1,4 +1,4 @@
-﻿using CarRental.WebApi.Data;
+using CarRental.WebApi.Data;
 using CarRental.WebApi.Models;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,14 +14,28 @@ public sealed class MaintenanceService(RentalDbContext dbContext) : IMaintenance
             return new MaintenanceResult(false, "Авто не знайдено.");
         }
 
+        if (request.PerformedByEmployeeId.HasValue &&
+            !await dbContext.Employees.AnyAsync(item => item.Id == request.PerformedByEmployeeId.Value, cancellationToken))
+        {
+            return new MaintenanceResult(false, "Працівника не знайдено.");
+        }
+
+        if (!await dbContext.MaintenanceTypes.AnyAsync(item => item.Code == request.MaintenanceTypeCode.Trim().ToUpperInvariant(), cancellationToken))
+        {
+            return new MaintenanceResult(false, "Тип обслуговування не знайдено.");
+        }
+
         var record = new MaintenanceRecord
         {
             VehicleId = request.VehicleId,
+            PerformedByEmployeeId = request.PerformedByEmployeeId,
             ServiceDate = request.ServiceDate,
             MileageAtService = request.MileageAtService,
             Description = request.Description.Trim(),
             Cost = request.Cost,
-            NextServiceMileage = request.NextServiceMileage
+            NextServiceMileage = request.NextServiceMileage,
+            MaintenanceTypeCode = request.MaintenanceTypeCode.Trim().ToUpperInvariant(),
+            ServiceProviderName = string.IsNullOrWhiteSpace(request.ServiceProviderName) ? null : request.ServiceProviderName.Trim()
         };
 
         dbContext.MaintenanceRecords.Add(record);
@@ -69,4 +83,3 @@ public sealed class MaintenanceService(RentalDbContext dbContext) : IMaintenance
         return due;
     }
 }
-

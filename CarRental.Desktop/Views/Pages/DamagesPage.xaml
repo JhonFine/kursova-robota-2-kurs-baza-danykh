@@ -30,6 +30,7 @@
                     <TextBlock Style="{StaticResource FormLabelStyle}" Text="Договір (опціонально)" />
                     <ComboBox ItemsSource="{Binding Rentals}"
                               DisplayMemberPath="Display"
+                              IsEnabled="{Binding CanSelectRental}"
                               SelectedItem="{Binding SelectedRental}" />
                 </StackPanel>
 

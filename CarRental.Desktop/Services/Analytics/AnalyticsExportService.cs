@@ -31,7 +31,11 @@ public sealed class AnalyticsExportService(RentalDbContext dbContext, string exp
                 row.TotalAmount.ToString(CultureInfo.InvariantCulture)));
         }
 
-        await File.WriteAllTextAsync(path, builder.ToString(), Encoding.UTF8, cancellationToken);
+        await File.WriteAllTextAsync(
+            path,
+            builder.ToString(),
+            new UTF8Encoding(encoderShouldEmitUTF8Identifier: true),
+            cancellationToken);
         return path;
     }
 
@@ -76,6 +80,12 @@ public sealed class AnalyticsExportService(RentalDbContext dbContext, string exp
     {
         var from = request.FromDate.Date;
         var to = request.ToDate.Date;
+        var clients = dbContext.Clients
+            .AsNoTracking()
+            .IgnoreQueryFilters();
+        var vehicles = dbContext.Vehicles
+            .AsNoTracking()
+            .IgnoreQueryFilters();
 
         var query = dbContext.Rentals
             .AsNoTracking()
@@ -97,8 +107,14 @@ public sealed class AnalyticsExportService(RentalDbContext dbContext, string exp
                 item.ContractNumber,
                 item.StartDate,
                 item.EndDate,
-                item.Client != null ? item.Client.FullName : string.Empty,
-                item.Vehicle != null ? (item.Vehicle.Make + " " + item.Vehicle.Model) : string.Empty,
+                clients
+                    .Where(client => client.Id == item.ClientId)
+                    .Select(client => client.FullName)
+                    .FirstOrDefault() ?? string.Empty,
+                vehicles
+                    .Where(vehicle => vehicle.Id == item.VehicleId)
+                    .Select(vehicle => vehicle.Make + " " + vehicle.Model)
+                    .FirstOrDefault() ?? string.Empty,
                 item.Employee != null ? item.Employee.FullName : string.Empty,
                 item.Status.ToDisplay(),
                 item.TotalAmount))

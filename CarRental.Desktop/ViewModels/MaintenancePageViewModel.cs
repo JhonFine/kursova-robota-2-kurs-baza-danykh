@@ -1,5 +1,6 @@
 using CarRental.Desktop.Data;
 using CarRental.Desktop.Services.Maintenance;
+using CarRental.Shared.ReferenceData;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.EntityFrameworkCore;
 using System.Collections.ObjectModel;
@@ -16,7 +17,7 @@ public sealed class MaintenancePageViewModel : PageDataViewModelBase, ITransient
     private VehicleOption? _selectedVehicle;
     private string _mileageInput = string.Empty;
     private string _nextMileageInput = string.Empty;
-    private string _description = "Планове техобслуговування";
+    private string _description = DemoSeedReferenceData.DefaultMaintenanceDescription;
     private string _costInput = string.Empty;
     private string _statusMessage = string.Empty;
     private int _guideRequestId;

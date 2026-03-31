@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json.schemastore.org/launchsettings.json",
+  "profiles": {
+    "Desktop (Postgres)": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "CAR_RENTAL_POSTGRES_CONNECTION": "Host=localhost;Port=5432;Database=car_rental;Username=postgres;Password=postgres"
+      }
+    }
+  }
+}

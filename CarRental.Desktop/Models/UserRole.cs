@@ -6,3 +6,4 @@ public enum UserRole
     Manager = 2,
     User = 3
 }
+

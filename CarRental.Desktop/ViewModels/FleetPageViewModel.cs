@@ -2,6 +2,7 @@
 using CarRental.Desktop.Models;
 using CarRental.Desktop.Services.Auth;
 using CarRental.Desktop.Infrastructure;
+using CarRental.Shared.ReferenceData;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.EntityFrameworkCore;
 using System.Collections.ObjectModel;
@@ -343,7 +344,7 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
                 var car = $"{vehicle.Make} {vehicle.Model}";
                 var status = active.Contains(vehicle.Id)
                     ? StatusActiveRental
-                    : vehicle.IsAvailable ? StatusAvailable : StatusUnavailable;
+                    : vehicle.IsBookable ? StatusAvailable : StatusUnavailable;
                 _allVehicles.Add(new FleetRow(
                     vehicle.Id,
                     vehicle.Make,
@@ -499,8 +500,8 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
             query = SelectedStatusFilter switch
             {
                 StatusActiveRental => query.Where(item => activeVehicleIds.Contains(item.Id)),
-                StatusAvailable => query.Where(item => !activeVehicleIds.Contains(item.Id) && item.IsAvailable),
-                StatusUnavailable => query.Where(item => !activeVehicleIds.Contains(item.Id) && !item.IsAvailable),
+                StatusAvailable => query.Where(item => !activeVehicleIds.Contains(item.Id) && item.VehicleStatusCode == VehicleStatuses.Ready),
+                StatusUnavailable => query.Where(item => !activeVehicleIds.Contains(item.Id) && item.VehicleStatusCode != VehicleStatuses.Ready),
                 _ => query
             };
         }
@@ -569,10 +570,10 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
                 item.Model.Contains("Wrangler") ||
                 item.Model.Contains("Discovery") ||
                 item.Model.Contains("Cayenne")),
-            "Преміум" => query.Where(item => item.DailyRate >= 95m),
-            "Бізнес" => query.Where(item => item.DailyRate >= 70m && item.DailyRate < 95m),
-            "Середній" => query.Where(item => item.DailyRate >= 45m && item.DailyRate < 70m),
-            "Економ" => query.Where(item => item.DailyRate < 45m),
+            "Преміум" => query.Where(item => item.DailyRate >= VehicleDomainRules.BusinessUpperBound),
+            "Бізнес" => query.Where(item => item.DailyRate >= VehicleDomainRules.MidUpperBound && item.DailyRate < VehicleDomainRules.BusinessUpperBound),
+            "Середній" => query.Where(item => item.DailyRate >= VehicleDomainRules.EconomyUpperBound && item.DailyRate < VehicleDomainRules.MidUpperBound),
+            "Економ" => query.Where(item => item.DailyRate < VehicleDomainRules.EconomyUpperBound),
             _ => query
         };
     }
@@ -590,12 +591,12 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
 
         if (StatusAvailable.ToLowerInvariant().Contains(normalized, StringComparison.Ordinal))
         {
-            return query.Where(item => !activeVehicleIds.Contains(item.Id) && item.IsAvailable);
+            return query.Where(item => !activeVehicleIds.Contains(item.Id) && item.VehicleStatusCode == VehicleStatuses.Ready);
         }
 
         if (StatusUnavailable.ToLowerInvariant().Contains(normalized, StringComparison.Ordinal))
         {
-            return query.Where(item => !activeVehicleIds.Contains(item.Id) && !item.IsAvailable);
+            return query.Where(item => !activeVehicleIds.Contains(item.Id) && item.VehicleStatusCode != VehicleStatuses.Ready);
         }
 
         return query;
@@ -879,17 +880,17 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
             return "Позашляховик";
         }
 
-        if (dailyRate >= 95m)
+        if (dailyRate >= VehicleDomainRules.BusinessUpperBound)
         {
             return "Преміум";
         }
 
-        if (dailyRate >= 70m)
+        if (dailyRate >= VehicleDomainRules.MidUpperBound)
         {
             return "Бізнес";
         }
 
-        return dailyRate >= 45m ? "Середній" : "Економ";
+        return dailyRate >= VehicleDomainRules.EconomyUpperBound ? "Середній" : "Економ";
     }
 
     private static bool ContainsAny(string source, params string[] tokens)
@@ -959,7 +960,27 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
             return new AddVehicleResult(false, "Некоректна кількість дверей.");
         }
 
-        var normalizedPlate = draft.LicensePlate.Trim().ToUpperInvariant();
+        if (!VehicleSpecifications.TryParsePowertrain(engineDisplay, out var powertrainCapacityValue, out var powertrainCapacityUnit))
+        {
+            return new AddVehicleResult(false, "Некоректний об'єм двигуна або ємність батареї.");
+        }
+
+        if (!VehicleSpecifications.TryParseCargoCapacity(cargoCapacityDisplay, out var cargoCapacityValue, out var cargoCapacityUnit))
+        {
+            return new AddVehicleResult(false, "Некоректна місткість багажу або вантажопідйомність.");
+        }
+
+        if (!VehicleSpecifications.TryParseConsumption(consumptionDisplay, out var consumptionValue, out var consumptionUnit))
+        {
+            return new AddVehicleResult(false, "Некоректна витрата пального або енергії.");
+        }
+
+        var normalizedPlate = VehicleDomainRules.NormalizeLicensePlate(draft.LicensePlate);
+        if (!VehicleDomainRules.IsValidLicensePlate(normalizedPlate))
+        {
+            return new AddVehicleResult(false, "Некоректний формат номера. Використовуйте шаблон AA1234BB.");
+        }
+
         var exists = await _dbContext.Vehicles
             .AnyAsync(item => item.LicensePlate.ToUpper() == normalizedPlate);
         if (exists)
@@ -976,17 +997,20 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
         {
             Make = draft.Make.Trim(),
             Model = draft.Model.Trim(),
-            EngineDisplay = engineDisplay,
+            PowertrainCapacityValue = powertrainCapacityValue,
+            PowertrainCapacityUnit = powertrainCapacityUnit,
             FuelType = fuelType,
             TransmissionType = transmissionType,
             DoorsCount = doorsCount,
-            CargoCapacityDisplay = cargoCapacityDisplay,
-            ConsumptionDisplay = consumptionDisplay,
+            CargoCapacityValue = cargoCapacityValue,
+            CargoCapacityUnit = cargoCapacityUnit,
+            ConsumptionValue = consumptionValue,
+            ConsumptionUnit = consumptionUnit,
             HasAirConditioning = draft.HasAirConditioning,
             LicensePlate = normalizedPlate,
             Mileage = mileage,
             DailyRate = dailyRate,
-            IsAvailable = true,
+            IsBookable = true,
             ServiceIntervalKm = serviceInterval,
             PhotoPath = storedPhotoPath
         };

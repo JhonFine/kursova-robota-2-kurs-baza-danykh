@@ -1,4 +1,5 @@
-using CarRental.Desktop.Data;
+using DesktopRentalDbContext = CarRental.Desktop.Data.RentalDbContext;
+using WebApiRentalDbContext = CarRental.WebApi.Data.RentalDbContext;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
@@ -12,12 +13,12 @@ internal sealed class DesktopPostgresTestDatabase : IAsyncDisposable
 
     private readonly string _adminConnectionString;
     private readonly string _databaseName;
-    private readonly DbContextOptions<RentalDbContext> _contextOptions;
+    private readonly DbContextOptions<DesktopRentalDbContext> _contextOptions;
 
     private DesktopPostgresTestDatabase(
         string adminConnectionString,
         string databaseName,
-        DbContextOptions<RentalDbContext> contextOptions)
+        DbContextOptions<DesktopRentalDbContext> contextOptions)
     {
         _adminConnectionString = adminConnectionString;
         _databaseName = databaseName;
@@ -41,19 +42,22 @@ internal sealed class DesktopPostgresTestDatabase : IAsyncDisposable
         {
             Database = databaseName
         };
-        var contextOptions = new DbContextOptionsBuilder<RentalDbContext>()
+        var webApiContextOptions = new DbContextOptionsBuilder<WebApiRentalDbContext>()
             .UseNpgsql(builder.ConnectionString)
             .Options;
-
-        await using (var dbContext = new RentalDbContext(contextOptions))
+        await using (var webApiDbContext = new WebApiRentalDbContext(webApiContextOptions))
         {
-            await dbContext.Database.EnsureCreatedAsync();
+            await webApiDbContext.Database.MigrateAsync();
         }
+
+        var contextOptions = new DbContextOptionsBuilder<DesktopRentalDbContext>()
+            .UseNpgsql(builder.ConnectionString)
+            .Options;
 
         return new DesktopPostgresTestDatabase(adminConnectionString, databaseName, contextOptions);
     }
 
-    public RentalDbContext CreateDbContext() => new(_contextOptions);
+    public DesktopRentalDbContext CreateDbContext() => new(_contextOptions);
 
     public async ValueTask DisposeAsync()
     {

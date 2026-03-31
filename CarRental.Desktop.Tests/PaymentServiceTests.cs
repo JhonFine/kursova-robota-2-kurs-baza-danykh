@@ -22,8 +22,8 @@ public sealed class PaymentServiceTests
             VehicleId = 1,
             EmployeeId = 1,
             ContractNumber = "CR-2026-000080",
-            StartDate = DateTime.Today,
-            EndDate = DateTime.Today.AddDays(1),
+            StartDate = DateTime.UtcNow.Date,
+            EndDate = DateTime.UtcNow.Date.AddDays(1),
             StartMileage = 1000,
             TotalAmount = 100m,
             Status = RentalStatus.Active,
@@ -62,6 +62,8 @@ public sealed class PaymentServiceTests
 
     private static void SeedMinimalData(RentalDbContext dbContext)
     {
+        TestLookupSeed.SeedVehicleLookups(dbContext);
+
         dbContext.Employees.Add(new Employee
         {
             Id = 1,
@@ -77,6 +79,8 @@ public sealed class PaymentServiceTests
             FullName = "Client",
             PassportData = "PP1",
             DriverLicense = "DL1",
+            PassportExpirationDate = DateTime.UtcNow.AddYears(5),
+            DriverLicenseExpirationDate = DateTime.UtcNow.AddYears(5),
             Phone = "123",
             Blacklisted = false
         });
@@ -85,10 +89,19 @@ public sealed class PaymentServiceTests
             Id = 1,
             Make = "Toyota",
             Model = "Camry",
+            FuelType = "Бензин",
+            TransmissionType = "Автомат",
+            PowertrainCapacityValue = 2m,
+            PowertrainCapacityUnit = "L",
+            CargoCapacityValue = 500m,
+            CargoCapacityUnit = "L",
+            ConsumptionValue = 7m,
+            ConsumptionUnit = "L_PER_100KM",
             LicensePlate = "AA0011AA",
             Mileage = 1000,
             DailyRate = 70m,
-            IsAvailable = true
+            IsAvailable = true,
+            ServiceIntervalKm = 10000
         });
         dbContext.SaveChanges();
     }

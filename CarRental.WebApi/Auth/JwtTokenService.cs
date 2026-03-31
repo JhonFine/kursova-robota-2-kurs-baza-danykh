@@ -11,17 +11,29 @@ public sealed class JwtTokenService(IOptions<JwtOptions> options) : ITokenServic
 {
     private readonly JwtOptions _options = options.Value;
 
-    public TokenEnvelope Create(Employee employee)
+    public TokenEnvelope Create(Account account, Employee? employee, Client? client, UserRole role)
     {
         var expiresAt = DateTime.UtcNow.AddMinutes(_options.AccessTokenMinutes);
+        var displayName = employee?.FullName ?? client?.FullName ?? account.Login;
         var claims = new List<Claim>
         {
-            new(JwtRegisteredClaimNames.Sub, employee.Id.ToString()),
-            new(ClaimTypes.NameIdentifier, employee.Id.ToString()),
-            new(ClaimTypes.Name, employee.Login),
-            new("full_name", employee.FullName),
-            new(ClaimTypes.Role, employee.Role.ToString())
+            new(JwtRegisteredClaimNames.Sub, account.Id.ToString()),
+            new(ClaimTypes.NameIdentifier, account.Id.ToString()),
+            new("account_id", account.Id.ToString()),
+            new(ClaimTypes.Name, account.Login),
+            new("full_name", displayName),
+            new(ClaimTypes.Role, role.ToString())
         };
+
+        if (employee is not null)
+        {
+            claims.Add(new Claim("employee_id", employee.Id.ToString()));
+        }
+
+        if (client is not null)
+        {
+            claims.Add(new Claim("client_id", client.Id.ToString()));
+        }
 
         var credentials = new SigningCredentials(
             new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.SigningKey)),

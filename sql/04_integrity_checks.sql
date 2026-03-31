@@ -1,4 +1,4 @@
--- Post-migration integrity checks
+-- Post-migration integrity checks for the redesigned schema
 
 -- 1) no invalid rental ranges
 SELECT COUNT(*) AS invalid_rental_ranges
@@ -22,31 +22,88 @@ FROM (
 ) q
 WHERE q.amount < 0;
 
--- 3) check IsClosed/status consistency
-SELECT COUNT(*) AS inconsistent_closed_status
+-- 3) rental lifecycle consistency without duplicated IsClosed flag
+SELECT COUNT(*) AS inconsistent_rental_lifecycle
 FROM "Rentals"
-WHERE ("Status" = 3 AND "IsClosed" = FALSE)
-   OR ("Status" <> 3 AND "IsClosed" = TRUE);
+WHERE ("Status" = 3 AND ("ClosedAtUtc" IS NULL OR "CanceledAtUtc" IS NOT NULL OR "CancellationReason" IS NOT NULL))
+   OR ("Status" = 4 AND ("ClosedAtUtc" IS NOT NULL OR "CanceledAtUtc" IS NULL OR length(btrim(COALESCE("CancellationReason", ''))) = 0))
+   OR ("Status" IN (1, 2) AND ("ClosedAtUtc" IS NOT NULL OR "CanceledAtUtc" IS NOT NULL OR "CancellationReason" IS NOT NULL));
 
--- 4) duplicate act numbers
-SELECT "ActNumber", COUNT(*)
-FROM "Damages"
-GROUP BY "ActNumber"
+-- 4) duplicate active document numbers
+SELECT "DocumentTypeCode", "DocumentNumber", COUNT(*) AS duplicate_count
+FROM "ClientDocuments"
+WHERE NOT "IsDeleted"
+GROUP BY "DocumentTypeCode", "DocumentNumber"
 HAVING COUNT(*) > 1;
 
--- 5) IsAvailable should match active rentals
-SELECT v."Id", v."LicensePlate", v."IsAvailable"
-FROM "Vehicles" v
-WHERE v."IsAvailable" = TRUE
-  AND EXISTS (
-      SELECT 1
-      FROM "Rentals" r
-      WHERE r."VehicleId" = v."Id"
-        AND r."Status" = 2
-  );
+-- 5) duplicate client phones among active clients
+SELECT "Phone", COUNT(*) AS duplicate_count
+FROM "Clients"
+WHERE NOT "IsDeleted"
+GROUP BY "Phone"
+HAVING COUNT(*) > 1;
 
--- 6) charged amount and charge-flag consistency
-SELECT COUNT(*) AS inconsistent_damage_charge_flag
+-- 6) duplicate license plates among active vehicles
+SELECT "LicensePlate", COUNT(*) AS duplicate_count
+FROM "Vehicles"
+WHERE NOT "IsDeleted"
+GROUP BY "LicensePlate"
+HAVING COUNT(*) > 1;
+
+-- 7) snapshot of computed availability
+SELECT
+    v."Id",
+    v."LicensePlate",
+    v."VehicleStatusCode",
+    v."IsDeleted",
+    (
+        NOT v."IsDeleted"
+        AND v."VehicleStatusCode" = 'READY'
+        AND NOT EXISTS (
+            SELECT 1
+            FROM "Rentals" r
+            WHERE r."VehicleId" = v."Id"
+              AND r."Status" IN (1, 2)
+        )
+    ) AS "ComputedIsAvailable"
+FROM "Vehicles" v
+ORDER BY v."Id";
+
+-- 8) damage status must stay consistent with charged amount
+SELECT COUNT(*) AS inconsistent_damage_charge_state
 FROM "Damages"
-WHERE ("IsChargedToClient" = TRUE AND "ChargedAmount" <= 0)
-   OR ("IsChargedToClient" = FALSE AND "ChargedAmount" <> 0);
+WHERE ("Status" = 1 AND "ChargedAmount" <> 0)
+   OR ("Status" = 2 AND "ChargedAmount" <= 0);
+
+-- 9) no duplicate inspection types per rental
+SELECT "RentalId", "Type", COUNT(*) AS duplicate_count
+FROM "RentalInspections"
+GROUP BY "RentalId", "Type"
+HAVING COUNT(*) > 1;
+
+-- 10) rentals must point to clients with valid driver licenses
+SELECT COUNT(*) AS rentals_with_invalid_license
+FROM "Rentals" r
+LEFT JOIN "ClientDocuments" d
+  ON d."ClientId" = r."ClientId"
+ AND d."DocumentTypeCode" = 'DRIVER_LICENSE'
+ AND NOT d."IsDeleted"
+WHERE d."ExpirationDate" IS NULL
+   OR d."ExpirationDate" < r."StartDate"::date;
+
+-- 11) damages must reference the same vehicle as the linked rental
+SELECT d."Id", d."RentalId", d."VehicleId", r."VehicleId" AS rental_vehicle_id
+FROM "Damages" d
+JOIN "Rentals" r ON r."Id" = d."RentalId"
+WHERE d."VehicleId" <> r."VehicleId";
+
+-- 12) no overlapping booked/active rentals for the same vehicle
+SELECT left_rental."Id" AS left_rental_id, right_rental."Id" AS right_rental_id, left_rental."VehicleId"
+FROM "Rentals" AS left_rental
+JOIN "Rentals" AS right_rental
+  ON left_rental."VehicleId" = right_rental."VehicleId"
+ AND left_rental."Id" < right_rental."Id"
+ AND left_rental."Status" IN (1, 2)
+ AND right_rental."Status" IN (1, 2)
+ AND left_rental."StartDate" <= right_rental."EndDate"
+ AND right_rental."StartDate" <= left_rental."EndDate";

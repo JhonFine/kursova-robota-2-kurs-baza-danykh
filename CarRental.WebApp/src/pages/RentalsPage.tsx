@@ -3,14 +3,18 @@ import { useSearchParams } from 'react-router-dom';
 import { Api } from '../api/client';
 import type { Client, Payment, Rental, Vehicle } from '../api/types';
 import { useAuth } from '../auth/useAuth';
+import { EmptyState } from '../components/EmptyState';
+import { FeedbackBanner } from '../components/FeedbackBanner';
 import { FilterField, FilterToolbar, type ActiveFilterChipItem } from '../components/FilterToolbar';
-import { LoadingView } from '../components/LoadingView';
+import { InlineSpinner } from '../components/LoadingView';
 import { PaginationControls } from '../components/PaginationControls';
 import { Panel } from '../components/Panel';
+import { StatCardSkeletons, TableSkeleton } from '../components/Skeleton';
 import { StatCard } from '../components/StatCard';
 import { formatCurrency, formatDate, formatShortDate } from '../utils/format';
+import { STAFF_CANCELLATION_REASON } from '../utils/referenceData';
 import { parseEnumParam, parsePositiveIntParam, withUpdatedSearchParams } from '../utils/searchParams';
-import { LOCATION_OPTIONS } from './prokatShared';
+import { getAvailableTimeOptionsForDate, LOCATION_OPTIONS, parseDateTime, toDateInputValue } from './prokatShared';
 
 type RentalsTab = 'contracts' | 'payments';
 type ScrollTarget = 'list' | 'close' | 'cancel' | 'payments';
@@ -31,7 +35,9 @@ interface CreateForm {
   clientId: string;
   vehicleId: string;
   startDate: string;
+  startTime: string;
   endDate: string;
+  endTime: string;
   pickupLocation: string;
   returnLocation: string;
   createInitialPayment: boolean;
@@ -41,7 +47,11 @@ interface CreateForm {
 }
 
 function createTodayValue(): string {
-  return new Date().toISOString().slice(0, 10);
+  return toDateInputValue(new Date());
+}
+
+function toDateTimePayload(date: string, time: string): string {
+  return `${date}T${time}:00`;
 }
 
 function statusClass(status: Rental['status']): 'ok' | 'bad' | 'wait' {
@@ -133,13 +143,15 @@ export function RentalsPage() {
   const [pickupInspectionNotes, setPickupInspectionNotes] = useState('');
   const [returnFuelPercent, setReturnFuelPercent] = useState('100');
   const [returnInspectionNotes, setReturnInspectionNotes] = useState('');
-  const [cancelReason, setCancelReason] = useState('За запитом клієнта');
+  const [cancelReason, setCancelReason] = useState(STAFF_CANCELLATION_REASON);
   const [pendingScrollTarget, setPendingScrollTarget] = useState<ScrollTarget | null>(null);
   const [createForm, setCreateForm] = useState<CreateForm>({
     clientId: '',
     vehicleId: '',
     startDate: createTodayValue(),
-    endDate: new Date(Date.now() + 24 * 3600 * 1000).toISOString().slice(0, 10),
+    startTime: '10:00',
+    endDate: toDateInputValue(new Date(Date.now() + 24 * 3600 * 1000)),
+    endTime: '10:00',
     pickupLocation: LOCATION_OPTIONS[0],
     returnLocation: LOCATION_OPTIONS[0],
     createInitialPayment: false,
@@ -167,6 +179,39 @@ export function RentalsPage() {
     () => rentals.find((item) => item.id === selectedId) ?? null,
     [rentals, selectedId],
   );
+  const pickupInspectionMissed = selectedRental?.status === 'Booked' && new Date(selectedRental.startDate) < new Date();
+  const pickupInspectionDisabled = !selectedRental || selectedRental.status !== 'Booked' || pickupInspectionMissed;
+  const currentMoment = new Date();
+  const todayDateValue = toDateInputValue(currentMoment);
+  const createStartTimeOptions = getAvailableTimeOptionsForDate(createForm.startDate, currentMoment);
+  const createStartTimeValue = createStartTimeOptions.includes(createForm.startTime) ? createForm.startTime : '';
+  const createStartDateTime = parseDateTime(createForm.startDate, createForm.startTime);
+  const createEndMinimumMoment = createStartDateTime > currentMoment ? createStartDateTime : currentMoment;
+  const createEndDateMin = createForm.startDate > todayDateValue ? createForm.startDate : todayDateValue;
+  const createEndTimeOptions = getAvailableTimeOptionsForDate(createForm.endDate, createEndMinimumMoment);
+  const createEndTimeValue = createEndTimeOptions.includes(createForm.endTime) ? createForm.endTime : '';
+  const createEndDateTime = parseDateTime(createForm.endDate, createForm.endTime);
+  const createStartDateError = !createForm.startDate || Number.isNaN(createStartDateTime.getTime())
+    ? 'Оберіть дату подачі.'
+    : createStartTimeOptions.length === 0
+      ? 'На обрану дату вже немає доступного часу подачі. Оберіть іншу дату.'
+      : createStartDateTime < currentMoment
+        ? 'Початок оренди не може бути в минулому.'
+        : null;
+  const createEndDateError = !createForm.endDate || Number.isNaN(createEndDateTime.getTime())
+    ? 'Оберіть дату повернення.'
+    : createForm.endDate < createForm.startDate
+      ? 'Дата повернення не може бути раніше дати подачі.'
+    : createForm.endDate < todayDateValue
+      ? 'Дата повернення не може бути в минулому.'
+      : createStartDateError
+        ? null
+        : createEndTimeOptions.length === 0
+          ? 'На обрану дату вже немає доступного часу повернення. Оберіть іншу дату.'
+          : createEndDateTime <= createStartDateTime
+            ? 'Дата та час завершення мають бути пізнішими за початок оренди.'
+            : null;
+  const hasCreateDateSelectionError = Boolean(createStartDateError || createEndDateError);
 
   const rentalsByVehicleId = useMemo(() => {
     const grouped = new Map<number, Rental[]>();
@@ -202,14 +247,14 @@ export function RentalsPage() {
     [ganttHorizon, rentalsByVehicleId, vehicles],
   );
 
-  const updateListParams = useCallback((updates: {
+  const updateListParams = (updates: {
     page?: number | null;
     search?: string | null;
     status?: RentalStatusFilter | null;
     day?: string | null;
   }): void => {
     setSearchParams((current) => withUpdatedSearchParams(current, updates));
-  }, [setSearchParams]);
+  };
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
@@ -415,6 +460,28 @@ export function RentalsPage() {
   }, [selectedRental]);
 
   useEffect(() => {
+    if (createStartTimeOptions.length === 0 || createStartTimeOptions.includes(createForm.startTime)) {
+      return;
+    }
+
+    setCreateForm((currentForm) => ({
+      ...currentForm,
+      startTime: createStartTimeOptions[0],
+    }));
+  }, [createForm.startTime, createStartTimeOptions]);
+
+  useEffect(() => {
+    if (createEndTimeOptions.length === 0 || createEndTimeOptions.includes(createForm.endTime)) {
+      return;
+    }
+
+    setCreateForm((currentForm) => ({
+      ...currentForm,
+      endTime: createEndTimeOptions[0],
+    }));
+  }, [createEndTimeOptions, createForm.endTime]);
+
+  useEffect(() => {
     void loadPaymentsForSelection(selectedId);
   }, [loadPaymentsForSelection, selectedId]);
 
@@ -455,8 +522,25 @@ export function RentalsPage() {
       return;
     }
 
-    if (createForm.endDate < createForm.startDate) {
-      setError('Дата завершення не може бути раніше дати початку.');
+    if (createStartDateError) {
+      setError(createStartDateError);
+      return;
+    }
+
+    if (createEndDateError) {
+      setError(createEndDateError);
+      return;
+    }
+
+    const startDateTime = createStartDateTime;
+    const endDateTime = createEndDateTime;
+    if (endDateTime <= startDateTime) {
+      setError('Дата та час завершення мають бути пізнішими за початок оренди.');
+      return;
+    }
+
+    if (startDateTime < new Date()) {
+      setError('Початок оренди не може бути в минулому.');
       return;
     }
 
@@ -465,8 +549,8 @@ export function RentalsPage() {
       const createdRental = await Api.createRental({
         clientId: Number(createForm.clientId),
         vehicleId: Number(createForm.vehicleId),
-        startDate: `${createForm.startDate}T10:00:00`,
-        endDate: `${createForm.endDate}T10:00:00`,
+        startDate: toDateTimePayload(createForm.startDate, createForm.startTime),
+        endDate: toDateTimePayload(createForm.endDate, createForm.endTime),
         pickupLocation: createForm.pickupLocation,
         returnLocation: createForm.returnLocation,
         createInitialPayment: createForm.createInitialPayment,
@@ -624,37 +708,42 @@ export function RentalsPage() {
     setPendingScrollTarget(target);
   };
 
-  const activeFilters = useMemo(() => {
-    const items: ActiveFilterChipItem[] = [
-      {
-        key: 'day',
-        label: `Робоча дата: ${formatShortDate(`${selectedDate}T00:00:00`)}`,
-        tone: 'accent',
-        onRemove: () => updateListParams({ day: null, page: 1 }),
-      },
-    ];
-
-    if (search.trim()) {
-      items.push({
-        key: 'search',
-        label: `Пошук: ${search.trim()}`,
-        onRemove: () => updateListParams({ search: null, page: 1 }),
-      });
-    }
-
-    if (statusFilter !== 'all') {
-      items.push({
-        key: 'status',
-        label: `Статус: ${rentalStatusFilterLabels[statusFilter]}`,
-        onRemove: () => updateListParams({ status: null, page: 1 }),
-      });
-    }
-
-    return items;
-  }, [search, selectedDate, statusFilter, updateListParams]);
-
   if (loading && rentals.length === 0 && clients.length === 0 && vehicles.length === 0) {
-    return <LoadingView text="Завантаження оренд..." />;
+    return (
+      <div className="staff-dashboard">
+        <StatCardSkeletons count={4} />
+
+        <Panel title="Staff-операції" subtitle="Готуємо фільтри, денну дошку та робочу дату.">
+          <TableSkeleton rows={3} compact />
+        </Panel>
+
+        <section className="rentals-operations-grid">
+          <Panel title="Видачі" subtitle="Готуємо дошку видач на вибрану дату.">
+            <TableSkeleton rows={3} compact />
+          </Panel>
+          <Panel title="Повернення" subtitle="Готуємо контроль повернень.">
+            <TableSkeleton rows={3} compact />
+          </Panel>
+          <Panel title="Прострочені" subtitle="Готуємо ризикові кейси.">
+            <TableSkeleton rows={3} compact />
+          </Panel>
+        </section>
+
+        <div className="staff-dashboard-grid">
+          <Panel title="Договори" subtitle="Підготовка списку активних і майбутніх договорів.">
+            <TableSkeleton rows={8} />
+          </Panel>
+          <Panel title="Операції з договором" subtitle="Підготовка панелей видачі, закриття та скасування.">
+            <EmptyState
+              icon="RENT"
+              compact
+              title="Завантажуємо оренди."
+              description="Після першої вибірки тут з’явиться картка договору, огляд і всі пов’язані дії."
+            />
+          </Panel>
+        </div>
+      </div>
+    );
   }
 
   const operationsSections = [
@@ -680,8 +769,33 @@ export function RentalsPage() {
       emptyText: 'Прострочених повернень немає.',
     },
   ] as const;
+  const activeFilters: ActiveFilterChipItem[] = [
+    {
+      key: 'day',
+      label: `Робоча дата: ${formatShortDate(`${selectedDate}T00:00:00`)}`,
+      tone: 'accent',
+      onRemove: () => updateListParams({ day: null, page: 1 }),
+    },
+  ];
+
+  if (search.trim()) {
+    activeFilters.push({
+      key: 'search',
+      label: `Пошук: ${search.trim()}`,
+      onRemove: () => updateListParams({ search: null, page: 1 }),
+    });
+  }
+
+  if (statusFilter !== 'all') {
+    activeFilters.push({
+      key: 'status',
+      label: `Статус: ${rentalStatusFilterLabels[statusFilter]}`,
+      onRemove: () => updateListParams({ status: null, page: 1 }),
+    });
+  }
+
   return (
-    <div className="page-grid">
+    <div className="staff-dashboard">
       <section className="stats-grid">
         <StatCard label="Усього оренд" value={scheduleRentals.length} accent="blue" />
         <StatCard label="Активні" value={scheduleRentals.filter((item) => item.status === 'Active').length} accent="mint" />
@@ -759,7 +873,12 @@ export function RentalsPage() {
             className="rentals-operations-column"
           >
             {section.items.length === 0 ? (
-              <p className="rentals-operations-empty">{section.emptyText}</p>
+              <EmptyState
+                icon="DAY"
+                compact
+                title="Нічого не заплановано."
+                description={section.emptyText}
+              />
             ) : (
               <div className="rentals-operations-list">
                 {section.items.map((rental) => {
@@ -779,7 +898,7 @@ export function RentalsPage() {
                         <strong>Авто</strong>
                         <span>{rental.vehicleName}</span>
                         <strong>Період</strong>
-                        <span>{formatShortDate(rental.startDate)} - {formatShortDate(rental.endDate)}</span>
+                        <span>{formatDate(rental.startDate)} - {formatDate(rental.endDate)}</span>
                         <strong>Баланс</strong>
                         <span>{formatCurrency(rental.balance)}</span>
                       </div>
@@ -827,8 +946,8 @@ export function RentalsPage() {
       </div>
 
       {tab === 'contracts' ? (
-        <div className="admin-workspace">
-          <div className="page-grid">
+        <div className="staff-dashboard-grid">
+          <div className="staff-side-stack sticky-panel">
             <Panel
               title="Новий договір"
               subtitle="Швидке створення оренди з початковим платежем за потреби."
@@ -866,20 +985,52 @@ export function RentalsPage() {
 
                 <label>
                   Початок
-                  <input
-                    type="date"
-                    value={createForm.startDate}
-                    onChange={(event) => setCreateForm((currentForm) => ({ ...currentForm, startDate: event.target.value }))}
-                  />
+                  <div className="inline-form prokat-inline-datetime">
+                    <input
+                      type="date"
+                      value={createForm.startDate}
+                      min={todayDateValue}
+                      aria-invalid={Boolean(createStartDateError)}
+                      onChange={(event) => setCreateForm((currentForm) => ({ ...currentForm, startDate: event.target.value }))}
+                    />
+                    <select
+                      value={createStartTimeValue}
+                      disabled={createStartTimeOptions.length === 0}
+                      onChange={(event) => setCreateForm((currentForm) => ({ ...currentForm, startTime: event.target.value }))}
+                    >
+                      {createStartTimeOptions.length === 0 ? (
+                        <option value="">Немає доступного часу</option>
+                      ) : createStartTimeOptions.map((time) => (
+                        <option key={time} value={time}>{time}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {createStartDateError ? <small className="prokat-field-hint warn">{createStartDateError}</small> : null}
                 </label>
 
                 <label>
                   Повернення
-                  <input
-                    type="date"
-                    value={createForm.endDate}
-                    onChange={(event) => setCreateForm((currentForm) => ({ ...currentForm, endDate: event.target.value }))}
-                  />
+                  <div className="inline-form prokat-inline-datetime">
+                    <input
+                      type="date"
+                      value={createForm.endDate}
+                      min={createEndDateMin}
+                      aria-invalid={Boolean(createEndDateError)}
+                      onChange={(event) => setCreateForm((currentForm) => ({ ...currentForm, endDate: event.target.value }))}
+                    />
+                    <select
+                      value={createEndTimeValue}
+                      disabled={createEndTimeOptions.length === 0}
+                      onChange={(event) => setCreateForm((currentForm) => ({ ...currentForm, endTime: event.target.value }))}
+                    >
+                      {createEndTimeOptions.length === 0 ? (
+                        <option value="">Немає доступного часу</option>
+                      ) : createEndTimeOptions.map((time) => (
+                        <option key={time} value={time}>{time}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {createEndDateError ? <small className="prokat-field-hint warn">{createEndDateError}</small> : null}
                 </label>
 
                 <label>
@@ -964,7 +1115,7 @@ export function RentalsPage() {
                   />
                 </label>
 
-                <button type="submit" className="btn primary">
+                <button type="submit" className="btn primary" disabled={hasCreateDateSelectionError}>
                   Створити договір
                 </button>
               </form>
@@ -975,49 +1126,89 @@ export function RentalsPage() {
                 title="Договори"
                 subtitle={`Показано ${rentals.length} записів із ${totalCount}`}
               >
-                <div className="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Договір</th>
-                        <th>Клієнт</th>
-                        <th>Авто</th>
-                        <th>Період</th>
-                        <th>Статус</th>
-                        <th>Сума</th>
-                        <th>Оплачено</th>
-                        <th>Баланс</th>
-                        <th>Менеджер</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rentals.map((rental) => (
-                        <tr
-                          key={rental.id}
-                          className={rental.id === selectedId ? 'selected-row' : undefined}
-                          onClick={() => {
-                            setMessage(null);
-                            setError(null);
-                            setSelectedId(rental.id);
-                          }}
-                        >
-                          <td>{rental.contractNumber}</td>
-                          <td>{rental.clientName}</td>
-                          <td>{rental.vehicleName}</td>
-                          <td>{formatShortDate(rental.startDate)} - {formatShortDate(rental.endDate)}</td>
-                          <td>
-                            <span className={`status-pill ${statusClass(rental.status)}`}>
-                              {rental.status}
-                            </span>
-                          </td>
-                          <td>{formatCurrency(rental.totalAmount)}</td>
-                          <td>{formatCurrency(rental.paidAmount)}</td>
-                          <td>{formatCurrency(rental.balance)}</td>
-                          <td>{rental.employeeName}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className={`surface-refresh${loading ? ' is-refreshing' : ''}`}>
+                  {rentals.length === 0 ? (
+                    <EmptyState
+                      icon="LIST"
+                      title="У списку договорів поки нічого немає."
+                      description="Змініть фільтри або створіть новий договір, щоб побачити записи в робочій таблиці."
+                      actions={(
+                        <>
+                          <button
+                            type="button"
+                            className="btn ghost"
+                            onClick={() => updateListParams({ page: null, search: null, status: null, day: null })}
+                          >
+                            Скинути фільтри
+                          </button>
+                          <button
+                            type="button"
+                            className="btn primary"
+                            onClick={() => void refreshAll({
+                              preferredSelectedId: selectedIdRef.current,
+                              reloadSupporting: true,
+                              reloadSchedule: true,
+                            })}
+                          >
+                            Оновити список
+                          </button>
+                        </>
+                      )}
+                    />
+                  ) : (
+                    <>
+                      <div className="table-wrap">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Договір</th>
+                              <th>Клієнт</th>
+                              <th>Авто</th>
+                              <th>Період</th>
+                              <th>Статус</th>
+                              <th>Сума</th>
+                              <th>Оплачено</th>
+                              <th>Баланс</th>
+                              <th>Менеджер</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rentals.map((rental) => (
+                              <tr
+                                key={rental.id}
+                                className={rental.id === selectedId ? 'selected-row' : undefined}
+                                onClick={() => {
+                                  setMessage(null);
+                                  setError(null);
+                                  setSelectedId(rental.id);
+                                }}
+                              >
+                                <td>{rental.contractNumber}</td>
+                                <td>{rental.clientName}</td>
+                                <td>{rental.vehicleName}</td>
+                                <td>{formatDate(rental.startDate)} - {formatDate(rental.endDate)}</td>
+                                <td>
+                                  <span className={`status-pill ${statusClass(rental.status)}`}>
+                                    {rental.status}
+                                  </span>
+                                </td>
+                                <td>{formatCurrency(rental.totalAmount)}</td>
+                                <td>{formatCurrency(rental.paidAmount)}</td>
+                                <td>{formatCurrency(rental.balance)}</td>
+                                <td>{rental.employeeName}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {loading ? (
+                        <div className="refresh-overlay">
+                          <InlineSpinner />
+                        </div>
+                      ) : null}
+                    </>
+                  )}
                 </div>
 
                 <PaginationControls
@@ -1044,7 +1235,7 @@ export function RentalsPage() {
                     <strong>Авто</strong>
                     <span>{selectedRental.vehicleName}</span>
                     <strong>Період</strong>
-                    <span>{formatShortDate(selectedRental.startDate)} - {formatShortDate(selectedRental.endDate)}</span>
+                    <span>{formatDate(selectedRental.startDate)} - {formatDate(selectedRental.endDate)}</span>
                     <strong>Статус</strong>
                     <span>{selectedRental.status}</span>
                     <strong>Баланс</strong>
@@ -1095,7 +1286,12 @@ export function RentalsPage() {
                   ) : null}
                 </>
               ) : (
-                <p className="muted">Оберіть договір у таблиці або на операційній дошці.</p>
+                <EmptyState
+                  icon="RENT"
+                  compact
+                  title="Оренду ще не вибрано."
+                  description="Клік по рядку таблиці або картці на денній дошці відкриє тут деталі договору, стан оглядів і швидкі переходи до платежів."
+                />
               )}
             </Panel>
 
@@ -1103,35 +1299,53 @@ export function RentalsPage() {
               title="Видача авто"
               subtitle="Заповніть мінімальний огляд перед видачею заброньованого авто."
             >
-              <div className="form-grid">
-                <label>
-                  Пальне, %
-                  <input
-                    value={pickupFuelPercent}
-                    disabled={!selectedRental || selectedRental.status !== 'Booked'}
-                    onChange={(event) => setPickupFuelPercent(event.target.value)}
-                  />
-                </label>
+              {selectedRental ? (
+                <>
+                  <div className="form-grid">
+                    <label>
+                      Пальне, %
+                      <input
+                        value={pickupFuelPercent}
+                        disabled={pickupInspectionDisabled}
+                        onChange={(event) => setPickupFuelPercent(event.target.value)}
+                      />
+                    </label>
 
-                <label className="full-row">
-                  Нотатки видачі
-                  <textarea
-                    value={pickupInspectionNotes}
-                    disabled={!selectedRental || selectedRental.status !== 'Booked'}
-                    onChange={(event) => setPickupInspectionNotes(event.target.value)}
-                    placeholder="Стан авто, пломби, дрібні зауваження"
-                  />
-                </label>
-              </div>
+                    <label className="full-row">
+                      Нотатки видачі
+                      <textarea
+                        value={pickupInspectionNotes}
+                        disabled={pickupInspectionDisabled}
+                        onChange={(event) => setPickupInspectionNotes(event.target.value)}
+                        placeholder="Стан авто, пломби, дрібні зауваження"
+                      />
+                    </label>
+                  </div>
 
-              <button
-                type="button"
-                className="btn primary"
-                disabled={!selectedRental || selectedRental.status !== 'Booked'}
-                onClick={() => void completePickupInspection()}
-              >
-                Зафіксувати видачу
-              </button>
+                  <button
+                    type="button"
+                    className="btn primary"
+                    disabled={pickupInspectionDisabled}
+                    onClick={() => void completePickupInspection()}
+                  >
+                    Зафіксувати видачу
+                  </button>
+                  <p className="muted">
+                    {selectedRental.status === 'Booked'
+                      ? pickupInspectionMissed
+                        ? 'Час видачі за цим бронюванням уже минув. Перенесіть або скасуйте бронювання.'
+                        : 'Огляд видачі доступний лише до часу початку бронювання.'
+                      : 'Щоб зафіксувати видачу, оберіть бронювання зі статусом Booked.'}
+                  </p>
+                </>
+              ) : (
+                <EmptyState
+                  icon="PICK"
+                  compact
+                  title="Спочатку оберіть бронювання."
+                  description="Після вибору договору тут з’явиться короткий огляд видачі з пальним і нотатками перед передачею авто клієнту."
+                />
+              )}
             </Panel>
 
             <div ref={closePanelRef}>
@@ -1139,62 +1353,73 @@ export function RentalsPage() {
                 title="Закриття оренди"
                 subtitle="Працює лише для активного договору."
               >
-                <div className="form-grid">
-                  <label>
-                    Фактична дата
-                    <input
-                      type="date"
-                      value={closeDate}
-                      disabled={!selectedRental || selectedRental.status !== 'Active'}
-                      onChange={(event) => setCloseDate(event.target.value)}
-                    />
-                  </label>
+                {selectedRental ? (
+                  <>
+                    <div className="form-grid">
+                      <label>
+                        Фактична дата
+                        <input
+                          type="date"
+                          value={closeDate}
+                          disabled={selectedRental.status !== 'Active'}
+                          onChange={(event) => setCloseDate(event.target.value)}
+                        />
+                      </label>
 
-                  <label>
-                    Кінцевий пробіг
-                    <input
-                      value={closeMileage}
-                      disabled={!selectedRental || selectedRental.status !== 'Active'}
-                      onChange={(event) => setCloseMileage(event.target.value)}
-                      placeholder="Наприклад 45120"
-                    />
-                  </label>
-                </div>
+                      <label>
+                        Кінцевий пробіг
+                        <input
+                          value={closeMileage}
+                          disabled={selectedRental.status !== 'Active'}
+                          onChange={(event) => setCloseMileage(event.target.value)}
+                          placeholder="Наприклад 45120"
+                        />
+                      </label>
+                    </div>
 
-                <label>
-                  Пальне при поверненні, %
-                  <input
-                    value={returnFuelPercent}
-                    disabled={!selectedRental || selectedRental.status !== 'Active'}
-                    onChange={(event) => setReturnFuelPercent(event.target.value)}
-                    placeholder="100"
+                    <label>
+                      Пальне при поверненні, %
+                      <input
+                        value={returnFuelPercent}
+                        disabled={selectedRental.status !== 'Active'}
+                        onChange={(event) => setReturnFuelPercent(event.target.value)}
+                        placeholder="100"
+                      />
+                    </label>
+
+                    <label className="full-row">
+                      Нотатки повернення
+                      <textarea
+                        value={returnInspectionNotes}
+                        disabled={selectedRental.status !== 'Active'}
+                        onChange={(event) => setReturnInspectionNotes(event.target.value)}
+                        placeholder="Пальне, пошкодження, салон, комплектність"
+                      />
+                    </label>
+
+                    <p className="muted">
+                      {selectedRental.status === 'Active'
+                        ? 'Перевірте фактичну дату та пробіг перед закриттям.'
+                        : 'Щоб закрити оренду, спочатку оберіть активний договір.'}
+                    </p>
+
+                    <button
+                      type="button"
+                      className="btn primary"
+                      disabled={selectedRental.status !== 'Active'}
+                      onClick={() => void closeRental()}
+                    >
+                      Закрити оренду
+                    </button>
+                  </>
+                ) : (
+                  <EmptyState
+                    icon="CLOSE"
+                    compact
+                    title="Немає активного договору для закриття."
+                    description="Оберіть оренду зі списку. Після цього тут з’являться фактична дата, пробіг та нотатки повернення."
                   />
-                </label>
-
-                <label className="full-row">
-                  Нотатки повернення
-                  <textarea
-                    value={returnInspectionNotes}
-                    disabled={!selectedRental || selectedRental.status !== 'Active'}
-                    onChange={(event) => setReturnInspectionNotes(event.target.value)}
-                    placeholder="Пальне, пошкодження, салон, комплектність"
-                  />
-                </label>
-
-                <p className="muted">
-                  {selectedRental?.status === 'Active'
-                    ? 'Перевірте фактичну дату та пробіг перед закриттям.'
-                    : 'Щоб закрити оренду, спочатку оберіть активний договір.'}
-                </p>
-
-                <button
-                  type="button"
-                  className="btn primary"
-                  disabled={!selectedRental || selectedRental.status !== 'Active'}
-                  onClick={() => void closeRental()}
-                >
-                  Закрити оренду
-                </button>
+                )}
               </Panel>
             </div>
 
@@ -1203,36 +1428,47 @@ export function RentalsPage() {
                 title="Скасування оренди"
                 subtitle="Працює лише для договорів зі статусом Booked."
               >
-                <label>
-                  Причина
-                  <textarea
-                    value={cancelReason}
-                    disabled={!selectedRental || selectedRental.status !== 'Booked'}
-                    onChange={(event) => setCancelReason(event.target.value)}
-                    placeholder="Опишіть причину скасування"
+                {selectedRental ? (
+                  <>
+                    <label>
+                      Причина
+                      <textarea
+                        value={cancelReason}
+                        disabled={selectedRental.status !== 'Booked'}
+                        onChange={(event) => setCancelReason(event.target.value)}
+                        placeholder="Опишіть причину скасування"
+                      />
+                    </label>
+
+                    <p className="muted">
+                      {selectedRental.status === 'Booked'
+                        ? 'Після скасування договір перейде в історію.'
+                        : 'Щоб скасувати оренду, оберіть запис зі статусом Booked.'}
+                    </p>
+
+                    <button
+                      type="button"
+                      className="btn danger"
+                      disabled={selectedRental.status !== 'Booked'}
+                      onClick={() => void cancelRental()}
+                    >
+                      Скасувати оренду
+                    </button>
+                  </>
+                ) : (
+                  <EmptyState
+                    icon="VOID"
+                    compact
+                    title="Спочатку виберіть бронювання."
+                    description="Панель скасування відкривається для договору зі статусом Booked, щоб одразу зафіксувати причину."
                   />
-                </label>
-
-                <p className="muted">
-                  {selectedRental?.status === 'Booked'
-                    ? 'Після скасування договір перейде в історію.'
-                    : 'Щоб скасувати оренду, оберіть запис зі статусом Booked.'}
-                </p>
-
-                <button
-                  type="button"
-                  className="btn danger"
-                  disabled={!selectedRental || selectedRental.status !== 'Booked'}
-                  onClick={() => void cancelRental()}
-                >
-                  Скасувати оренду
-                </button>
+                )}
               </Panel>
             </div>
           </div>
         </div>
       ) : (
-        <div className="two-col-grid">
+        <div className="staff-dashboard-grid">
           <div ref={paymentsPanelRef}>
             <Panel
               title="Платежі по оренді"
@@ -1327,7 +1563,12 @@ export function RentalsPage() {
                   </div>
                 </>
               ) : (
-                <p className="muted">Оберіть договір, щоб переглянути історію платежів.</p>
+                <EmptyState
+                  icon="PAY"
+                  compact
+                  title="Платежі ще не відкриті."
+                  description="Оберіть договір, щоб переглянути історію оплат, додати новий платіж або перевірити залишок."
+                />
               )}
             </Panel>
           </div>
@@ -1377,8 +1618,16 @@ export function RentalsPage() {
         </div>
       )}
 
-      {message ? <p className="success-box">{message}</p> : null}
-      {error ? <p className="error-box">{error}</p> : null}
+      {message ? (
+        <FeedbackBanner tone="success" title="Оренду оновлено" onDismiss={() => setMessage(null)} autoHideMs={4200}>
+          {message}
+        </FeedbackBanner>
+      ) : null}
+      {error ? (
+        <FeedbackBanner tone="error" title="Не вдалося виконати дію" onDismiss={() => setError(null)}>
+          {error}
+        </FeedbackBanner>
+      ) : null}
     </div>
   );
 }

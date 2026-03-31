@@ -9,9 +9,21 @@ namespace CarRental.WebApi.Controllers;
 [ApiController]
 public abstract class ApiControllerBase : ControllerBase
 {
+    protected int? GetCurrentAccountId()
+    {
+        var value = User.FindFirstValue("account_id") ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
+        return int.TryParse(value, out var id) ? id : null;
+    }
+
     protected int? GetCurrentEmployeeId()
     {
-        var value = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var value = User.FindFirstValue("employee_id");
+        return int.TryParse(value, out var id) ? id : null;
+    }
+
+    protected int? GetCurrentClientId()
+    {
+        var value = User.FindFirstValue("client_id");
         return int.TryParse(value, out var id) ? id : null;
     }
 

@@ -151,7 +151,7 @@ public sealed class MainViewModel : ViewModelBase
 
     public bool CanSeeDamages => !IsUser;
 
-    public bool CanSeeAdmin => !IsUser;
+    public bool CanSeeAdmin => CurrentEmployee.Role == UserRole.Admin;
 
     public string Header
     {

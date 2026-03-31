@@ -1,5 +1,6 @@
 ﻿import axios, { type AxiosError } from 'axios';
 import type {
+  AuthenticatedUser,
   AuthTokenResponse,
   Client,
   ClientProfile,
@@ -9,6 +10,7 @@ import type {
   HealthStatus,
   MaintenanceDue,
   MaintenanceRecord,
+  MediaAsset,
   Payment,
   PaymentDirection,
   PaymentMethod,
@@ -19,6 +21,7 @@ import type {
   ReportSummary,
   UserRole,
   Vehicle,
+  VehicleUpsertPayload,
   PaginationParams,
   PagedResult,
 } from './types';
@@ -29,14 +32,39 @@ const TOKEN_STORAGE_KEY = 'car_rental_token';
 type WireEnum<T extends string> = T | number | `${number}`;
 
 type EmployeeWire = Omit<Employee, 'role'> & { role: WireEnum<UserRole> };
-type AuthTokenResponseWire = Omit<AuthTokenResponse, 'employee'> & { employee: EmployeeWire };
+type AccountWire = {
+  id: number;
+  login: string;
+  isActive: boolean;
+  lastLoginUtc?: string | null;
+  lockoutUntilUtc?: string | null;
+};
+type ClientSummaryWire = {
+  id: number;
+  fullName: string;
+  phone: string;
+};
+type AccountContextWire = {
+  account: AccountWire;
+  role: WireEnum<UserRole>;
+  employee?: EmployeeWire | null;
+  client?: ClientSummaryWire | null;
+};
+type AuthTokenResponseWire = Omit<AuthTokenResponse, 'user' | 'employee'> & {
+  user: AccountContextWire;
+  employee?: EmployeeWire | null;
+};
+type MediaAssetWire = MediaAsset;
 type RentalWire = Omit<Rental, 'status'> & { status: WireEnum<RentalStatus> };
 type RentalAvailabilitySlotWire = Omit<RentalAvailabilitySlot, 'status'> & { status: WireEnum<RentalStatus> };
 type PaymentWire = Omit<Payment, 'method' | 'direction'> & {
   method: WireEnum<PaymentMethod>;
   direction: WireEnum<PaymentDirection>;
 };
-type DamageWire = Omit<Damage, 'status'> & { status: WireEnum<DamageStatus> };
+type DamageWire = Omit<Damage, 'status' | 'photos'> & {
+  status: WireEnum<DamageStatus>;
+  photos?: MediaAssetWire[] | null;
+};
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -65,11 +93,43 @@ export function getStoredToken(): string | null {
   return localStorage.getItem(TOKEN_STORAGE_KEY);
 }
 
+type ApiErrorResponse = {
+  message?: string;
+  title?: string;
+  detail?: string;
+  errors?: Record<string, string[] | string | null | undefined>;
+};
+
 function toErrorMessage(error: unknown): string {
-  const axiosError = error as AxiosError<{ message?: string }>;
+  const axiosError = error as AxiosError<ApiErrorResponse>;
   const message = axiosError.response?.data?.message;
   if (message && typeof message === 'string') {
     return message;
+  }
+
+  const validationMessages = Object
+    .values(axiosError.response?.data?.errors ?? {})
+    .flatMap((value) => {
+      if (Array.isArray(value)) {
+        return value;
+      }
+
+      return typeof value === 'string' ? [value] : [];
+    })
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+  if (validationMessages.length > 0) {
+    return validationMessages.join(' ');
+  }
+
+  const detail = axiosError.response?.data?.detail;
+  if (detail && typeof detail === 'string') {
+    return detail;
+  }
+
+  const title = axiosError.response?.data?.title;
+  if (title && typeof title === 'string') {
+    return title;
   }
 
   if (!axiosError.response) {
@@ -179,6 +239,32 @@ function normalizeEmployee(employee: EmployeeWire): Employee {
   };
 }
 
+function normalizeAuthenticatedUser(context: AccountContextWire): AuthenticatedUser {
+  const normalizedEmployee = context.employee ? normalizeEmployee(context.employee) : null;
+  const fullName = normalizedEmployee?.fullName ?? context.client?.fullName ?? context.account.login;
+
+  return {
+    accountId: context.account.id,
+    employeeId: normalizedEmployee?.id ?? null,
+    clientId: context.client?.id ?? null,
+    fullName,
+    login: context.account.login,
+    role: normalizeUserRole(context.role),
+    isActive: context.account.isActive,
+    lastLoginUtc: context.account.lastLoginUtc ?? null,
+    lockoutUntilUtc: context.account.lockoutUntilUtc ?? null,
+  };
+}
+
+function normalizeAuthTokenResponse(response: AuthTokenResponseWire): AuthTokenResponse {
+  return {
+    accessToken: response.accessToken,
+    expiresAtUtc: response.expiresAtUtc,
+    user: normalizeAuthenticatedUser(response.user),
+    employee: response.employee ? normalizeEmployee(response.employee) : null,
+  };
+}
+
 function normalizeRental(rental: RentalWire): Rental {
   return {
     ...rental,
@@ -202,8 +288,14 @@ function normalizePayment(payment: PaymentWire): Payment {
 }
 
 function normalizeDamage(damage: DamageWire): Damage {
+  const photos = damage.photos ?? [];
   return {
     ...damage,
+    photos,
+    photoPath: damage.photoPath ?? photos
+      .slice()
+      .sort((left, right) => left.sortOrder - right.sortOrder)
+      .map((item) => item.storedPath)[0] ?? null,
     status: normalizeDamageStatus(damage.status),
   };
 }
@@ -231,10 +323,7 @@ function resolvePagedResult<T>(
 export const Api = {
   async login(login: string, password: string): Promise<AuthTokenResponse> {
     const response = await api.post<AuthTokenResponseWire>('/api/auth/login', { login, password });
-    return {
-      ...response.data,
-      employee: normalizeEmployee(response.data.employee),
-    };
+    return normalizeAuthTokenResponse(response.data);
   },
 
   async register(input: {
@@ -244,15 +333,12 @@ export const Api = {
     password: string;
   }): Promise<AuthTokenResponse> {
     const response = await api.post<AuthTokenResponseWire>('/api/auth/register', input);
-    return {
-      ...response.data,
-      employee: normalizeEmployee(response.data.employee),
-    };
+    return normalizeAuthTokenResponse(response.data);
   },
 
-  async me(): Promise<Employee> {
-    const response = await api.get<EmployeeWire>('/api/auth/me');
-    return normalizeEmployee(response.data);
+  async me(): Promise<AuthenticatedUser> {
+    const response = await api.get<AccountContextWire>('/api/auth/me');
+    return normalizeAuthenticatedUser(response.data);
   },
 
   async changeOwnRole(role: UserRole): Promise<Employee> {
@@ -273,7 +359,11 @@ export const Api = {
     fullName: string;
     phone: string;
     passportData: string;
+    passportExpirationDate?: string | null;
+    passportPhotoPath?: string | null;
     driverLicense: string;
+    driverLicenseExpirationDate?: string | null;
+    driverLicensePhotoPath?: string | null;
   }): Promise<ClientProfile> {
     const response = await api.put<ClientProfile>('/api/profile/client', payload);
     return response.data;
@@ -331,17 +421,28 @@ export const Api = {
     return `${API_BASE_URL}/api/vehicles/${vehicleId}/photo`;
   },
 
+  getDamagePhotoUrl(damageId: number, photoId: number): string {
+    return `${API_BASE_URL}/api/damages/${damageId}/photos/${photoId}`;
+  },
+
+  async getDamagePhotoBlob(damageId: number, photoId: number): Promise<Blob> {
+    const response = await api.get<Blob>(`/api/damages/${damageId}/photos/${photoId}`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  },
+
   getAssetUrl(path: string): string {
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
     return `${API_BASE_URL}${normalizedPath}`;
   },
 
-  async createVehicle(payload: Omit<Vehicle, 'id'>): Promise<Vehicle> {
+  async createVehicle(payload: VehicleUpsertPayload): Promise<Vehicle> {
     const response = await api.post<Vehicle>('/api/vehicles', payload);
     return response.data;
   },
 
-  async updateVehicle(id: number, payload: Omit<Vehicle, 'id'>): Promise<Vehicle> {
+  async updateVehicle(id: number, payload: VehicleUpsertPayload): Promise<Vehicle> {
     const response = await api.put<Vehicle>(`/api/vehicles/${id}`, payload);
     return response.data;
   },
@@ -506,10 +607,35 @@ export const Api = {
     rentalId?: number | null;
     description: string;
     repairCost: number;
-    photoPath?: string | null;
     autoChargeToRental: boolean;
+    photos?: File[];
   }): Promise<Damage> {
-    const response = await api.post<DamageWire>('/api/damages', payload);
+    const hasPhotos = (payload.photos?.length ?? 0) > 0;
+    if (!hasPhotos) {
+      const response = await api.post<DamageWire>('/api/damages', {
+        vehicleId: payload.vehicleId,
+        rentalId: payload.rentalId ?? null,
+        description: payload.description,
+        repairCost: payload.repairCost,
+        autoChargeToRental: payload.autoChargeToRental,
+      });
+      return normalizeDamage(response.data);
+    }
+
+    const formData = new FormData();
+    formData.append('vehicleId', String(payload.vehicleId));
+    if (payload.rentalId) {
+      formData.append('rentalId', String(payload.rentalId));
+    }
+
+    formData.append('description', payload.description);
+    formData.append('repairCost', String(payload.repairCost));
+    formData.append('autoChargeToRental', String(payload.autoChargeToRental));
+    for (const photo of payload.photos ?? []) {
+      formData.append('photos', photo);
+    }
+
+    const response = await api.post<DamageWire>('/api/damages', formData);
     return normalizeDamage(response.data);
   },
 

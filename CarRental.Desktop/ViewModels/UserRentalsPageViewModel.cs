@@ -1,6 +1,7 @@
 using CarRental.Desktop.Data;
 using CarRental.Desktop.Models;
 using CarRental.Desktop.Services.Rentals;
+using CarRental.Shared.ReferenceData;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.EntityFrameworkCore;
 using System.Collections.ObjectModel;
@@ -10,7 +11,7 @@ namespace CarRental.Desktop.ViewModels;
 
 public sealed class UserRentalsPageViewModel : PageDataViewModelBase, ITransientStateOwner
 {
-    private const string SelfServiceCancelReason = "Скасовано клієнтом через застосунок";
+    private const string SelfServiceCancelReason = DemoSeedReferenceData.SelfServiceCancelReasonDesktop;
 
     private readonly RentalDbContext _dbContext;
     private readonly IRentalService _rentalService;
@@ -164,6 +165,10 @@ public sealed class UserRentalsPageViewModel : PageDataViewModelBase, ITransient
                 return;
             }
 
+            var vehicles = _dbContext.Vehicles
+                .AsNoTracking()
+                .IgnoreQueryFilters();
+
             var rentals = await _dbContext.Rentals
                 .AsNoTracking()
                 .Where(item => item.ClientId == clientId.Value)
@@ -173,9 +178,10 @@ public sealed class UserRentalsPageViewModel : PageDataViewModelBase, ITransient
                     item.Id,
                     item.ContractNumber,
                     item.VehicleId,
-                    VehicleName = item.Vehicle != null
-                        ? $"{item.Vehicle.Make} {item.Vehicle.Model} [{item.Vehicle.LicensePlate}]"
-                        : "Авто не знайдено",
+                    VehicleName = vehicles
+                        .Where(vehicle => vehicle.Id == item.VehicleId)
+                        .Select(vehicle => vehicle.Make + " " + vehicle.Model + " [" + vehicle.LicensePlate + "]")
+                        .FirstOrDefault() ?? "Авто не знайдено",
                     item.StartDate,
                     item.EndDate,
                     item.Status,
@@ -334,6 +340,9 @@ public sealed class UserRentalsPageViewModel : PageDataViewModelBase, ITransient
     private async Task<int?> EnsureClientProfileAsync()
     {
         var employee = await _dbContext.Employees
+            .Include(item => item.Account)
+                .ThenInclude(item => item!.Client)
+                .ThenInclude(item => item!.Documents)
             .FirstOrDefaultAsync(item => item.Id == _currentEmployee.Id);
         if (employee is null)
         {
@@ -343,17 +352,25 @@ public sealed class UserRentalsPageViewModel : PageDataViewModelBase, ITransient
         var passportData = $"EMP-{employee.Id:D6}";
         var driverLicense = $"USR-{employee.Id:D6}";
 
-        Client? client = null;
-        if (employee.ClientId.HasValue)
+        Client? client = employee.Account?.Client;
+        if (client is null && employee.PortalClientId.HasValue)
         {
             client = await _dbContext.Clients
-                .FirstOrDefaultAsync(item => item.Id == employee.ClientId.Value);
+                .FirstOrDefaultAsync(item => item.Id == employee.PortalClientId.Value);
+        }
+
+        if (client is null && employee.AccountId > 0)
+        {
+            client = await _dbContext.Clients
+                .FirstOrDefaultAsync(item => item.AccountId == employee.AccountId);
         }
 
         client ??= await _dbContext.Clients
             .FirstOrDefaultAsync(existing =>
-                existing.PassportData == passportData ||
-                existing.DriverLicense == driverLicense);
+                _dbContext.ClientDocuments.Any(document =>
+                    document.ClientId == existing.Id &&
+                    ((document.DocumentTypeCode == ClientDocumentTypes.Passport && document.DocumentNumber == passportData) ||
+                     (document.DocumentTypeCode == ClientDocumentTypes.DriverLicense && document.DocumentNumber == driverLicense))));
 
         if (client is null)
         {
@@ -383,10 +400,10 @@ public sealed class UserRentalsPageViewModel : PageDataViewModelBase, ITransient
             hasChanges = true;
         }
 
-        if (employee.ClientId != client.Id)
+        if (employee.PortalClientId != client.Id)
         {
-            employee.ClientId = client.Id;
-            _currentEmployee.ClientId = client.Id;
+            employee.PortalClientId = client.Id;
+            _currentEmployee.PortalClientId = client.Id;
             hasChanges = true;
         }
 

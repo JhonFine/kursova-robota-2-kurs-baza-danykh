@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { Api } from '../api/client';
 import type { ClientProfile, Rental } from '../api/types';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import { LoadingView } from '../components/LoadingView';
+import { EmptyState } from '../components/EmptyState';
+import { FeedbackBanner } from '../components/FeedbackBanner';
+import { CardSkeletonGrid } from '../components/Skeleton';
 import { formatCurrency } from '../utils/format';
 import {
   CARD_NUMBER_MAX_DIGITS,
@@ -29,6 +31,12 @@ function toDateTimeInputValue(value: string): string {
 
 function toRequestDateTimeValue(value: string): string {
   return value.length === 16 ? `${value}:00` : value;
+}
+
+function getCurrentDateTimeInputValue(): string {
+  const now = new Date();
+  const timezoneOffsetMs = now.getTimezoneOffset() * 60_000;
+  return new Date(now.getTime() - timezoneOffsetMs).toISOString().slice(0, 16);
 }
 
 function renderInspectionSummary(rental: Rental): ReactNode {
@@ -279,6 +287,76 @@ export function ProkatBookingsPage() {
       .sort(compareDescByHistoryMoment)
   ), [myRentals]);
 
+  const rescheduleStartError = useMemo(() => {
+    if (!rescheduleTarget) {
+      return null;
+    }
+
+    if (!rescheduleStart) {
+      return 'Оберіть нову дату та час початку.';
+    }
+
+    const start = new Date(rescheduleStart);
+    if (Number.isNaN(start.getTime())) {
+      return 'Оберіть нову дату та час початку.';
+    }
+
+    if (start < new Date()) {
+      return 'Початок оренди не може бути в минулому.';
+    }
+
+    return null;
+  }, [rescheduleStart, rescheduleTarget]);
+
+  const rescheduleEndError = useMemo(() => {
+    if (!rescheduleTarget) {
+      return null;
+    }
+
+    if (!rescheduleEnd) {
+      return 'Оберіть нову дату та час повернення.';
+    }
+
+    const start = new Date(rescheduleStart);
+    const end = new Date(rescheduleEnd);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      return 'Оберіть нову дату та час повернення.';
+    }
+
+    if (end <= start) {
+      return 'Дата повернення має бути пізнішою за дату отримання.';
+    }
+
+    return null;
+  }, [rescheduleEnd, rescheduleStart, rescheduleTarget]);
+
+  const rescheduleValidationMessageLegacy = useMemo(() => {
+    if (!rescheduleTarget) {
+      return null;
+    }
+
+    if (!rescheduleStart || !rescheduleEnd) {
+      return 'Оберіть нові дату та час.';
+    }
+
+    const start = new Date(rescheduleStart);
+    const end = new Date(rescheduleEnd);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      return 'Оберіть нові дату та час.';
+    }
+
+    if (end <= start) {
+      return 'Дата повернення має бути пізнішою за дату отримання.';
+    }
+
+    if (start < new Date()) {
+      return 'Початок оренди не може бути в минулому.';
+    }
+
+    return null;
+  }, [rescheduleEnd, rescheduleStart, rescheduleTarget]);
+  const rescheduleValidationMessage = rescheduleStartError ?? rescheduleEndError ?? rescheduleValidationMessageLegacy;
+
   const openRescheduleDialog = (rental: Rental): void => {
     setMessage(null);
     setError(null);
@@ -334,13 +412,7 @@ export function ProkatBookingsPage() {
       return;
     }
 
-    if (!rescheduleStart || !rescheduleEnd) {
-      setError('Оберіть нові дату та час.');
-      return;
-    }
-
-    if (new Date(rescheduleEnd) <= new Date(rescheduleStart)) {
-      setError('Дата повернення має бути пізнішою за дату отримання.');
+    if (rescheduleValidationMessage) {
       return;
     }
 
@@ -372,28 +444,6 @@ export function ProkatBookingsPage() {
     }
   };
 
-  const performPayBalance = async (): Promise<void> => {
-    if (!payBalanceTarget) {
-      return;
-    }
-
-    try {
-      setSubmitting(true);
-      setError(null);
-      setCardWarningOpen(false);
-      const rental = payBalanceTarget;
-      setPayBalanceTarget(null);
-
-      await Api.settleRentalBalance(rental.id, buildMaskedCardPaymentNote(cardholderName, cardNumber));
-      setMessage(`Р—Р°Р»РёС€РѕРє РїРѕ РґРѕРіРѕРІРѕСЂСѓ ${rental.contractNumber} СЃРїР»Р°С‡РµРЅРѕ.`);
-      await loadBookings();
-    } catch (requestError) {
-      setError(Api.errorMessage(requestError));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   const confirmPayBalance = async (): Promise<void> => {
     if (!payBalanceTarget) {
       return;
@@ -415,14 +465,22 @@ export function ProkatBookingsPage() {
       return;
     }
 
+    await executePayment();
+  };
+
+  const executePayment = async (): Promise<void> => {
+    if (!payBalanceTarget) return;
+
     try {
       setSubmitting(true);
       setError(null);
       const rental = payBalanceTarget;
-      setPayBalanceTarget(null);
 
       await Api.settleRentalBalance(rental.id, buildMaskedCardPaymentNote(cardholderName, cardNumber));
       setMessage(`Залишок по договору ${rental.contractNumber} сплачено.`);
+
+      setPayBalanceTarget(null);
+      setCardWarningOpen(false);
       await loadBookings();
     } catch (requestError) {
       setError(Api.errorMessage(requestError));
@@ -435,14 +493,39 @@ export function ProkatBookingsPage() {
     navigate(`/prokat/search?vehicle=${rental.vehicleId}`);
   };
 
-  if (loading) {
-    return <LoadingView text="Завантаження ваших бронювань..." />;
+  if (loading && myRentals.length === 0) {
+    return (
+      <div className="page-grid prokat-page prokat-bookings-page">
+        <section className="prokat-hero prokat-bookings-hero">
+          <div className="prokat-hero-copy">
+            <span className="topbar-kicker">Мої бронювання</span>
+            <h2>Завантажуємо ваші договори</h2>
+            <p>Готуємо майбутні бронювання, активні оренди та історію, щоб можна було швидко перейти до потрібної дії.</p>
+          </div>
+        </section>
+
+        <CardSkeletonGrid count={4} />
+      </div>
+    );
   }
+
+  const rescheduleMinStart = getCurrentDateTimeInputValue();
+  const rescheduleMinEnd = rescheduleStart && new Date(rescheduleStart) > new Date()
+    ? rescheduleStart
+    : rescheduleMinStart;
 
   return (
     <div className="page-grid prokat-page prokat-bookings-page">
-      {error ? <p className="error-box">{error}</p> : null}
-      {message ? <p className="success-box">{message}</p> : null}
+      {error ? (
+        <FeedbackBanner tone="error" title="Не вдалося виконати дію" onDismiss={() => setError(null)}>
+          {error}
+        </FeedbackBanner>
+      ) : null}
+      {message ? (
+        <FeedbackBanner tone="success" title="Бронювання оновлено" onDismiss={() => setMessage(null)} autoHideMs={4200}>
+          {message}
+        </FeedbackBanner>
+      ) : null}
 
       <section className="prokat-hero prokat-bookings-hero">
         <div className="prokat-hero-copy">
@@ -485,10 +568,23 @@ export function ProkatBookingsPage() {
       </section>
 
       {myRentals.length === 0 ? (
-        <section className="status-panel">
-          <strong>У вас ще немає оформлених бронювань.</strong>
-          <p className="muted">Почніть з підбору авто, а після оформлення всі записи зʼявляться на цій сторінці.</p>
-        </section>
+        <EmptyState
+          icon="BOOK"
+          title="У вас ще немає оформлених бронювань."
+          description="Почніть з підбору авто, а після оформлення договір одразу з’явиться тут разом зі статусом, балансом і подальшими діями."
+          actions={(
+            <>
+              <button type="button" className="btn primary" onClick={() => navigate('/prokat/search')}>
+                Перейти до каталогу
+              </button>
+              {!myClient?.isComplete ? (
+                <button type="button" className="btn ghost" onClick={() => navigate('/prokat/profile')}>
+                  Завершити профіль
+                </button>
+              ) : null}
+            </>
+          )}
+        />
       ) : (
         <div className="prokat-history-sections">
           <RentalGroupSection
@@ -561,8 +657,13 @@ export function ProkatBookingsPage() {
                 <input
                   type="datetime-local"
                   value={rescheduleStart}
+                  min={rescheduleMinStart}
+                  aria-invalid={Boolean(rescheduleStartError)}
                   onChange={(event) => setRescheduleStart(event.target.value)}
                 />
+                {rescheduleStartError ? (
+                  <small className="prokat-field-hint warn">{rescheduleStartError}</small>
+                ) : null}
               </label>
 
               <label className="full-row">
@@ -570,14 +671,20 @@ export function ProkatBookingsPage() {
                 <input
                   type="datetime-local"
                   value={rescheduleEnd}
+                  min={rescheduleMinEnd}
+                  aria-invalid={Boolean(rescheduleEndError)}
                   onChange={(event) => setRescheduleEnd(event.target.value)}
                 />
+                {rescheduleEndError ? (
+                  <small className="prokat-field-hint warn">{rescheduleEndError}</small>
+                ) : null}
               </label>
             </div>
           </>
         ) : null}
         confirmLabel="Зберегти нові дати"
         cancelLabel="Назад"
+        confirmDisabled={Boolean(rescheduleValidationMessage)}
         onConfirm={() => void confirmReschedule()}
         onCancel={() => setRescheduleTarget(null)}
       />
@@ -592,7 +699,7 @@ export function ProkatBookingsPage() {
         )}
         confirmLabel="Продовжити"
         cancelLabel="Змінити номер"
-        onConfirm={() => void performPayBalance()}
+        onConfirm={() => void executePayment()}
         onCancel={() => setCardWarningOpen(false)}
       />
 

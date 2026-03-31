@@ -10,8 +10,17 @@ public sealed record DamageRequest(
     int? RentalId,
     string Description,
     decimal RepairCost,
-    string? PhotoPath,
-    bool AutoChargeToRental);
+    string? PhotoPath = null,
+    bool AutoChargeToRental = false,
+    int ReportedByEmployeeId = 1,
+    IReadOnlyList<string>? PhotoPaths = null)
+{
+    public IReadOnlyList<string> ResolvedPhotoPaths => PhotoPaths is { Count: > 0 }
+        ? PhotoPaths
+        : string.IsNullOrWhiteSpace(PhotoPath)
+            ? Array.Empty<string>()
+            : new[] { PhotoPath };
+}
 
 public sealed record DamageResult(bool Success, string Message, int DamageId = 0);
 

@@ -7,6 +7,9 @@
         MinWidth="1080"
         MinHeight="700"
         WindowStartupLocation="CenterOwner">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+    </Window.Resources>
     <Grid Margin="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -40,6 +43,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <TextBlock Grid.Row="0" Grid.Column="0" Text="Клієнт" Margin="0,0,0,4" />
@@ -65,10 +69,32 @@
                           MaxDropDownHeight="360" />
 
                 <TextBlock Grid.Row="0" Grid.Column="2" Text="Початок" Margin="0,0,0,4" />
-                <DatePicker Grid.Row="1" Grid.Column="2" Margin="0,0,10,0" SelectedDate="{Binding StartDate}" />
+                <DatePicker Grid.Row="1"
+                            Grid.Column="2"
+                            Margin="0,0,10,0"
+                            DisplayDateStart="{Binding MinCreateStartDate, Mode=OneWay}"
+                            SelectedDate="{Binding StartDate}" />
+                <TextBlock Grid.Row="2"
+                           Grid.Column="2"
+                           Margin="0,4,10,0"
+                           Foreground="#B91C1C"
+                           Text="{Binding CreateStartDateValidationMessage}"
+                           TextWrapping="Wrap"
+                           Visibility="{Binding HasCreateStartDateValidationMessage, Converter={StaticResource BoolToVisibilityConverter}}" />
 
                 <TextBlock Grid.Row="0" Grid.Column="3" Text="Кінець" Margin="0,0,0,4" />
-                <DatePicker Grid.Row="1" Grid.Column="3" Margin="0,0,10,0" SelectedDate="{Binding EndDate}" />
+                <DatePicker Grid.Row="1"
+                            Grid.Column="3"
+                            Margin="0,0,10,0"
+                            DisplayDateStart="{Binding MinCreateEndDate, Mode=OneWay}"
+                            SelectedDate="{Binding EndDate}" />
+                <TextBlock Grid.Row="2"
+                           Grid.Column="3"
+                           Margin="0,4,10,0"
+                           Foreground="#B91C1C"
+                           Text="{Binding CreateEndDateValidationMessage}"
+                           TextWrapping="Wrap"
+                           Visibility="{Binding HasCreateEndDateValidationMessage, Converter={StaticResource BoolToVisibilityConverter}}" />
 
                 <StackPanel Grid.Row="1" Grid.Column="4" Orientation="Horizontal">
                     <Button Content="Створити"

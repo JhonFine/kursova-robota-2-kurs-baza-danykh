@@ -28,22 +28,21 @@ public sealed class RentalsController(
         [FromQuery] int? pageSize,
         CancellationToken cancellationToken)
     {
-        var employeeId = GetCurrentEmployeeId();
-        if (!employeeId.HasValue)
+        var currentClientId = await GetAccessibleClientIdAsync(cancellationToken);
+        if (IsCurrentUserInRole(UserRole.User) && !currentClientId.HasValue)
         {
-            return Unauthorized();
+            return Ok(Array.Empty<RentalDto>());
         }
 
         var query = dbContext.Rentals
             .AsNoTracking()
             .AsQueryable();
+        var clients = dbContext.Clients.IgnoreQueryFilters();
+        var vehicles = dbContext.Vehicles.IgnoreQueryFilters();
 
-        if (IsCurrentUserInRole(UserRole.User))
+        if (currentClientId.HasValue && IsCurrentUserInRole(UserRole.User))
         {
-            var ownClientId = await GetCurrentUserClientIdAsync(employeeId.Value, cancellationToken);
-            query = ownClientId.HasValue
-                ? query.Where(item => item.ClientId == ownClientId.Value)
-                : query.Where(_ => false);
+            query = query.Where(item => item.ClientId == currentClientId.Value);
         }
 
         if (status.HasValue)
@@ -76,11 +75,14 @@ public sealed class RentalsController(
             var pattern = $"%{search.Trim()}%";
             query = query.Where(item =>
                 EF.Functions.ILike(item.ContractNumber, pattern) ||
-                (item.Client != null && EF.Functions.ILike(item.Client.FullName, pattern)) ||
-                (item.Vehicle != null && (
-                    EF.Functions.ILike(item.Vehicle.Make, pattern) ||
-                    EF.Functions.ILike(item.Vehicle.Model, pattern) ||
-                    EF.Functions.ILike(item.Vehicle.LicensePlate, pattern))));
+                clients.Any(clientRecord =>
+                    clientRecord.Id == item.ClientId &&
+                    EF.Functions.ILike(clientRecord.FullName, pattern)) ||
+                vehicles.Any(vehicleRecord =>
+                    vehicleRecord.Id == item.VehicleId &&
+                    (EF.Functions.ILike(vehicleRecord.Make, pattern) ||
+                     EF.Functions.ILike(vehicleRecord.Model, pattern) ||
+                     EF.Functions.ILike(vehicleRecord.LicensePlate, pattern))));
         }
 
         var pagination = PaginationExtensions.Normalize(page, pageSize);
@@ -90,8 +92,9 @@ public sealed class RentalsController(
             Response.ApplyPaginationHeaders(pagination.Value, totalCount);
         }
 
-        var rentals = await ProjectRentals(
-                query.OrderByDescending(item => item.StartDate))
+        var rentals = await query
+            .OrderByDescending(item => item.StartDate)
+            .ProjectToRentalDto(dbContext)
             .ApplyPagination(pagination)
             .ToListAsync(cancellationToken);
 
@@ -121,13 +124,7 @@ public sealed class RentalsController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(int id, CancellationToken cancellationToken)
     {
-        var employeeId = GetCurrentEmployeeId();
-        if (!employeeId.HasValue)
-        {
-            return Unauthorized();
-        }
-
-        var rental = await GetRentalByIdAsync(id, employeeId.Value, cancellationToken);
+        var rental = await GetRentalByIdAsync(id, cancellationToken);
         return rental is null ? NotFound() : Ok(rental);
     }
 
@@ -137,26 +134,21 @@ public sealed class RentalsController(
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> Create([FromBody] CreateRentalRequest request, CancellationToken cancellationToken)
     {
-        var currentEmployeeId = GetCurrentEmployeeId();
-        if (!currentEmployeeId.HasValue)
+        var actingEmployeeId = await ResolveActingEmployeeIdAsync(cancellationToken);
+        if (!actingEmployeeId.HasValue)
         {
             return Unauthorized();
         }
 
         if (IsCurrentUserInRole(UserRole.User))
         {
-            if (request.StartDate < DateTime.Now)
-            {
-                return BadRequest(new { message = "Клієнт не може створити бронювання з початком у минулому." });
-            }
-
-            var ownClient = await GetCurrentUserClientAsync(currentEmployeeId.Value, cancellationToken);
+            var ownClient = await GetAccessibleClientAsync(cancellationToken);
             if (ownClient is null || ownClient.Id != request.ClientId)
             {
                 return Forbid();
             }
 
-            if (!IsProfileComplete(ownClient))
+            if (!ClientProfileRules.IsProfileComplete(ownClient))
             {
                 return BadRequest(new { message = "Перед оформленням оренди завершіть профіль клієнта." });
             }
@@ -169,7 +161,7 @@ public sealed class RentalsController(
                 new RentalOperations.CreateRentalWithPaymentRequest(
                     request.ClientId,
                     request.VehicleId,
-                    currentEmployeeId.Value,
+                    actingEmployeeId.Value,
                     request.StartDate,
                     request.EndDate,
                     request.PickupLocation,
@@ -185,7 +177,7 @@ public sealed class RentalsController(
                 new RentalOperations.CreateRentalRequest(
                     request.ClientId,
                     request.VehicleId,
-                    currentEmployeeId.Value,
+                    actingEmployeeId.Value,
                     request.StartDate,
                     request.EndDate,
                     request.PickupLocation,
@@ -198,7 +190,7 @@ public sealed class RentalsController(
             return BadRequest(new { message = result.Message });
         }
 
-        var created = await GetRentalByIdAsync(result.RentalId, currentEmployeeId.Value, cancellationToken);
+        var created = await GetRentalByIdAsync(result.RentalId, cancellationToken);
         return CreatedAtAction(nameof(GetById), new { id = result.RentalId }, created);
     }
 
@@ -214,11 +206,7 @@ public sealed class RentalsController(
             return Unauthorized();
         }
 
-        var accessStatus = await EnsureRentalMutationAccessAsync(
-            id,
-            employeeId.Value,
-            RentalMutationType.Close,
-            cancellationToken);
+        var accessStatus = await EnsureRentalMutationAccessAsync(id, RentalMutationType.Close, cancellationToken);
         if (accessStatus == RentalMutationAccessStatus.NotFound)
         {
             return NotFound();
@@ -231,11 +219,12 @@ public sealed class RentalsController(
 
         var result = await rentalService.CloseRentalAsync(
             new RentalOperations.CloseRentalRequest(
-                id,
-                request.ActualEndDate,
-                request.EndMileage,
-                request.ReturnFuelPercent,
-                request.ReturnInspectionNotes),
+                RentalId: id,
+                ActualEndDate: request.ActualEndDate,
+                EndMileage: request.EndMileage,
+                ClosedByEmployeeId: employeeId.Value,
+                ReturnFuelPercent: request.ReturnFuelPercent,
+                ReturnInspectionNotes: request.ReturnInspectionNotes),
             cancellationToken);
 
         if (!result.Success)
@@ -243,13 +232,8 @@ public sealed class RentalsController(
             return BadRequest(new { message = result.Message });
         }
 
-        var rental = await GetRentalByIdAsync(id, employeeId.Value, cancellationToken);
-        if (rental is null)
-        {
-            return NotFound();
-        }
-
-        return Ok(rental);
+        var rental = await GetRentalByIdAsync(id, cancellationToken);
+        return rental is null ? NotFound() : Ok(rental);
     }
 
     [HttpPost("{id:int}/cancel")]
@@ -258,25 +242,10 @@ public sealed class RentalsController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Cancel(int id, [FromBody] CancelRentalRequest request, CancellationToken cancellationToken)
     {
-        var employeeId = GetCurrentEmployeeId();
-        if (!employeeId.HasValue)
-        {
-            return Unauthorized();
-        }
-
-        var accessStatus = await EnsureRentalMutationAccessAsync(
-            id,
-            employeeId.Value,
-            RentalMutationType.Cancel,
-            cancellationToken);
+        var accessStatus = await EnsureRentalMutationAccessAsync(id, RentalMutationType.Cancel, cancellationToken);
         if (accessStatus == RentalMutationAccessStatus.NotFound)
         {
             return NotFound();
-        }
-
-        if (accessStatus == RentalMutationAccessStatus.InvalidState)
-        {
-            return BadRequest(new { message = "Only booked rentals can be canceled in self-service." });
         }
 
         if (accessStatus == RentalMutationAccessStatus.Forbidden)
@@ -284,8 +253,19 @@ public sealed class RentalsController(
             return Forbid();
         }
 
+        var canceledByEmployeeId = IsCurrentUserInRole(UserRole.User)
+            ? await ResolveActingEmployeeIdAsync(cancellationToken)
+            : GetCurrentEmployeeId();
+        if (!canceledByEmployeeId.HasValue)
+        {
+            return Unauthorized();
+        }
+
         var result = await rentalService.CancelRentalAsync(
-            new RentalOperations.CancelRentalRequest(id, request.Reason),
+            new RentalOperations.CancelRentalRequest(
+                RentalId: id,
+                Reason: request.Reason,
+                CanceledByEmployeeId: canceledByEmployeeId.Value),
             cancellationToken);
 
         if (!result.Success)
@@ -293,13 +273,8 @@ public sealed class RentalsController(
             return BadRequest(new { message = result.Message });
         }
 
-        var rental = await GetRentalByIdAsync(id, employeeId.Value, cancellationToken);
-        if (rental is null)
-        {
-            return NotFound();
-        }
-
-        return Ok(rental);
+        var rental = await GetRentalByIdAsync(id, cancellationToken);
+        return rental is null ? NotFound() : Ok(rental);
     }
 
     [HttpPost("{id:int}/reschedule")]
@@ -311,25 +286,16 @@ public sealed class RentalsController(
         [FromBody] RescheduleRentalRequest request,
         CancellationToken cancellationToken)
     {
-        var employeeId = GetCurrentEmployeeId();
+        var employeeId = await ResolveActingEmployeeIdAsync(cancellationToken);
         if (!employeeId.HasValue)
         {
             return Unauthorized();
         }
 
-        var accessStatus = await EnsureRentalMutationAccessAsync(
-            id,
-            employeeId.Value,
-            RentalMutationType.Reschedule,
-            cancellationToken);
+        var accessStatus = await EnsureRentalMutationAccessAsync(id, RentalMutationType.Reschedule, cancellationToken);
         if (accessStatus == RentalMutationAccessStatus.NotFound)
         {
             return NotFound();
-        }
-
-        if (accessStatus == RentalMutationAccessStatus.InvalidState)
-        {
-            return BadRequest(new { message = "Only booked rentals can be rescheduled in self-service." });
         }
 
         if (accessStatus == RentalMutationAccessStatus.Forbidden)
@@ -350,13 +316,8 @@ public sealed class RentalsController(
             return BadRequest(new { message = result.Message });
         }
 
-        var rental = await GetRentalByIdAsync(id, employeeId.Value, cancellationToken);
-        if (rental is null)
-        {
-            return NotFound();
-        }
-
-        return Ok(rental);
+        var rental = await GetRentalByIdAsync(id, cancellationToken);
+        return rental is null ? NotFound() : Ok(rental);
     }
 
     [HttpPost("{id:int}/settle-balance")]
@@ -368,17 +329,13 @@ public sealed class RentalsController(
         [FromBody] SettleRentalBalanceRequest request,
         CancellationToken cancellationToken)
     {
-        var employeeId = GetCurrentEmployeeId();
+        var employeeId = await ResolveActingEmployeeIdAsync(cancellationToken);
         if (!employeeId.HasValue)
         {
             return Unauthorized();
         }
 
-        var accessStatus = await EnsureRentalMutationAccessAsync(
-            id,
-            employeeId.Value,
-            RentalMutationType.SettleBalance,
-            cancellationToken);
+        var accessStatus = await EnsureRentalMutationAccessAsync(id, RentalMutationType.SettleBalance, cancellationToken);
         if (accessStatus == RentalMutationAccessStatus.NotFound)
         {
             return NotFound();
@@ -398,13 +355,8 @@ public sealed class RentalsController(
             return BadRequest(new { message = result.Message });
         }
 
-        var rental = await GetRentalByIdAsync(id, employeeId.Value, cancellationToken);
-        if (rental is null)
-        {
-            return NotFound();
-        }
-
-        return Ok(rental);
+        var rental = await GetRentalByIdAsync(id, cancellationToken);
+        return rental is null ? NotFound() : Ok(rental);
     }
 
     [HttpPost("{id:int}/pickup-inspection")]
@@ -422,11 +374,7 @@ public sealed class RentalsController(
             return Unauthorized();
         }
 
-        var accessStatus = await EnsureRentalMutationAccessAsync(
-            id,
-            employeeId.Value,
-            RentalMutationType.PickupInspection,
-            cancellationToken);
+        var accessStatus = await EnsureRentalMutationAccessAsync(id, RentalMutationType.PickupInspection, cancellationToken);
         if (accessStatus == RentalMutationAccessStatus.NotFound)
         {
             return NotFound();
@@ -438,7 +386,11 @@ public sealed class RentalsController(
         }
 
         var result = await rentalService.CompletePickupInspectionAsync(
-            new RentalOperations.PickupInspectionRequest(id, request.FuelPercent, request.Notes),
+            new RentalOperations.PickupInspectionRequest(
+                RentalId: id,
+                FuelPercent: request.FuelPercent,
+                Notes: request.Notes,
+                PerformedByEmployeeId: employeeId.Value),
             cancellationToken);
 
         if (!result.Success)
@@ -446,13 +398,8 @@ public sealed class RentalsController(
             return BadRequest(new { message = result.Message });
         }
 
-        var rental = await GetRentalByIdAsync(id, employeeId.Value, cancellationToken);
-        if (rental is null)
-        {
-            return NotFound();
-        }
-
-        return Ok(rental);
+        var rental = await GetRentalByIdAsync(id, cancellationToken);
+        return rental is null ? NotFound() : Ok(rental);
     }
 
     [Authorize(Policy = ApiAuthorization.ManageRentals)]
@@ -464,62 +411,70 @@ public sealed class RentalsController(
         return Ok(new { message = "Rental statuses refreshed." });
     }
 
-    private async Task<int?> GetCurrentUserClientIdAsync(int employeeId, CancellationToken cancellationToken)
+    private async Task<int?> ResolveActingEmployeeIdAsync(CancellationToken cancellationToken)
     {
-        var client = await GetCurrentUserClientAsync(employeeId, cancellationToken);
-        return client?.Id;
+        var employeeId = GetCurrentEmployeeId();
+        if (employeeId.HasValue)
+        {
+            return employeeId;
+        }
+
+        return await dbContext.Employees
+            .AsNoTracking()
+            .OrderBy(item => item.Role == UserRole.Admin ? 0 : 1)
+            .ThenBy(item => item.Id)
+            .Select(item => (int?)item.Id)
+            .FirstOrDefaultAsync(cancellationToken);
     }
 
-    private async Task<Client?> GetCurrentUserClientAsync(int employeeId, CancellationToken cancellationToken)
+    private async Task<int?> GetAccessibleClientIdAsync(CancellationToken cancellationToken)
     {
-        var employee = await dbContext.Employees
-            .FirstOrDefaultAsync(item => item.Id == employeeId, cancellationToken);
-        if (employee is null)
+        if (!IsCurrentUserInRole(UserRole.User))
         {
             return null;
         }
 
-        Client? client = null;
-        if (employee.ClientId.HasValue)
+        var clientId = GetCurrentClientId();
+        if (clientId.HasValue)
         {
-            client = await dbContext.Clients
-                .FirstOrDefaultAsync(item => item.Id == employee.ClientId.Value, cancellationToken);
+            return clientId;
         }
 
-        if (client is null)
+        var accountId = GetCurrentAccountId();
+        if (!accountId.HasValue)
         {
-            var passportData = $"EMP-{employeeId:D6}";
-            var driverLicense = $"USR-{employeeId:D6}";
-
-            client = await dbContext.Clients
-                .FirstOrDefaultAsync(
-                    item => item.PassportData == passportData || item.DriverLicense == driverLicense,
-                    cancellationToken);
-
-            if (client is not null && employee.ClientId != client.Id)
-            {
-                employee.ClientId = client.Id;
-                await dbContext.SaveChangesAsync(cancellationToken);
-            }
+            return null;
         }
 
-        return client;
+        return await dbContext.Clients
+            .AsNoTracking()
+            .Where(item => item.AccountId == accountId.Value)
+            .Select(item => (int?)item.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private async Task<Client?> GetAccessibleClientAsync(CancellationToken cancellationToken)
+    {
+        var clientId = await GetAccessibleClientIdAsync(cancellationToken);
+        if (!clientId.HasValue)
+        {
+            return null;
+        }
+
+        return await dbContext.Clients
+            .Include(item => item.Documents)
+            .FirstOrDefaultAsync(item => item.Id == clientId.Value, cancellationToken);
     }
 
     private async Task<RentalMutationAccessStatus> EnsureRentalMutationAccessAsync(
         int rentalId,
-        int currentEmployeeId,
         RentalMutationType mutationType,
         CancellationToken cancellationToken)
     {
         var rental = await dbContext.Rentals
             .AsNoTracking()
             .Where(item => item.Id == rentalId)
-            .Select(item => new
-            {
-                item.ClientId,
-                item.Status
-            })
+            .Select(item => new { item.ClientId })
             .FirstOrDefaultAsync(cancellationToken);
 
         if (rental is null)
@@ -532,7 +487,7 @@ public sealed class RentalsController(
             return RentalMutationAccessStatus.Allowed;
         }
 
-        var ownClientId = await GetCurrentUserClientIdAsync(currentEmployeeId, cancellationToken);
+        var ownClientId = await GetAccessibleClientIdAsync(cancellationToken);
         if (!ownClientId.HasValue || ownClientId.Value != rental.ClientId)
         {
             return RentalMutationAccessStatus.Forbidden;
@@ -543,16 +498,10 @@ public sealed class RentalsController(
             return RentalMutationAccessStatus.Forbidden;
         }
 
-        if ((mutationType is RentalMutationType.Cancel or RentalMutationType.Reschedule) &&
-            rental.Status != RentalStatus.Booked)
-        {
-            return RentalMutationAccessStatus.InvalidState;
-        }
-
         return RentalMutationAccessStatus.Allowed;
     }
 
-    private async Task<RentalDto?> GetRentalByIdAsync(int id, int currentEmployeeId, CancellationToken cancellationToken)
+    private async Task<RentalDto?> GetRentalByIdAsync(int id, CancellationToken cancellationToken)
     {
         var query = dbContext.Rentals
             .AsNoTracking()
@@ -560,120 +509,22 @@ public sealed class RentalsController(
 
         if (IsCurrentUserInRole(UserRole.User))
         {
-            var ownClientId = await GetCurrentUserClientIdAsync(currentEmployeeId, cancellationToken);
+            var ownClientId = await GetAccessibleClientIdAsync(cancellationToken);
             query = ownClientId.HasValue
                 ? query.Where(item => item.ClientId == ownClientId.Value)
                 : query.Where(_ => false);
         }
 
-        return await ProjectRentals(query)
+        return await query
+            .ProjectToRentalDto(dbContext)
             .FirstOrDefaultAsync(cancellationToken);
-    }
-
-    private static IQueryable<RentalDto> ProjectRentals(IQueryable<Rental> query)
-    {
-        return query
-            .Select(item => new
-            {
-                item.Id,
-                item.ContractNumber,
-                item.ClientId,
-                ClientName = item.Client != null ? item.Client.FullName : string.Empty,
-                item.VehicleId,
-                VehicleName = item.Vehicle != null ? $"{item.Vehicle.Make} {item.Vehicle.Model} [{item.Vehicle.LicensePlate}]" : string.Empty,
-                item.EmployeeId,
-                EmployeeName = item.Employee != null ? item.Employee.FullName : string.Empty,
-                item.StartDate,
-                item.EndDate,
-                item.PickupLocation,
-                item.ReturnLocation,
-                item.StartMileage,
-                item.EndMileage,
-                item.Status,
-                item.TotalAmount,
-                item.OverageFee,
-                PaidAmount = item.Payments.Sum(payment => (decimal?)(
-                    payment.Direction == PaymentDirection.Incoming
-                        ? payment.Amount
-                        : payment.Direction == PaymentDirection.Refund
-                            ? -payment.Amount
-                            : 0m)) ?? 0m,
-                item.CreatedAtUtc,
-                item.ClosedAtUtc,
-                item.CanceledAtUtc,
-                item.CancellationReason,
-                item.PickupInspectionCompletedAtUtc,
-                item.PickupFuelPercent,
-                item.PickupInspectionNotes,
-                item.ReturnInspectionCompletedAtUtc,
-                item.ReturnFuelPercent,
-                item.ReturnInspectionNotes
-            })
-            .Select(item => new RentalDto(
-                item.Id,
-                item.ContractNumber,
-                item.ClientId,
-                item.ClientName,
-                item.VehicleId,
-                item.VehicleName,
-                item.EmployeeId,
-                item.EmployeeName,
-                item.StartDate,
-                item.EndDate,
-                item.PickupLocation,
-                item.ReturnLocation,
-                item.StartMileage,
-                item.EndMileage,
-                item.Status,
-                item.TotalAmount,
-                item.OverageFee,
-                item.PaidAmount,
-                item.TotalAmount - item.PaidAmount,
-                item.CreatedAtUtc,
-                item.ClosedAtUtc,
-                item.CanceledAtUtc,
-                item.CancellationReason,
-                item.PickupInspectionCompletedAtUtc,
-                item.PickupFuelPercent,
-                item.PickupInspectionNotes,
-                item.ReturnInspectionCompletedAtUtc,
-                item.ReturnFuelPercent,
-                item.ReturnInspectionNotes));
-    }
-
-    private static bool IsProfileComplete(Client client)
-    {
-        return !string.IsNullOrWhiteSpace(client.FullName) &&
-               !string.IsNullOrWhiteSpace(client.Phone) &&
-               !string.IsNullOrWhiteSpace(client.PassportData) &&
-               !string.IsNullOrWhiteSpace(client.DriverLicense) &&
-               !client.PassportData.Trim().StartsWith("EMP-", StringComparison.OrdinalIgnoreCase) &&
-               !client.DriverLicense.Trim().StartsWith("USR-", StringComparison.OrdinalIgnoreCase) &&
-               TryNormalizePhone(client.Phone) is not null;
-    }
-
-    private static string? TryNormalizePhone(string? phone)
-    {
-        if (string.IsNullOrWhiteSpace(phone))
-        {
-            return null;
-        }
-
-        var digits = new string(phone.Where(char.IsDigit).ToArray());
-        if (digits.Length is < 10 or > 15)
-        {
-            return null;
-        }
-
-        return "+" + digits;
     }
 
     private enum RentalMutationAccessStatus
     {
         Allowed = 0,
         Forbidden = 1,
-        NotFound = 2,
-        InvalidState = 3
+        NotFound = 2
     }
 
     private enum RentalMutationType

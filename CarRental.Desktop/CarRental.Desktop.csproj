@@ -25,4 +25,8 @@
     <Resource Include="Assets\Prokat\*.jpg" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\Shared\**\*.cs" LinkBase="Shared" />
+  </ItemGroup>
+
 </Project>

@@ -7,6 +7,7 @@ import { PaginationControls } from '../components/PaginationControls';
 import { Panel } from '../components/Panel';
 import { StatCard } from '../components/StatCard';
 import { formatCurrency, formatShortDate } from '../utils/format';
+import { DEFAULT_MAINTENANCE_DESCRIPTION } from '../utils/referenceData';
 
 const PAGE_SIZE = 25;
 
@@ -22,7 +23,7 @@ export function MaintenancePage() {
     vehicleId: '',
     serviceDate: new Date().toISOString().slice(0, 10),
     mileageAtService: '',
-    description: 'Планове техобслуговування',
+    description: DEFAULT_MAINTENANCE_DESCRIPTION,
     cost: '',
     nextServiceMileage: '',
   });

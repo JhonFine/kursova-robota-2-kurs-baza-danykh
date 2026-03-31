@@ -5,6 +5,7 @@ using CarRental.Desktop.Services.Auth;
 using CarRental.Desktop.Services.Documents;
 using CarRental.Desktop.Services.Payments;
 using CarRental.Desktop.Services.Rentals;
+using CarRental.Shared.ReferenceData;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.EntityFrameworkCore;
 using System.Collections.ObjectModel;
@@ -34,12 +35,14 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
     private string _clientSearchText = string.Empty;
     private string _vehicleSearchText = string.Empty;
     private DateTime _startDate = DateTime.Today;
+    private string _startTime = "10:00";
     private DateTime _endDate = DateTime.Today.AddDays(1);
+    private string _endTime = "10:00";
     private DateTime _actualReturnDate = DateTime.Today;
     private string _endMileageInput = string.Empty;
     private string _statusMessage = string.Empty;
     private RentalRow? _selectedRental;
-    private string _cancelReason = "За запитом клієнта";
+    private string _cancelReason = DemoSeedReferenceData.StaffCancellationReason;
     private string _paymentAmountInput = string.Empty;
     private PaymentMethod _paymentMethod = PaymentMethod.Cash;
     private PaymentDirection _paymentDirection = PaymentDirection.Incoming;
@@ -70,7 +73,7 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
         _currentEmployee = currentEmployee;
 
         RefreshCommand = new AsyncRelayCommand(RefreshAsync, () => !IsLoading);
-        CreateRentalCommand = new AsyncRelayCommand(CreateRentalAsync, () => !IsLoading);
+        CreateRentalCommand = new AsyncRelayCommand(CreateRentalAsync, CanCreateRental);
         CloseRentalCommand = new AsyncRelayCommand(CloseRentalAsync, () => !IsLoading);
         CancelRentalCommand = new AsyncRelayCommand(CancelRentalAsync, () => !IsLoading);
         AddPaymentCommand = new AsyncRelayCommand(AddPaymentAsync, () => !IsLoading);
@@ -86,6 +89,8 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
     public ObservableCollection<PaymentRow> Payments { get; } = [];
 
     public ObservableCollection<GanttRow> GanttRows { get; } = [];
+
+    public ObservableCollection<string> TimeOptions { get; } = [.. DemoSeedReferenceData.TimeOptions];
 
     public IAsyncRelayCommand RefreshCommand { get; }
 
@@ -154,14 +159,67 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
     public DateTime StartDate
     {
         get => _startDate;
-        set => SetProperty(ref _startDate, value);
+        set
+        {
+            if (SetProperty(ref _startDate, value))
+            {
+                if (EndDate.Date < value.Date)
+                {
+                    EndDate = value.Date;
+                }
+
+                NotifyCreateRentalValidationChanged();
+            }
+        }
+    }
+
+    public string StartTime
+    {
+        get => _startTime;
+        set
+        {
+            if (SetProperty(ref _startTime, value))
+            {
+                NotifyCreateRentalValidationChanged();
+            }
+        }
     }
 
     public DateTime EndDate
     {
         get => _endDate;
-        set => SetProperty(ref _endDate, value);
+        set
+        {
+            if (SetProperty(ref _endDate, value))
+            {
+                NotifyCreateRentalValidationChanged();
+            }
+        }
     }
+
+    public string EndTime
+    {
+        get => _endTime;
+        set
+        {
+            if (SetProperty(ref _endTime, value))
+            {
+                NotifyCreateRentalValidationChanged();
+            }
+        }
+    }
+
+    public DateTime MinCreateStartDate => DateTime.Today;
+
+    public DateTime MinCreateEndDate => StartDate.Date > DateTime.Today ? StartDate.Date : DateTime.Today;
+
+    public string CreateStartDateValidationMessage => ResolveCreateStartDateValidationMessage() ?? string.Empty;
+
+    public bool HasCreateStartDateValidationMessage => !string.IsNullOrWhiteSpace(CreateStartDateValidationMessage);
+
+    public string CreateEndDateValidationMessage => ResolveCreateEndDateValidationMessage() ?? string.Empty;
+
+    public bool HasCreateEndDateValidationMessage => !string.IsNullOrWhiteSpace(CreateEndDateValidationMessage);
 
     public DateTime ActualReturnDate
     {
@@ -245,6 +303,13 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
         IsLoading = true;
         try
         {
+            var clients = _dbContext.Clients
+                .AsNoTracking()
+                .IgnoreQueryFilters();
+            var vehicles = _dbContext.Vehicles
+                .AsNoTracking()
+                .IgnoreQueryFilters();
+
             var vehiclesForGantt = await _dbContext.Vehicles
                 .AsNoTracking()
                 .OrderBy(vehicle => vehicle.Make)
@@ -258,11 +323,15 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
                 .Select(rental => new RentalListSnapshot(
                     rental.Id,
                     rental.ContractNumber,
-                    rental.Client != null ? rental.Client.FullName : string.Empty,
+                    clients
+                        .Where(client => client.Id == rental.ClientId)
+                        .Select(client => client.FullName)
+                        .FirstOrDefault() ?? string.Empty,
                     rental.VehicleId,
-                    rental.Vehicle != null
-                        ? $"{rental.Vehicle.Make} {rental.Vehicle.Model}"
-                        : string.Empty,
+                    vehicles
+                        .Where(vehicle => vehicle.Id == rental.VehicleId)
+                        .Select(vehicle => vehicle.Make + " " + vehicle.Model)
+                        .FirstOrDefault() ?? string.Empty,
                     rental.StartDate,
                     rental.EndDate,
                     rental.TotalAmount,
@@ -338,13 +407,30 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
             return;
         }
 
+        var startDateValidationError = ResolveCreateStartDateValidationMessage();
+        if (!string.IsNullOrWhiteSpace(startDateValidationError))
+        {
+            StatusMessage = startDateValidationError;
+            return;
+        }
+
+        var endDateValidationError = ResolveCreateEndDateValidationMessage();
+        if (!string.IsNullOrWhiteSpace(endDateValidationError))
+        {
+            StatusMessage = endDateValidationError;
+            return;
+        }
+
+        var startDateTime = BuildCreateStartDateTime();
+        var endDateTime = BuildCreateEndDateTime();
+
         var result = await _rentalService.CreateRentalAsync(
             new CreateRentalRequest(
                 SelectedClient.Id,
                 SelectedVehicle.Id,
                 _currentEmployee.Id,
-                StartDate,
-                EndDate));
+                startDateTime,
+                endDateTime));
 
         if (!result.Success)
         {
@@ -389,6 +475,53 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
         ActualReturnDate = EndDate;
         _refreshCoordinator.Invalidate(PageRefreshArea.Fleet | PageRefreshArea.Prokat | PageRefreshArea.Reports);
         await RefreshAsync();
+    }
+
+    private bool CanCreateRental()
+    {
+        return !IsLoading &&
+               string.IsNullOrWhiteSpace(ResolveCreateStartDateValidationMessage()) &&
+               string.IsNullOrWhiteSpace(ResolveCreateEndDateValidationMessage());
+    }
+
+    private string? ResolveCreateStartDateValidationMessage()
+    {
+        return BuildCreateStartDateTime() < DateTime.Now
+            ? "Початок оренди не може бути в минулому."
+            : null;
+    }
+
+    private string? ResolveCreateEndDateValidationMessage()
+    {
+        if (EndDate.Date < StartDate.Date)
+        {
+            return "Дата повернення не може бути раніше дати подачі.";
+        }
+
+        return BuildCreateEndDateTime() <= BuildCreateStartDateTime()
+            ? "Дата та час завершення мають бути пізнішими за початок оренди."
+            : null;
+    }
+
+    private void NotifyCreateRentalValidationChanged()
+    {
+        OnPropertyChanged(nameof(MinCreateEndDate));
+        OnPropertyChanged(nameof(CreateStartDateValidationMessage));
+        OnPropertyChanged(nameof(HasCreateStartDateValidationMessage));
+        OnPropertyChanged(nameof(CreateEndDateValidationMessage));
+        OnPropertyChanged(nameof(HasCreateEndDateValidationMessage));
+        CreateRentalCommand.NotifyCanExecuteChanged();
+    }
+
+    private DateTime BuildCreateStartDateTime()
+    {
+        return CombineDateAndTime(StartDate, StartTime, new TimeSpan(10, 0, 0));
+    }
+
+    private DateTime BuildCreateEndDateTime()
+    {
+        var fallback = ParseTime(StartTime, new TimeSpan(10, 0, 0));
+        return CombineDateAndTime(EndDate, EndTime, fallback);
     }
 
     private async Task CloseRentalAsync()
@@ -611,7 +744,29 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
     private async Task ReloadClientsAsync(int? preferredClientId, CancellationToken cancellationToken = default)
     {
         var searchText = ClientSearchText.Trim();
-        var query = _dbContext.Clients.AsNoTracking();
+        var passportDocuments = _dbContext.ClientDocuments
+            .AsNoTracking()
+            .Where(item => item.DocumentTypeCode == ClientDocumentTypes.Passport);
+        var driverLicenseDocuments = _dbContext.ClientDocuments
+            .AsNoTracking()
+            .Where(item => item.DocumentTypeCode == ClientDocumentTypes.DriverLicense);
+
+        var query = _dbContext.Clients
+            .AsNoTracking()
+            .Select(client => new
+            {
+                client.Id,
+                client.FullName,
+                client.Phone,
+                PassportData = passportDocuments
+                    .Where(document => document.ClientId == client.Id)
+                    .Select(document => document.DocumentNumber)
+                    .FirstOrDefault() ?? string.Empty,
+                DriverLicense = driverLicenseDocuments
+                    .Where(document => document.ClientId == client.Id)
+                    .Select(document => document.DocumentNumber)
+                    .FirstOrDefault() ?? string.Empty
+            });
 
         if (!string.IsNullOrWhiteSpace(searchText))
         {
@@ -658,6 +813,10 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
     private async Task ReloadVehiclesAsync(int? preferredVehicleId, CancellationToken cancellationToken = default)
     {
         var searchText = VehicleSearchText.Trim();
+        var activeRentalVehicleIds = _dbContext.Rentals
+            .AsNoTracking()
+            .Where(rental => rental.Status == RentalStatus.Active)
+            .Select(rental => rental.VehicleId);
         var query = _dbContext.Vehicles.AsNoTracking();
 
         if (!string.IsNullOrWhiteSpace(searchText))
@@ -674,7 +833,7 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
             .ThenBy(vehicle => vehicle.LicensePlate)
             .Select(vehicle => new VehicleOption(
                 vehicle.Id,
-                $"{vehicle.Make} {vehicle.Model} [{vehicle.LicensePlate}] - {(vehicle.IsAvailable ? VehicleAvailableLabel : VehicleUnavailableLabel)}"))
+                $"{vehicle.Make} {vehicle.Model} [{vehicle.LicensePlate}] - {(vehicle.VehicleStatusCode == VehicleStatuses.Ready && !activeRentalVehicleIds.Contains(vehicle.Id) ? VehicleAvailableLabel : VehicleUnavailableLabel)}"))
             .Take(VehicleSearchLimit)
             .ToListAsync(cancellationToken);
 
@@ -685,7 +844,7 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
                 .Where(vehicle => vehicle.Id == preferredVehicleId.Value)
                 .Select(vehicle => new VehicleOption(
                     vehicle.Id,
-                    $"{vehicle.Make} {vehicle.Model} [{vehicle.LicensePlate}] - {(vehicle.IsAvailable ? VehicleAvailableLabel : VehicleUnavailableLabel)}"))
+                    $"{vehicle.Make} {vehicle.Model} [{vehicle.LicensePlate}] - {(vehicle.VehicleStatusCode == VehicleStatuses.Ready && !activeRentalVehicleIds.Contains(vehicle.Id) ? VehicleAvailableLabel : VehicleUnavailableLabel)}"))
                 .FirstOrDefaultAsync(cancellationToken);
 
             if (selectedVehicle is not null)
@@ -833,6 +992,27 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
         cancellationTokenSource?.Cancel();
         cancellationTokenSource?.Dispose();
         cancellationTokenSource = null;
+    }
+
+    private static DateTime CombineDateAndTime(DateTime date, string timeInput, TimeSpan fallbackTime)
+    {
+        var time = ParseTime(timeInput, fallbackTime);
+        return date.Date.Add(time);
+    }
+
+    private static TimeSpan ParseTime(string timeInput, TimeSpan fallbackTime)
+    {
+        if (TimeSpan.TryParseExact(timeInput, "hh\\:mm", CultureInfo.InvariantCulture, out var parsed))
+        {
+            return parsed;
+        }
+
+        if (TimeSpan.TryParse(timeInput, CultureInfo.CurrentCulture, out parsed))
+        {
+            return parsed;
+        }
+
+        return fallbackTime;
     }
 }
 

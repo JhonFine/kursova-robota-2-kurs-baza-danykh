@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Diagnostics;
 using System.IO;
 using System.Windows.Data;
 using System.Windows.Media.Imaging;
@@ -37,8 +38,9 @@ public sealed class VehiclePhotoSourceConverter : IValueConverter
             image.Freeze();
             return image;
         }
-        catch
+        catch (Exception ex)
         {
+            Trace.TraceError($"Failed to load vehicle photo from '{path}': {ex.Message}");
             return null;
         }
     }

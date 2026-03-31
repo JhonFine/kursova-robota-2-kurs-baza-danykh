@@ -3,12 +3,23 @@ import { useSearchParams } from 'react-router-dom';
 import { Api } from '../api/client';
 import type { Vehicle } from '../api/types';
 import { FilterField, FilterToolbar, type ActiveFilterChipItem } from '../components/FilterToolbar';
-import { LoadingView } from '../components/LoadingView';
+import { EmptyState } from '../components/EmptyState';
+import { FeedbackBanner } from '../components/FeedbackBanner';
+import { InlineSpinner } from '../components/LoadingView';
 import { PaginationControls } from '../components/PaginationControls';
 import { Panel } from '../components/Panel';
+import { StatCardSkeletons, TableSkeleton } from '../components/Skeleton';
 import { StatCard } from '../components/StatCard';
 import { formatCurrency } from '../utils/format';
 import { parseEnumParam, parsePositiveIntParam, withUpdatedSearchParams } from '../utils/searchParams';
+import { isValidUaLicensePlate, MIN_DAILY_RATE, resolveVehicleClassLabel } from '../utils/vehicleRules';
+import {
+  CARGO_UNIT_OPTIONS,
+  CONSUMPTION_UNIT_OPTIONS,
+  FUEL_TYPE_OPTIONS,
+  POWERTRAIN_UNIT_OPTIONS,
+  TRANSMISSION_TYPE_OPTIONS,
+} from '../utils/referenceData';
 
 const PAGE_SIZE = 20;
 const classFilterValues = ['all', 'Economy', 'Mid', 'Business', 'Premium'] as const;
@@ -44,22 +55,6 @@ const sortLabels: Record<`${SortBy}:${SortDir}`, string> = {
   'mileage:desc': 'Пробіг спадання',
 };
 
-function resolveVehicleClassLabel(dailyRate: number): string {
-  if (dailyRate >= 95) {
-    return 'Преміум';
-  }
-
-  if (dailyRate >= 70) {
-    return 'Бізнес';
-  }
-
-  if (dailyRate >= 45) {
-    return 'Середній';
-  }
-
-  return 'Економ';
-}
-
 export function FleetPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -72,16 +67,19 @@ export function FleetPage() {
   const [createForm, setCreateForm] = useState({
     make: '',
     model: '',
-    engineDisplay: '',
+    powertrainCapacityValue: '',
+    powertrainCapacityUnit: 'L',
     fuelType: '',
     transmissionType: '',
     doorsCount: '4',
-    cargoCapacityDisplay: '',
-    consumptionDisplay: '',
+    cargoCapacityValue: '',
+    cargoCapacityUnit: 'L',
+    consumptionValue: '',
+    consumptionUnit: 'L_PER_100KM',
     hasAirConditioning: true,
     licensePlate: '',
     mileage: '0',
-    dailyRate: '50',
+    dailyRate: String(MIN_DAILY_RATE),
     serviceIntervalKm: '10000',
     photoPath: '',
   });
@@ -200,22 +198,31 @@ export function FleetPage() {
   const onCreate = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
 
+    const normalizedPlate = createForm.licensePlate.trim().toUpperCase();
+    if (!isValidUaLicensePlate(normalizedPlate)) {
+      setError('Некоректний формат номера. Використовуйте шаблон AA1234BB.');
+      return;
+    }
+
     try {
       setError(null);
       await Api.createVehicle({
         make: createForm.make.trim(),
         model: createForm.model.trim(),
-        engineDisplay: createForm.engineDisplay.trim(),
+        powertrainCapacityValue: Number(createForm.powertrainCapacityValue),
+        powertrainCapacityUnit: createForm.powertrainCapacityUnit,
         fuelType: createForm.fuelType.trim(),
         transmissionType: createForm.transmissionType.trim(),
         doorsCount: Number(createForm.doorsCount),
-        cargoCapacityDisplay: createForm.cargoCapacityDisplay.trim(),
-        consumptionDisplay: createForm.consumptionDisplay.trim(),
+        cargoCapacityValue: Number(createForm.cargoCapacityValue),
+        cargoCapacityUnit: createForm.cargoCapacityUnit,
+        consumptionValue: Number(createForm.consumptionValue),
+        consumptionUnit: createForm.consumptionUnit,
         hasAirConditioning: createForm.hasAirConditioning,
-        licensePlate: createForm.licensePlate.trim(),
+        licensePlate: normalizedPlate,
         mileage: Number(createForm.mileage),
         dailyRate: Number(createForm.dailyRate),
-        isAvailable: true,
+        isBookable: true,
         serviceIntervalKm: Number(createForm.serviceIntervalKm),
         photoPath: createForm.photoPath.trim() || null,
       });
@@ -223,16 +230,19 @@ export function FleetPage() {
       setCreateForm({
         make: '',
         model: '',
-        engineDisplay: '',
+        powertrainCapacityValue: '',
+        powertrainCapacityUnit: 'L',
         fuelType: '',
         transmissionType: '',
         doorsCount: '4',
-        cargoCapacityDisplay: '',
-        consumptionDisplay: '',
+        cargoCapacityValue: '',
+        cargoCapacityUnit: 'L',
+        consumptionValue: '',
+        consumptionUnit: 'L_PER_100KM',
         hasAirConditioning: true,
         licensePlate: '',
         mileage: '0',
-        dailyRate: '50',
+        dailyRate: String(MIN_DAILY_RATE),
         serviceIntervalKm: '10000',
         photoPath: '',
       });
@@ -265,12 +275,35 @@ export function FleetPage() {
     }
   };
 
-  if (isLoading) {
-    return <LoadingView text="Завантаження автопарку..." />;
+  if (isLoading && vehicles.length === 0) {
+    return (
+      <div className="staff-dashboard">
+        <StatCardSkeletons count={3} />
+
+        <Panel title="Автопарк" subtitle="Готуємо список авто, фільтри та навігацію по вибірці.">
+          <TableSkeleton rows={7} />
+        </Panel>
+
+        <div className="staff-dashboard-grid">
+          <Panel title="Оновити ціну" subtitle="Панель швидкого редагування ставки.">
+            <EmptyState
+              icon="RATE"
+              compact
+              title="Завантажуємо вибране авто."
+              description="Щойно таблиця буде готова, тут з’явиться коротка картка автомобіля та поле для зміни тарифу."
+            />
+          </Panel>
+
+          <Panel title="Додавання авто" subtitle="Форма поповнення автопарку.">
+            <TableSkeleton rows={4} compact />
+          </Panel>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="page-grid">
+    <div className="staff-dashboard">
       <section className="stats-grid">
         <StatCard label="Усього у вибірці" value={totalCount} accent="blue" />
         <StatCard
@@ -382,41 +415,80 @@ export function FleetPage() {
           </FilterField>
         </FilterToolbar>
 
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Авто</th>
-                <th>Клас</th>
-                <th>Номер</th>
-                <th>Пробіг</th>
-                <th>Ціна/доба</th>
-                <th>Статус</th>
-              </tr>
-            </thead>
-            <tbody>
-              {vehicles.map((vehicle) => (
-                <tr
-                  key={vehicle.id}
-                  className={selectedId === vehicle.id ? 'selected-row' : ''}
-                  onClick={() => setSelectedId(vehicle.id)}
-                >
-                  <td>{vehicle.id}</td>
-                  <td>{vehicle.make} {vehicle.model}</td>
-                  <td>{resolveVehicleClassLabel(vehicle.dailyRate)}</td>
-                  <td>{vehicle.licensePlate}</td>
-                  <td>{vehicle.mileage.toLocaleString('uk-UA')} км</td>
-                  <td>{formatCurrency(vehicle.dailyRate)}</td>
-                  <td>
-                    <span className={`status-pill ${vehicle.isAvailable ? 'ok' : 'bad'}`}>
-                      {vehicle.isAvailable ? 'Доступне' : 'Зайняте'}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className={`surface-refresh${isLoading ? ' is-refreshing' : ''}`}>
+          {vehicles.length === 0 ? (
+            <EmptyState
+              icon="CAR"
+              title="Авто під поточні фільтри не знайдено."
+              description="Скиньте частину обмежень або змініть пошук, щоб повернутись до повного списку автопарку."
+              actions={(
+                <>
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={() => updateListParams({
+                      page: null,
+                      search: null,
+                      class: null,
+                      status: null,
+                      sortBy: null,
+                      sortDir: null,
+                    })}
+                  >
+                    Скинути фільтри
+                  </button>
+                  <button type="button" className="btn primary" onClick={() => void loadVehicles()}>
+                    Оновити список
+                  </button>
+                </>
+              )}
+            />
+          ) : (
+            <>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Авто</th>
+                      <th>Клас</th>
+                      <th>Номер</th>
+                      <th>Пробіг</th>
+                      <th>Ціна/доба</th>
+                      <th>Статус</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vehicles.map((vehicle) => (
+                      <tr
+                        key={vehicle.id}
+                        className={selectedId === vehicle.id ? 'selected-row' : ''}
+                        onClick={() => setSelectedId(vehicle.id)}
+                      >
+                        <td>{vehicle.id}</td>
+                        <td>{vehicle.make} {vehicle.model}</td>
+                        <td>{resolveVehicleClassLabel(vehicle.dailyRate)}</td>
+                        <td>{vehicle.licensePlate}</td>
+                        <td>{vehicle.mileage.toLocaleString('uk-UA')} км</td>
+                        <td>{formatCurrency(vehicle.dailyRate)}</td>
+                        <td>
+                          <span className={`status-pill ${vehicle.isAvailable ? 'ok' : vehicle.isBookable ? 'wait' : 'bad'}`}>
+                            {vehicle.isAvailable ? 'Доступне' : vehicle.isBookable ? 'Зайняте' : 'Недоступне'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {isLoading ? (
+                <div className="refresh-overlay">
+                  <InlineSpinner />
+                </div>
+              ) : null}
+            </>
+          )}
         </div>
         <PaginationControls
           page={page}
@@ -427,22 +499,44 @@ export function FleetPage() {
         />
       </Panel>
 
-      <div className="two-col-grid">
+      <div className="staff-dashboard-grid">
         <Panel title="Оновити ціну" subtitle={selectedVehicle ? `${selectedVehicle.make} ${selectedVehicle.model}` : 'Оберіть авто в таблиці'}>
-          <div className="inline-form">
-            <input
-              value={newRate}
-              onChange={(event) => setNewRate(event.target.value)}
-              placeholder="Нова ціна"
-              inputMode="decimal"
+          {selectedVehicle ? (
+            <div className="panel-stack">
+              <div className="panel-intro">
+                <strong>{selectedVehicle.make} {selectedVehicle.model}</strong>
+                <p>
+                  {selectedVehicle.licensePlate} • {formatCurrency(selectedVehicle.dailyRate)} за добу • {selectedVehicle.mileage.toLocaleString('uk-UA')} км
+                </p>
+              </div>
+
+              <div className="inline-form">
+                <input
+                  value={newRate}
+                  onChange={(event) => setNewRate(event.target.value)}
+                  placeholder="Нова ціна"
+                  inputMode="decimal"
+                />
+                <button type="button" className="btn primary" onClick={() => void onUpdateRate()}>
+                  Оновити ціну
+                </button>
+              </div>
+            </div>
+          ) : (
+            <EmptyState
+              icon="RATE"
+              compact
+              title="Оберіть авто з таблиці."
+              description="Клік по рядку відкриє швидке редагування ставки без переходу на окремий екран."
             />
-            <button type="button" className="btn primary" onClick={() => void onUpdateRate()} disabled={!selectedVehicle}>
-              Оновити ціну
-            </button>
-          </div>
+          )}
         </Panel>
 
         <Panel title="Додавання авто" subtitle="Створення нового запису автопарку">
+          <div className="panel-intro">
+            <strong>Нове авто для автопарку.</strong>
+            <p>Заповніть основні характеристики, а фото додайте одразу або пізніше, коли воно буде готове.</p>
+          </div>
           <form className="form-grid" onSubmit={(event) => void onCreate(event)}>
             <label>
               Марка
@@ -454,15 +548,39 @@ export function FleetPage() {
             </label>
             <label>
               Двигун / батарея
-              <input required value={createForm.engineDisplay} onChange={(event) => setCreateForm((prev) => ({ ...prev, engineDisplay: event.target.value }))} />
+              <input required type="number" min={0.01} step="0.01" value={createForm.powertrainCapacityValue} onChange={(event) => setCreateForm((prev) => ({ ...prev, powertrainCapacityValue: event.target.value }))} />
+            </label>
+            <label>
+              Одиниця силової установки
+              <select value={createForm.powertrainCapacityUnit} onChange={(event) => setCreateForm((prev) => ({ ...prev, powertrainCapacityUnit: event.target.value }))}>
+                {POWERTRAIN_UNIT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               Тип пального
-              <input required value={createForm.fuelType} onChange={(event) => setCreateForm((prev) => ({ ...prev, fuelType: event.target.value }))} />
+              <select required value={createForm.fuelType} onChange={(event) => setCreateForm((prev) => ({ ...prev, fuelType: event.target.value }))}>
+                <option value="">Оберіть тип</option>
+                {FUEL_TYPE_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               Коробка
-              <input required value={createForm.transmissionType} onChange={(event) => setCreateForm((prev) => ({ ...prev, transmissionType: event.target.value }))} />
+              <select required value={createForm.transmissionType} onChange={(event) => setCreateForm((prev) => ({ ...prev, transmissionType: event.target.value }))}>
+                <option value="">Оберіть коробку</option>
+                {TRANSMISSION_TYPE_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               Двері
@@ -470,15 +588,35 @@ export function FleetPage() {
             </label>
             <label>
               Багажник / місткість
-              <input required value={createForm.cargoCapacityDisplay} onChange={(event) => setCreateForm((prev) => ({ ...prev, cargoCapacityDisplay: event.target.value }))} />
+              <input required type="number" min={0.01} step="0.01" value={createForm.cargoCapacityValue} onChange={(event) => setCreateForm((prev) => ({ ...prev, cargoCapacityValue: event.target.value }))} />
+            </label>
+            <label>
+              Одиниця місткості / вантажу
+              <select value={createForm.cargoCapacityUnit} onChange={(event) => setCreateForm((prev) => ({ ...prev, cargoCapacityUnit: event.target.value }))}>
+                {CARGO_UNIT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               Витрата / споживання
-              <input required value={createForm.consumptionDisplay} onChange={(event) => setCreateForm((prev) => ({ ...prev, consumptionDisplay: event.target.value }))} />
+              <input required type="number" min={0.01} step="0.01" value={createForm.consumptionValue} onChange={(event) => setCreateForm((prev) => ({ ...prev, consumptionValue: event.target.value }))} />
+            </label>
+            <label>
+              Одиниця споживання
+              <select value={createForm.consumptionUnit} onChange={(event) => setCreateForm((prev) => ({ ...prev, consumptionUnit: event.target.value }))}>
+                {CONSUMPTION_UNIT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               Номер
-              <input required value={createForm.licensePlate} onChange={(event) => setCreateForm((prev) => ({ ...prev, licensePlate: event.target.value }))} />
+              <input required value={createForm.licensePlate} placeholder="AA1234BB" onChange={(event) => setCreateForm((prev) => ({ ...prev, licensePlate: event.target.value.toUpperCase() }))} />
             </label>
             <label>
               Пробіг
@@ -486,7 +624,7 @@ export function FleetPage() {
             </label>
             <label>
               Ціна/доба
-              <input required type="number" min={1} step="0.01" value={createForm.dailyRate} onChange={(event) => setCreateForm((prev) => ({ ...prev, dailyRate: event.target.value }))} />
+              <input required type="number" min={MIN_DAILY_RATE} step="50" value={createForm.dailyRate} onChange={(event) => setCreateForm((prev) => ({ ...prev, dailyRate: event.target.value }))} />
             </label>
             <label>
               Інтервал ТО (км)
@@ -513,8 +651,16 @@ export function FleetPage() {
         </Panel>
       </div>
 
-      {message ? <p className="success-box">{message}</p> : null}
-      {error ? <p className="error-box">{error}</p> : null}
+      {message ? (
+        <FeedbackBanner tone="success" title="Автопарк оновлено" onDismiss={() => setMessage(null)} autoHideMs={4200}>
+          {message}
+        </FeedbackBanner>
+      ) : null}
+      {error ? (
+        <FeedbackBanner tone="error" title="Не вдалося виконати дію" onDismiss={() => setError(null)}>
+          {error}
+        </FeedbackBanner>
+      ) : null}
     </div>
   );
 }

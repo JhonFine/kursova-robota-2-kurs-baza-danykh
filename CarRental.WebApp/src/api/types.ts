@@ -18,17 +18,34 @@ export interface Employee {
   lockoutUntilUtc?: string | null;
 }
 
+export interface AuthenticatedUser {
+  accountId: number;
+  employeeId: number | null;
+  clientId: number | null;
+  fullName: string;
+  login: string;
+  role: UserRole;
+  isActive: boolean;
+  lastLoginUtc?: string | null;
+  lockoutUntilUtc?: string | null;
+}
+
 export interface AuthTokenResponse {
   accessToken: string;
   expiresAtUtc: string;
-  employee: Employee;
+  user: AuthenticatedUser;
+  employee: Employee | null;
 }
 
 export interface Client {
   id: number;
   fullName: string;
   passportData: string;
+  passportExpirationDate?: string | null;
+  passportPhotoPath?: string | null;
   driverLicense: string;
+  driverLicenseExpirationDate?: string | null;
+  driverLicensePhotoPath?: string | null;
   phone: string;
   blacklisted: boolean;
 }
@@ -41,17 +58,42 @@ export interface Vehicle {
   id: number;
   make: string;
   model: string;
-  engineDisplay: string;
+  powertrainCapacityValue: number;
+  powertrainCapacityUnit: string;
   fuelType: string;
   transmissionType: string;
   doorsCount: number;
-  cargoCapacityDisplay: string;
-  consumptionDisplay: string;
+  cargoCapacityValue: number;
+  cargoCapacityUnit: string;
+  consumptionValue: number;
+  consumptionUnit: string;
   hasAirConditioning: boolean;
   licensePlate: string;
   mileage: number;
   dailyRate: number;
+  isBookable: boolean;
   isAvailable: boolean;
+  serviceIntervalKm: number;
+  photoPath?: string | null;
+}
+
+export interface VehicleUpsertPayload {
+  make: string;
+  model: string;
+  powertrainCapacityValue: number;
+  powertrainCapacityUnit: string;
+  fuelType: string;
+  transmissionType: string;
+  doorsCount: number;
+  cargoCapacityValue: number;
+  cargoCapacityUnit: string;
+  consumptionValue: number;
+  consumptionUnit: string;
+  hasAirConditioning: boolean;
+  licensePlate: string;
+  mileage: number;
+  dailyRate: number;
+  isBookable?: boolean;
   serviceIntervalKm: number;
   photoPath?: string | null;
 }
@@ -111,6 +153,14 @@ export interface RentalAvailabilitySlot {
   status: RentalStatus;
 }
 
+export interface MediaAsset {
+  id: number;
+  storedPath: string;
+  sortOrder: number;
+  isPrimary?: boolean;
+  createdAtUtc?: string | null;
+}
+
 export interface Damage {
   id: number;
   vehicleId: number;
@@ -120,6 +170,7 @@ export interface Damage {
   description: string;
   dateReported: string;
   repairCost: number;
+  photos: MediaAsset[];
   photoPath?: string | null;
   actNumber: string;
   chargedAmount: number;

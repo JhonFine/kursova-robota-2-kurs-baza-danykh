@@ -1,6 +1,7 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Api } from '../api/client';
 import type { HealthStatus } from '../api/types';
+import { FeedbackBanner } from '../components/FeedbackBanner';
 import { LoadingView } from '../components/LoadingView';
 import { Panel } from '../components/Panel';
 
@@ -44,8 +45,11 @@ export function HealthPage() {
           </button>
         </div>
       </Panel>
-      {error ? <p className="error-box">{error}</p> : null}
+      {error ? (
+        <FeedbackBanner tone="error" title="Health check не вдався" onDismiss={() => setError(null)}>
+          {error}
+        </FeedbackBanner>
+      ) : null}
     </div>
   );
 }
-

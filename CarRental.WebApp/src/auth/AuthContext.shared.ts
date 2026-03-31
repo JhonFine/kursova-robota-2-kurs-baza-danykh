@@ -1,8 +1,8 @@
 import { createContext } from 'react';
-import type { Employee } from '../api/types';
+import type { AuthenticatedUser } from '../api/types';
 
 export interface AuthContextValue {
-  user: Employee | null;
+  user: AuthenticatedUser | null;
   token: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;

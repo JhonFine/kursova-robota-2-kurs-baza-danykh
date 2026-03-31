@@ -7,3 +7,4 @@ public enum RentalStatus
     Closed = 3,
     Canceled = 4
 }
+

@@ -1,6 +1,12 @@
-﻿<UserControl x:Class="CarRental.Desktop.Views.Pages.ReportsPage"
+﻿<?xml version="1.0" encoding="utf-8"?>
+<UserControl x:Class="CarRental.Desktop.Views.Pages.ReportsPage"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <SolidColorBrush x:Key="SuccessTextBrush" Color="#166534" />
+        <SolidColorBrush x:Key="PrimaryTextBrush" Color="#0F766E" />
+        <SolidColorBrush x:Key="DangerTextBrush" Color="#B91C1C" />
+    </UserControl.Resources>
     <Grid x:Name="ReportsRoot" Margin="8">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -105,7 +111,7 @@
                     <TextBlock Text="{Binding ActiveRentals}"
                                FontSize="34"
                                FontWeight="Bold"
-                               Foreground="#166534" />
+                               Foreground="{StaticResource SuccessTextBrush}" />
                 </StackPanel>
             </Border>
 
@@ -120,7 +126,7 @@
                     <TextBlock Text="{Binding TotalRevenue, StringFormat={}{0:C}}"
                                FontSize="34"
                                FontWeight="Bold"
-                               Foreground="#0F766E" />
+                               Foreground="{StaticResource PrimaryTextBrush}" />
                 </StackPanel>
             </Border>
 
@@ -135,7 +141,7 @@
                     <TextBlock Text="{Binding TotalDamageCost, StringFormat={}{0:C}}"
                                FontSize="34"
                                FontWeight="Bold"
-                               Foreground="#B91C1C" />
+                               Foreground="{StaticResource DangerTextBrush}" />
                 </StackPanel>
             </Border>
         </UniformGrid>

@@ -1,10 +1,13 @@
+using CarRental.Shared.ReferenceData;
 using CarRental.WebApi.Contracts;
 using CarRental.WebApi.Data;
 using CarRental.WebApi.Infrastructure;
 using CarRental.WebApi.Models;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.IO;
 
 namespace CarRental.WebApi.Controllers;
 
@@ -24,6 +27,7 @@ public sealed class ClientsController(RentalDbContext dbContext) : ApiController
         var pagination = PaginationExtensions.Normalize(page, pageSize);
         var query = dbContext.Clients
             .AsNoTracking()
+            .Include(item => item.Documents.Where(document => !document.IsDeleted))
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -32,12 +36,14 @@ public sealed class ClientsController(RentalDbContext dbContext) : ApiController
             query = query.Where(item =>
                 EF.Functions.ILike(item.FullName, pattern) ||
                 EF.Functions.ILike(item.Phone, pattern) ||
-                EF.Functions.ILike(item.DriverLicense, pattern));
+                item.Documents.Any(document =>
+                    !document.IsDeleted &&
+                    EF.Functions.ILike(document.DocumentNumber, pattern)));
         }
 
         if (blacklisted.HasValue)
         {
-            query = query.Where(item => item.Blacklisted == blacklisted.Value);
+            query = query.Where(item => item.IsBlacklisted == blacklisted.Value);
         }
 
         query = query.OrderBy(item => item.FullName);
@@ -50,16 +56,9 @@ public sealed class ClientsController(RentalDbContext dbContext) : ApiController
 
         var clients = await query
             .ApplyPagination(pagination)
-            .Select(item => new ClientDto(
-                item.Id,
-                item.FullName,
-                item.PassportData,
-                item.DriverLicense,
-                item.Phone,
-                item.Blacklisted))
             .ToListAsync(cancellationToken);
 
-        return Ok(clients);
+        return Ok(clients.Select(item => item.ToDto()).ToList());
     }
 
     [HttpGet("{id:int}")]
@@ -69,40 +68,39 @@ public sealed class ClientsController(RentalDbContext dbContext) : ApiController
     {
         var client = await dbContext.Clients
             .AsNoTracking()
-            .Where(item => item.Id == id)
-            .Select(item => new ClientDto(
-                item.Id,
-                item.FullName,
-                item.PassportData,
-                item.DriverLicense,
-                item.Phone,
-                item.Blacklisted))
-            .FirstOrDefaultAsync(cancellationToken);
+            .Include(item => item.Documents.Where(document => !document.IsDeleted))
+            .FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
 
-        return client is null ? NotFound() : Ok(client);
+        return client is null ? NotFound() : Ok(client.ToDto());
     }
 
     [HttpPost]
     [ProducesResponseType<ClientDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Create([FromBody] ClientUpsertRequest request, CancellationToken cancellationToken)
     {
-        var normalizedLicense = request.DriverLicense.Trim();
-        var licenseExists = await dbContext.Clients
-            .AnyAsync(item => item.DriverLicense == normalizedLicense, cancellationToken);
-        if (licenseExists)
+        var validation = await ValidateClientRequestAsync(
+            request.FullName,
+            request.Phone,
+            request.ResolveDocuments(),
+            null,
+            cancellationToken);
+        if (!validation.Success)
         {
-            return Conflict(new { message = "Driver license already exists." });
+            return BuildClientValidationResult(validation.ConflictMessage, validation.ErrorMessage);
         }
 
         var entity = new Client
         {
             FullName = request.FullName.Trim(),
-            PassportData = request.PassportData.Trim(),
-            DriverLicense = normalizedLicense,
-            Phone = request.Phone.Trim(),
-            Blacklisted = request.Blacklisted
+            Phone = validation.NormalizedPhone!,
+            IsBlacklisted = request.IsBlacklisted,
+            BlacklistReason = request.IsBlacklisted ? request.BlacklistReason?.Trim() : null,
+            BlacklistedAtUtc = request.IsBlacklisted ? DateTime.UtcNow : null
         };
+
+        ClientProfileRules.UpsertDocuments(entity, validation.Documents);
 
         dbContext.Clients.Add(entity);
         try
@@ -111,37 +109,46 @@ public sealed class ClientsController(RentalDbContext dbContext) : ApiController
         }
         catch (DbUpdateException exception) when (IsUniqueConstraintViolation(exception))
         {
-            return Conflict(new { message = "Driver license already exists." });
+            return Conflict(new { message = "Phone or document number already exists." });
         }
 
-        return CreatedAtAction(nameof(GetById), new { id = entity.Id }, ToDto(entity));
+        return CreatedAtAction(nameof(GetById), new { id = entity.Id }, entity.ToDto());
     }
 
     [HttpPut("{id:int}")]
     [ProducesResponseType<ClientDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Update(int id, [FromBody] ClientUpsertRequest request, CancellationToken cancellationToken)
     {
-        var entity = await dbContext.Clients.FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
+        var entity = await dbContext.Clients
+            .Include(item => item.Documents)
+            .FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
         if (entity is null)
         {
             return NotFound();
         }
 
-        var normalizedLicense = request.DriverLicense.Trim();
-        var licenseExists = await dbContext.Clients
-            .AnyAsync(item => item.Id != id && item.DriverLicense == normalizedLicense, cancellationToken);
-        if (licenseExists)
+        var validation = await ValidateClientRequestAsync(
+            request.FullName,
+            request.Phone,
+            request.ResolveDocuments(),
+            id,
+            cancellationToken);
+        if (!validation.Success)
         {
-            return Conflict(new { message = "Driver license already exists." });
+            return BuildClientValidationResult(validation.ConflictMessage, validation.ErrorMessage);
         }
 
         entity.FullName = request.FullName.Trim();
-        entity.PassportData = request.PassportData.Trim();
-        entity.DriverLicense = normalizedLicense;
-        entity.Phone = request.Phone.Trim();
-        entity.Blacklisted = request.Blacklisted;
+        entity.Phone = validation.NormalizedPhone!;
+        entity.IsBlacklisted = request.IsBlacklisted;
+        entity.BlacklistReason = request.IsBlacklisted ? request.BlacklistReason?.Trim() : null;
+        entity.BlacklistedAtUtc = request.IsBlacklisted
+            ? entity.BlacklistedAtUtc ?? DateTime.UtcNow
+            : null;
+        ClientProfileRules.UpsertDocuments(entity, validation.Documents);
 
         try
         {
@@ -149,10 +156,10 @@ public sealed class ClientsController(RentalDbContext dbContext) : ApiController
         }
         catch (DbUpdateException exception) when (IsUniqueConstraintViolation(exception))
         {
-            return Conflict(new { message = "Driver license already exists." });
+            return Conflict(new { message = "Phone or document number already exists." });
         }
 
-        return Ok(ToDto(entity));
+        return Ok(entity.ToDto());
     }
 
     [HttpPatch("{id:int}/blacklist")]
@@ -160,40 +167,35 @@ public sealed class ClientsController(RentalDbContext dbContext) : ApiController
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> SetBlacklist(int id, [FromBody] SetBlacklistRequest request, CancellationToken cancellationToken)
     {
-        var entity = await dbContext.Clients.FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
+        var entity = await dbContext.Clients
+            .Include(item => item.Documents.Where(document => !document.IsDeleted))
+            .FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
         if (entity is null)
         {
             return NotFound();
         }
 
-        entity.Blacklisted = request.Blacklisted;
+        entity.IsBlacklisted = request.IsBlacklisted;
+        entity.BlacklistReason = request.IsBlacklisted ? request.BlacklistReason?.Trim() : null;
+        entity.BlacklistedAtUtc = request.IsBlacklisted
+            ? entity.BlacklistedAtUtc ?? DateTime.UtcNow
+            : null;
+
         await dbContext.SaveChangesAsync(cancellationToken);
-        return Ok(ToDto(entity));
+        return Ok(entity.ToDto());
     }
 
     [Authorize(Policy = ApiAuthorization.DeleteRecords)]
     [HttpDelete("{id:int}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken)
     {
-        var entity = await dbContext.Clients.FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
+        var entity = await dbContext.Clients
+            .FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
         if (entity is null)
         {
             return NotFound();
-        }
-
-        var hasRentals = await dbContext.Rentals.AnyAsync(item => item.ClientId == id, cancellationToken);
-        if (hasRentals)
-        {
-            return Conflict(new { message = "Cannot delete client with rentals history." });
-        }
-
-        var linkedToEmployee = await dbContext.Employees.AnyAsync(item => item.ClientId == id, cancellationToken);
-        if (linkedToEmployee)
-        {
-            return Conflict(new { message = "Cannot delete client linked to an employee account." });
         }
 
         dbContext.Clients.Remove(entity);
@@ -201,12 +203,237 @@ public sealed class ClientsController(RentalDbContext dbContext) : ApiController
         return NoContent();
     }
 
-    private static ClientDto ToDto(Client entity)
-        => new(
+    [HttpPost("{id:int}/documents/{documentType}")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(ProtectedDocumentStorage.MaxFileSizeBytes)]
+    [ProducesResponseType<ClientDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UploadDocumentPhoto(
+        int id,
+        string documentType,
+        [FromForm] IFormFile? file,
+        CancellationToken cancellationToken)
+    {
+        var entity = await dbContext.Clients
+            .Include(item => item.Documents)
+            .FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
+        if (entity is null)
+        {
+            return NotFound();
+        }
+
+        if (!TryResolveClientDocumentCode(documentType, out var documentTypeCode, out var storageDocumentType))
+        {
+            return BadRequest(new { message = "Unknown document type. Use passport-photo or driver-license-photo." });
+        }
+
+        var storeResult = await ProtectedDocumentStorage.StoreDocumentPhotoAsync(
+            file,
             entity.Id,
-            entity.FullName,
-            entity.PassportData,
-            entity.DriverLicense,
-            entity.Phone,
-            entity.Blacklisted);
+            storageDocumentType,
+            cancellationToken);
+        if (!storeResult.Success || string.IsNullOrWhiteSpace(storeResult.StoredPath))
+        {
+            return BadRequest(new { message = storeResult.ErrorMessage ?? "Failed to store document photo." });
+        }
+
+        var existing = ClientProfileRules.GetActiveDocument(entity, documentTypeCode);
+        var previousPath = existing?.StoredPath;
+
+        ClientProfileRules.UpsertDocuments(
+            entity,
+            new[]
+            {
+                new ClientDocumentUpsertRequest
+                {
+                    DocumentTypeCode = ClientDocumentTypes.Passport,
+                    DocumentNumber = entity.PassportData,
+                    ExpirationDate = entity.PassportExpirationDate,
+                    StoredPath = documentTypeCode == ClientDocumentTypes.Passport ? storeResult.StoredPath : entity.PassportPhotoPath
+                },
+                new ClientDocumentUpsertRequest
+                {
+                    DocumentTypeCode = ClientDocumentTypes.DriverLicense,
+                    DocumentNumber = entity.DriverLicense,
+                    ExpirationDate = entity.DriverLicenseExpirationDate,
+                    StoredPath = documentTypeCode == ClientDocumentTypes.DriverLicense ? storeResult.StoredPath : entity.DriverLicensePhotoPath
+                }
+            });
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        ProtectedDocumentStorage.TryDeleteStoredPhoto(previousPath);
+
+        return Ok(entity.ToDto());
+    }
+
+    [HttpGet("{id:int}/documents/{documentType}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetDocumentPhoto(int id, string documentType, CancellationToken cancellationToken)
+    {
+        var entity = await dbContext.Clients
+            .AsNoTracking()
+            .Include(item => item.Documents.Where(document => !document.IsDeleted))
+            .FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
+        if (entity is null)
+        {
+            return NotFound();
+        }
+
+        if (!TryResolveClientDocumentCode(documentType, out var documentTypeCode, out _))
+        {
+            return NotFound();
+        }
+
+        var storedPath = ClientProfileRules.GetActiveDocument(entity, documentTypeCode)?.StoredPath;
+        if (!ProtectedDocumentStorage.TryResolveStoredPhotoPath(
+                storedPath,
+                requireFileExists: true,
+                out var fullPath,
+                out _)
+            || string.IsNullOrWhiteSpace(fullPath))
+        {
+            return NotFound();
+        }
+
+        var stream = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        return File(stream, ProtectedDocumentStorage.ResolveContentType(fullPath));
+    }
+
+    private async Task<ClientRequestValidationResult> ValidateClientRequestAsync(
+        string fullName,
+        string phone,
+        IReadOnlyList<ClientDocumentUpsertRequest> documentRequests,
+        int? currentClientId,
+        CancellationToken cancellationToken)
+    {
+        var normalizedPhone = ClientProfileRules.TryNormalizePhone(phone);
+
+        if (string.IsNullOrWhiteSpace(fullName.Trim()))
+        {
+            return new ClientRequestValidationResult(false, null, Array.Empty<ClientDocumentUpsertRequest>(), null, "Full name is required.");
+        }
+
+        if (normalizedPhone is null)
+        {
+            return new ClientRequestValidationResult(false, null, Array.Empty<ClientDocumentUpsertRequest>(), null, "Enter a valid phone number with 10-15 digits.");
+        }
+
+        if (!TryNormalizeClientDocuments(documentRequests, out var documents, out var errorMessage))
+        {
+            return new ClientRequestValidationResult(false, null, Array.Empty<ClientDocumentUpsertRequest>(), null, errorMessage);
+        }
+
+        foreach (var document in documents)
+        {
+            var duplicateExists = await dbContext.ClientDocuments
+                .IgnoreQueryFilters()
+                .AnyAsync(
+                    item => !item.IsDeleted &&
+                            item.ClientId != currentClientId &&
+                            item.DocumentTypeCode == document.DocumentTypeCode &&
+                            item.DocumentNumber == document.DocumentNumber,
+                    cancellationToken);
+            if (duplicateExists)
+            {
+                return new ClientRequestValidationResult(
+                    false,
+                    null,
+                    Array.Empty<ClientDocumentUpsertRequest>(),
+                    document.DocumentTypeCode == ClientDocumentTypes.Passport
+                        ? "Passport number already exists."
+                        : "Driver license already exists.",
+                    null);
+            }
+        }
+
+        var phoneExists = await dbContext.Clients
+            .AnyAsync(item => item.Id != currentClientId && item.Phone == normalizedPhone, cancellationToken);
+        if (phoneExists)
+        {
+            return new ClientRequestValidationResult(false, null, Array.Empty<ClientDocumentUpsertRequest>(), "Phone number already exists.", null);
+        }
+
+        return new ClientRequestValidationResult(true, normalizedPhone, documents, null, null);
+    }
+
+    private static bool TryNormalizeClientDocuments(
+        IReadOnlyList<ClientDocumentUpsertRequest> requests,
+        out IReadOnlyList<ClientDocumentUpsertRequest> normalized,
+        out string? errorMessage)
+    {
+        normalized = Array.Empty<ClientDocumentUpsertRequest>();
+        errorMessage = null;
+        var documents = new List<ClientDocumentUpsertRequest>();
+
+        foreach (var request in requests)
+        {
+            var documentTypeCode = request.DocumentTypeCode.Trim().ToUpperInvariant();
+            if (documentTypeCode is not (ClientDocumentTypes.Passport or ClientDocumentTypes.DriverLicense))
+            {
+                errorMessage = $"Unsupported document type '{request.DocumentTypeCode}'.";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(request.DocumentNumber))
+            {
+                errorMessage = documentTypeCode == ClientDocumentTypes.Passport
+                    ? "Passport number is required."
+                    : "Driver license number is required.";
+                return false;
+            }
+
+            if (!ProtectedDocumentStorage.TryNormalizeStoredPhotoPath(request.StoredPath, out var storedPath))
+            {
+                errorMessage = "Invalid document photo path. Only protected document storage paths are allowed.";
+                return false;
+            }
+
+            documents.Add(new ClientDocumentUpsertRequest
+            {
+                DocumentTypeCode = documentTypeCode,
+                DocumentNumber = request.DocumentNumber.Trim(),
+                ExpirationDate = request.ExpirationDate?.Date,
+                StoredPath = storedPath
+            });
+        }
+
+        normalized = documents;
+        return true;
+    }
+
+    private static bool TryResolveClientDocumentCode(
+        string documentType,
+        out string documentTypeCode,
+        out ClientDocumentPhotoType storageDocumentType)
+    {
+        if (!ProtectedDocumentStorage.TryParseDocumentType(documentType, out storageDocumentType))
+        {
+            documentTypeCode = string.Empty;
+            return false;
+        }
+
+        documentTypeCode = storageDocumentType == ClientDocumentPhotoType.Passport
+            ? ClientDocumentTypes.Passport
+            : ClientDocumentTypes.DriverLicense;
+        return true;
+    }
+
+    private static IActionResult BuildClientValidationResult(string? conflictMessage, string? errorMessage)
+    {
+        if (!string.IsNullOrWhiteSpace(conflictMessage))
+        {
+            return new ConflictObjectResult(new { message = conflictMessage });
+        }
+
+        return new BadRequestObjectResult(new { message = errorMessage ?? "Client validation failed." });
+    }
+
+    private sealed record ClientRequestValidationResult(
+        bool Success,
+        string? NormalizedPhone,
+        IReadOnlyList<ClientDocumentUpsertRequest> Documents,
+        string? ConflictMessage,
+        string? ErrorMessage);
 }

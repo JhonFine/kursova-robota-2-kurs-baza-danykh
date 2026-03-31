@@ -1,7 +1,6 @@
 using CarRental.WebApi.Contracts;
 using CarRental.WebApi.Data;
 using CarRental.WebApi.Infrastructure;
-using CarRental.WebApi.Models;
 using CarRental.WebApi.Services.Auth;
 using CarRental.WebApi.Services.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -35,10 +34,10 @@ public sealed class AdminController(
 
         var employees = await query
             .ApplyPagination(pagination)
-            .Select(item => ToDto(item))
+            .Include(item => item.Account)
             .ToListAsync(cancellationToken);
 
-        return Ok(employees);
+        return Ok(employees.Select(item => item.ToDto()).ToList());
     }
 
     [HttpPatch("employees/{id:int}/toggle-active")]
@@ -53,7 +52,9 @@ public sealed class AdminController(
             return Unauthorized();
         }
 
-        var employee = await dbContext.Employees.FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
+        var employee = await dbContext.Employees
+            .Include(item => item.Account)
+            .FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
         if (employee is null)
         {
             return NotFound();
@@ -64,9 +65,14 @@ public sealed class AdminController(
             return BadRequest(new { message = "You cannot disable your own account." });
         }
 
-        employee.IsActive = !employee.IsActive;
+        if (employee.Account is null)
+        {
+            return BadRequest(new { message = "Employee account is not configured." });
+        }
+
+        employee.Account.IsActive = !employee.Account.IsActive;
         await dbContext.SaveChangesAsync(cancellationToken);
-        return Ok(ToDto(employee));
+        return Ok(employee.ToDto());
     }
 
     [HttpPatch("employees/{id:int}/toggle-manager-role")]
@@ -75,20 +81,22 @@ public sealed class AdminController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> ToggleManagerRole(int id, CancellationToken cancellationToken)
     {
-        var employee = await dbContext.Employees.FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
+        var employee = await dbContext.Employees
+            .Include(item => item.Account)
+            .FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
         if (employee is null)
         {
             return NotFound();
         }
 
-        if (employee.Role == UserRole.Admin)
+        if (employee.Role == Models.UserRole.Admin)
         {
             return BadRequest(new { message = "Admin role cannot be changed by this operation." });
         }
 
-        employee.Role = employee.Role == UserRole.Manager ? UserRole.User : UserRole.Manager;
+        employee.Role = employee.Role == Models.UserRole.Manager ? Models.UserRole.User : Models.UserRole.Manager;
         await dbContext.SaveChangesAsync(cancellationToken);
-        return Ok(ToDto(employee));
+        return Ok(employee.ToDto());
     }
 
     [HttpPatch("employees/{id:int}/unlock")]
@@ -96,16 +104,23 @@ public sealed class AdminController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Unlock(int id, CancellationToken cancellationToken)
     {
-        var employee = await dbContext.Employees.FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
+        var employee = await dbContext.Employees
+            .Include(item => item.Account)
+            .FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
         if (employee is null)
         {
             return NotFound();
         }
 
-        employee.LockoutUntilUtc = null;
-        employee.FailedLoginAttempts = 0;
+        if (employee.Account is null)
+        {
+            return BadRequest(new { message = "Employee account is not configured." });
+        }
+
+        employee.Account.LockoutUntilUtc = null;
+        employee.Account.FailedLoginAttempts = 0;
         await dbContext.SaveChangesAsync(cancellationToken);
-        return Ok(ToDto(employee));
+        return Ok(employee.ToDto());
     }
 
     [HttpPost("employees/{id:int}/reset-password")]
@@ -116,28 +131,25 @@ public sealed class AdminController(
         [FromBody] ResetEmployeePasswordRequest request,
         CancellationToken cancellationToken)
     {
-        var employee = await dbContext.Employees.FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
+        var employee = await dbContext.Employees
+            .Include(item => item.Account)
+            .FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
         if (employee is null)
         {
             return NotFound();
         }
 
-        employee.PasswordHash = PasswordHasher.HashPassword(request.NewPassword);
-        employee.PasswordChangedAtUtc = DateTime.UtcNow;
-        employee.FailedLoginAttempts = 0;
-        employee.LockoutUntilUtc = null;
+        if (employee.Account is null)
+        {
+            return BadRequest(new { message = "Employee account is not configured." });
+        }
+
+        employee.Account.PasswordHash = PasswordHasher.HashPassword(request.NewPassword);
+        employee.Account.PasswordChangedAtUtc = DateTime.UtcNow;
+        employee.Account.FailedLoginAttempts = 0;
+        employee.Account.LockoutUntilUtc = null;
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return Ok(new { message = "Password has been reset." });
     }
-
-    private static EmployeeDto ToDto(Employee employee)
-        => new(
-            employee.Id,
-            employee.FullName,
-            employee.Login,
-            employee.Role,
-            employee.IsActive,
-            employee.LastLoginUtc,
-            employee.LockoutUntilUtc);
 }

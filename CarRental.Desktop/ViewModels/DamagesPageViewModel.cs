@@ -1,6 +1,7 @@
 using CarRental.Desktop.Data;
 using CarRental.Desktop.Localization;
 using CarRental.Desktop.Services.Damages;
+using CarRental.Shared.ReferenceData;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.EntityFrameworkCore;
 using System.Collections.ObjectModel;
@@ -10,18 +11,23 @@ namespace CarRental.Desktop.ViewModels;
 
 public sealed class DamagesPageViewModel : PageDataViewModelBase, ITransientStateOwner
 {
+    private static readonly RentalOption SelectVehiclePromptRental = new(null, "Спершу оберіть авто");
+    private static readonly RentalOption UnboundRental = new(null, "Без прив'язки до оренди");
+
     private readonly RentalDbContext _dbContext;
     private readonly IDamageService _damageService;
     private readonly PageRefreshCoordinator _refreshCoordinator;
     private bool _isLoading;
     private VehicleOption? _selectedVehicle;
     private RentalOption? _selectedRental;
-    private string _description = "Пошкодження кузова";
+    private bool _suppressVehicleSelectionRefresh;
+    private string _description = DemoSeedReferenceData.DefaultDamageDescription;
     private string _repairCostInput = string.Empty;
     private string _photoPath = string.Empty;
     private bool _autoChargeToRental;
     private string _statusMessage = string.Empty;
     private int _guideRequestId;
+    private int _rentalLoadVersion;
 
     public DamagesPageViewModel(
         RentalDbContext dbContext,
@@ -34,6 +40,7 @@ public sealed class DamagesPageViewModel : PageDataViewModelBase, ITransientStat
         RefreshCommand = new AsyncRelayCommand(RefreshAsync, () => !IsLoading);
         AddDamageCommand = new AsyncRelayCommand(AddDamageAsync, () => !IsLoading);
         RequestGuideCommand = new RelayCommand(RequestGuide);
+        ResetRentalsToVehiclePrompt();
     }
 
     public ObservableCollection<VehicleOption> Vehicles { get; } = [];
@@ -64,7 +71,22 @@ public sealed class DamagesPageViewModel : PageDataViewModelBase, ITransientStat
     public VehicleOption? SelectedVehicle
     {
         get => _selectedVehicle;
-        set => SetProperty(ref _selectedVehicle, value);
+        set
+        {
+            if (!SetProperty(ref _selectedVehicle, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(CanSelectRental));
+
+            if (_suppressVehicleSelectionRefresh)
+            {
+                return;
+            }
+
+            _ = RefreshRentalsForVehicleAsync(value?.Id);
+        }
     }
 
     public RentalOption? SelectedRental
@@ -72,6 +94,8 @@ public sealed class DamagesPageViewModel : PageDataViewModelBase, ITransientStat
         get => _selectedRental;
         set => SetProperty(ref _selectedRental, value);
     }
+
+    public bool CanSelectRental => SelectedVehicle is not null;
 
     public string Description
     {
@@ -119,6 +143,9 @@ public sealed class DamagesPageViewModel : PageDataViewModelBase, ITransientStat
         IsLoading = true;
         try
         {
+            var selectedVehicleId = SelectedVehicle?.Id;
+            var selectedRentalId = SelectedRental?.Id;
+
             var vehicles = await _dbContext.Vehicles
                 .AsNoTracking()
                 .OrderBy(item => item.Make)
@@ -129,20 +156,22 @@ public sealed class DamagesPageViewModel : PageDataViewModelBase, ITransientStat
             {
                 Vehicles.Add(new VehicleOption(vehicle.Id, $"{vehicle.Make} {vehicle.Model} [{vehicle.LicensePlate}]"));
             }
-            SelectedVehicle ??= Vehicles.FirstOrDefault();
 
-            var rentals = await _dbContext.Rentals
-                .AsNoTracking()
-                .OrderByDescending(item => item.StartDate)
-                .Take(200)
-                .ToListAsync();
-            Rentals.Clear();
-            Rentals.Add(new RentalOption(null, "Без прив'язки до оренди"));
-            foreach (var rental in rentals)
+            var restoredVehicle = selectedVehicleId.HasValue
+                ? Vehicles.FirstOrDefault(item => item.Id == selectedVehicleId.Value)
+                : null;
+
+            _suppressVehicleSelectionRefresh = true;
+            try
             {
-                Rentals.Add(new RentalOption(rental.Id, $"{rental.ContractNumber} ({rental.Status.ToDisplay()})"));
+                SelectedVehicle = restoredVehicle;
             }
-            SelectedRental ??= Rentals.FirstOrDefault();
+            finally
+            {
+                _suppressVehicleSelectionRefresh = false;
+            }
+
+            await RefreshRentalsForVehicleAsync(restoredVehicle?.Id, restoredVehicle is not null ? selectedRentalId : null);
 
             var damages = await _dbContext.Damages
                 .AsNoTracking()
@@ -157,7 +186,10 @@ public sealed class DamagesPageViewModel : PageDataViewModelBase, ITransientStat
                     item.RepairCost,
                     item.ChargedAmount,
                     item.Status.ToDisplay(),
-                    item.PhotoPath ?? string.Empty))
+                    item.Photos
+                        .OrderBy(photo => photo.SortOrder)
+                        .Select(photo => photo.StoredPath)
+                        .FirstOrDefault() ?? string.Empty))
                 .ToListAsync();
             Damages.Clear();
             foreach (var damage in damages)
@@ -217,6 +249,60 @@ public sealed class DamagesPageViewModel : PageDataViewModelBase, ITransientStat
     {
         PhotoPath = string.Empty;
         StatusMessage = string.Empty;
+    }
+
+    private async Task RefreshRentalsForVehicleAsync(int? vehicleId, int? preferredRentalId = null)
+    {
+        var loadVersion = Interlocked.Increment(ref _rentalLoadVersion);
+        if (!vehicleId.HasValue)
+        {
+            ResetRentalsToVehiclePrompt();
+            return;
+        }
+
+        try
+        {
+            var rentals = await _dbContext.Rentals
+                .AsNoTracking()
+                .Where(item => item.VehicleId == vehicleId.Value)
+                .OrderByDescending(item => item.StartDate)
+                .Take(200)
+                .Select(item => new RentalOption(item.Id, $"{item.ContractNumber} ({item.Status.ToDisplay()})"))
+                .ToListAsync();
+
+            if (loadVersion != _rentalLoadVersion || SelectedVehicle?.Id != vehicleId.Value)
+            {
+                return;
+            }
+
+            Rentals.Clear();
+            Rentals.Add(UnboundRental);
+            foreach (var rental in rentals)
+            {
+                Rentals.Add(rental);
+            }
+
+            SelectedRental = preferredRentalId.HasValue
+                ? Rentals.FirstOrDefault(item => item.Id == preferredRentalId.Value) ?? UnboundRental
+                : UnboundRental;
+        }
+        catch
+        {
+            if (loadVersion != _rentalLoadVersion)
+            {
+                return;
+            }
+
+            ResetRentalsToVehiclePrompt();
+            StatusMessage = "Не вдалося завантажити договори для вибраного авто.";
+        }
+    }
+
+    private void ResetRentalsToVehiclePrompt()
+    {
+        Rentals.Clear();
+        Rentals.Add(SelectVehiclePromptRental);
+        SelectedRental = SelectVehiclePromptRental;
     }
 
     public sealed record VehicleOption(int Id, string Display);

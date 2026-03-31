@@ -130,13 +130,15 @@ $solutionPath = Join-Path $repoRoot "CarRentalSystem.sln"
 $webAppDir = Join-Path $repoRoot "CarRental.WebApp"
 $composePath = Join-Path $repoRoot "deploy\docker-compose.postgres.yml"
 $runWebScriptPath = Join-Path $repoRoot "RunWeb.ps1"
+$apiUri = [Uri]$ApiUrl
+$apiPort = if ($apiUri.IsDefaultPort) { if ($apiUri.Scheme -eq 'https') { 443 } else { 80 } } else { $apiUri.Port }
 
 Assert-Command -Name "dotnet"
 Assert-Command -Name "npm"
 
 Write-Host "[1/5] Stopping previous local hosts..."
 Stop-StaleHostWindows
-Stop-ProcessesByPort -Ports @(5079, 5173)
+Stop-ProcessesByPort -Ports @($apiPort, $FrontendPort)
 
 Write-Host "[2/5] Ensuring PostgreSQL..."
 if (-not $SkipDocker) {

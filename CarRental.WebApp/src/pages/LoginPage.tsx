@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { Api } from '../api/client';
 import { useAuth } from '../auth/useAuth';
+import { FeedbackBanner } from '../components/FeedbackBanner';
+import { InlineSpinner } from '../components/LoadingView';
 import { getDefaultPathByRole } from '../utils/access';
 
 export function LoginPage() {
@@ -198,10 +200,19 @@ export function LoginPage() {
             </label>
           ) : null}
 
-          {error ? <p className="error-box">{error}</p> : null}
+          {error ? (
+            <FeedbackBanner tone="error" title="Не вдалося увійти" onDismiss={() => setError(null)}>
+              {error}
+            </FeedbackBanner>
+          ) : null}
 
           <button type="submit" className="btn primary" disabled={loading}>
-            {loading ? 'Завантаження...' : mode === 'login' ? 'Увійти' : 'Створити обліковий запис'}
+            {loading ? (
+              <>
+                <InlineSpinner />
+                {' '}Завантаження...
+              </>
+            ) : mode === 'login' ? 'Увійти' : 'Створити обліковий запис'}
           </button>
         </form>
 

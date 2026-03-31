@@ -23,4 +23,8 @@
     <None Remove="artifacts\**" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\Shared\**\*.cs" LinkBase="Shared" />
+  </ItemGroup>
+
 </Project>

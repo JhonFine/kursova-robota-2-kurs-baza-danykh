@@ -4,9 +4,12 @@ import { useCallback } from 'react';
 import { Api } from '../api/client';
 import type { Employee } from '../api/types';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { EmptyState } from '../components/EmptyState';
+import { FeedbackBanner } from '../components/FeedbackBanner';
 import { FilterField, FilterToolbar, type ActiveFilterChipItem } from '../components/FilterToolbar';
-import { LoadingView } from '../components/LoadingView';
+import { InlineSpinner } from '../components/LoadingView';
 import { Panel } from '../components/Panel';
+import { StatCardSkeletons, TableSkeleton } from '../components/Skeleton';
 import { StatCard } from '../components/StatCard';
 import { formatDate } from '../utils/format';
 
@@ -58,7 +61,7 @@ export function AdminPage() {
     () => filteredEmployees.find((item) => item.id === selectedId) ?? employees.find((item) => item.id === selectedId) ?? null,
     [filteredEmployees, employees, selectedId],
   );
-  const isSelfSelected = selectedEmployee?.id === user?.id;
+  const isSelfSelected = selectedEmployee?.id === user?.employeeId;
   const canMutate = true;
 
   const lockedEmployees = useMemo(
@@ -183,13 +186,42 @@ export function AdminPage() {
     }
   };
 
-  if (loading) {
-    return <LoadingView text="Завантаження адміністрування..." />;
+  if (loading && employees.length === 0) {
+    return (
+      <div className="staff-dashboard">
+        <Panel title="Панель адміністратора" subtitle="Готуємо доступи, ролі та безпекові сценарії.">
+          <TableSkeleton rows={3} compact />
+        </Panel>
+
+        <StatCardSkeletons count={4} />
+
+        <div className="staff-dashboard-grid">
+          <Panel title="Працівники" subtitle="Завантажуємо список команди.">
+            <TableSkeleton rows={7} />
+          </Panel>
+
+          <div className="staff-side-stack">
+            <Panel title="Дії з працівником" subtitle="Підготуємо керування ролями та станом доступу.">
+              <EmptyState
+                icon="TEAM"
+                compact
+                title="Профілі працівників ще завантажуються."
+                description="Після першої вибірки тут з’являться роль, статус, блокування та дії для вибраного працівника."
+              />
+            </Panel>
+
+            <Panel title="Зміна мого пароля" subtitle="Форма оновлення пароля.">
+              <TableSkeleton rows={3} compact />
+            </Panel>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
     <>
-      <div className="page-grid">
+      <div className="staff-dashboard">
         <Panel title="Панель адміністратора" subtitle="Керуйте працівниками, ролями та безпекою облікових записів.">
           <FilterToolbar
             chips={activeFilters}
@@ -222,129 +254,169 @@ export function AdminPage() {
           <StatCard label="Заблоковані" value={lockedEmployees} accent="red" />
         </section>
 
-        <div className="admin-workspace">
+        <div className="staff-dashboard-grid">
           <Panel title="Працівники" subtitle={`Відображено: ${filteredEmployees.length}`}>
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>ПІБ</th>
-                    <th>Логін</th>
-                    <th>Роль</th>
-                    <th>Стан</th>
-                    <th>Блокування до</th>
-                    <th>Останній вхід</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredEmployees.map((employee) => (
-                    <tr
-                      key={employee.id}
-                      className={selectedId === employee.id ? 'selected-row' : ''}
-                      onClick={() => setSelectedId(employee.id)}
-                    >
-                      <td>{employee.fullName}</td>
-                      <td>{employee.login}</td>
-                      <td>{roleDisplay(employee.role)}</td>
-                      <td>
-                        <span className={`status-pill ${employee.isActive ? 'ok' : 'bad'}`}>
-                          {employee.isActive ? 'Активний' : 'Вимкнений'}
-                        </span>
-                      </td>
-                      <td>{formatDate(employee.lockoutUntilUtc)}</td>
-                      <td>{formatDate(employee.lastLoginUtc)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className={`surface-refresh${loading ? ' is-refreshing' : ''}`}>
+              {filteredEmployees.length === 0 ? (
+                <EmptyState
+                  icon="TEAM"
+                  title="Працівників за поточним фільтром не знайдено."
+                  description="Очистіть пошук або оновіть список, щоб повернутися до повної команди та продовжити керування доступом."
+                  actions={(
+                    <>
+                      <button type="button" className="btn ghost" onClick={() => setFilterQuery('')}>
+                        Очистити пошук
+                      </button>
+                      <button type="button" className="btn primary" onClick={() => void load()}>
+                        Оновити список
+                      </button>
+                    </>
+                  )}
+                />
+              ) : (
+                <>
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>ПІБ</th>
+                          <th>Логін</th>
+                          <th>Роль</th>
+                          <th>Стан</th>
+                          <th>Блокування до</th>
+                          <th>Останній вхід</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredEmployees.map((employee) => (
+                          <tr
+                            key={employee.id}
+                            className={selectedId === employee.id ? 'selected-row' : ''}
+                            onClick={() => setSelectedId(employee.id)}
+                          >
+                            <td>{employee.fullName}</td>
+                            <td>{employee.login}</td>
+                            <td>{roleDisplay(employee.role)}</td>
+                            <td>
+                              <span className={`status-pill ${employee.isActive ? 'ok' : 'bad'}`}>
+                                {employee.isActive ? 'Активний' : 'Вимкнений'}
+                              </span>
+                            </td>
+                            <td>{formatDate(employee.lockoutUntilUtc)}</td>
+                            <td>{formatDate(employee.lastLoginUtc)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {loading ? (
+                    <div className="refresh-overlay">
+                      <InlineSpinner />
+                    </div>
+                  ) : null}
+                </>
+              )}
             </div>
           </Panel>
 
-          <div className="page-grid">
+          <div className="staff-side-stack sticky-panel">
             <Panel
               title="Дії з працівником"
               subtitle={selectedEmployee ? 'Окремі зміни вимагають явного підтвердження.' : 'Оберіть працівника в таблиці'}
             >
-              <div className="kv-grid">
-                <strong>Працівник:</strong>
-                <span>{selectedEmployee?.fullName ?? '—'}</span>
-                <strong>Роль:</strong>
-                <span>{selectedEmployee ? roleDisplay(selectedEmployee.role) : '—'}</span>
-                <strong>Стан:</strong>
-                <span>{selectedEmployee ? (selectedEmployee.isActive ? 'Активний' : 'Вимкнений') : '—'}</span>
-                <strong>Блокування:</strong>
-                <span>{selectedEmployee ? formatDate(selectedEmployee.lockoutUntilUtc) : '—'}</span>
-              </div>
+              {selectedEmployee ? (
+                <>
+                  <div className="panel-intro">
+                    <strong>{selectedEmployee.fullName}</strong>
+                    <p>{selectedEmployee.login} • {roleDisplay(selectedEmployee.role)} • {selectedEmployee.isActive ? 'Активний доступ' : 'Доступ вимкнено'}</p>
+                  </div>
 
-              {!canMutate ? (
-                <p className="muted" style={{ marginTop: '12px' }}>
-                  Зміни заблоковані для поточного режиму доступу.
-                </p>
-              ) : null}
+                  <div className="kv-grid">
+                    <strong>Працівник:</strong>
+                    <span>{selectedEmployee.fullName}</span>
+                    <strong>Роль:</strong>
+                    <span>{roleDisplay(selectedEmployee.role)}</span>
+                    <strong>Стан:</strong>
+                    <span>{selectedEmployee.isActive ? 'Активний' : 'Вимкнений'}</span>
+                    <strong>Блокування:</strong>
+                    <span>{formatDate(selectedEmployee.lockoutUntilUtc)}</span>
+                  </div>
 
-              <div className="page-grid" style={{ marginTop: '10px' }}>
-                <button
-                  type="button"
-                  className="btn ghost"
-                  disabled={!canMutate || !selectedEmployee || (isSelfSelected && selectedEmployee.isActive)}
-                  onClick={() => {
-                    if (!selectedEmployee) {
-                      return;
-                    }
+                  {!canMutate ? (
+                    <p className="muted" style={{ marginTop: '12px' }}>
+                      Зміни заблоковані для поточного режиму доступу.
+                    </p>
+                  ) : null}
 
-                    if (selectedEmployee.isActive) {
-                      promptAction(
-                        'Вимкнути працівника?',
-                        `Працівник "${selectedEmployee.fullName}" втратить доступ до системи, доки його не буде активовано повторно.`,
-                        'Вимкнути',
-                        toggleActive,
-                        'danger',
-                      );
-                      return;
-                    }
+                  <div className="page-grid" style={{ marginTop: '10px' }}>
+                    <button
+                      type="button"
+                      className="btn ghost"
+                      disabled={!canMutate || (isSelfSelected && selectedEmployee.isActive)}
+                      onClick={() => {
+                        if (selectedEmployee.isActive) {
+                          promptAction(
+                            'Вимкнути працівника?',
+                            `Працівник "${selectedEmployee.fullName}" втратить доступ до системи, доки його не буде активовано повторно.`,
+                            'Вимкнути',
+                            toggleActive,
+                            'danger',
+                          );
+                          return;
+                        }
 
-                    void toggleActive();
-                  }}
-                >
-                  {selectedEmployee?.isActive ? 'Вимкнути працівника' : 'Активувати працівника'}
-                </button>
-                <button
-                  type="button"
-                  className="btn ghost"
-                  disabled={!canMutate || !selectedEmployee || selectedEmployee.role === 'Admin'}
-                  onClick={() => {
-                    if (!selectedEmployee) {
-                      return;
-                    }
-
-                    promptAction(
-                      'Змінити роль працівника?',
-                      selectedEmployee.role === 'Manager'
-                        ? `Працівника "${selectedEmployee.fullName}" буде переведено в роль користувача.`
-                        : `Працівника "${selectedEmployee.fullName}" буде переведено в роль менеджера.`,
-                      selectedEmployee.role === 'Manager' ? 'Зробити користувачем' : 'Зробити менеджером',
-                      toggleRole,
-                    );
-                  }}
-                >
-                  {selectedEmployee?.role === 'Admin'
-                    ? 'Роль адміністратора не змінюється'
-                    : selectedEmployee?.role === 'Manager'
-                      ? 'Зробити користувачем'
-                      : 'Зробити менеджером'}
-                </button>
-                <button
-                  type="button"
-                  className="btn primary"
-                  disabled={!canMutate || !selectedEmployee}
-                  onClick={() => void unlock()}
-                >
-                  Розблокувати / скинути спроби входу
-                </button>
-              </div>
+                        void toggleActive();
+                      }}
+                    >
+                      {selectedEmployee.isActive ? 'Вимкнути працівника' : 'Активувати працівника'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn ghost"
+                      disabled={!canMutate || selectedEmployee.role === 'Admin'}
+                      onClick={() => {
+                        promptAction(
+                          'Змінити роль працівника?',
+                          selectedEmployee.role === 'Manager'
+                            ? `Працівника "${selectedEmployee.fullName}" буде переведено в роль користувача.`
+                            : `Працівника "${selectedEmployee.fullName}" буде переведено в роль менеджера.`,
+                          selectedEmployee.role === 'Manager' ? 'Зробити користувачем' : 'Зробити менеджером',
+                          toggleRole,
+                        );
+                      }}
+                    >
+                      {selectedEmployee.role === 'Admin'
+                        ? 'Роль адміністратора не змінюється'
+                        : selectedEmployee.role === 'Manager'
+                          ? 'Зробити користувачем'
+                          : 'Зробити менеджером'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn primary"
+                      disabled={!canMutate}
+                      onClick={() => void unlock()}
+                    >
+                      Розблокувати / скинути спроби входу
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <EmptyState
+                  icon="TEAM"
+                  compact
+                  title="Оберіть працівника в таблиці."
+                  description="Після вибору тут з’явиться короткий профіль з роллю, статусом доступу та основними адміністративними діями."
+                />
+              )}
             </Panel>
 
             <Panel title="Зміна мого пароля" subtitle="Використовуйте пароль, який не повторює попередній.">
+              <div className="panel-intro">
+                <strong>Оновлення доступу адміністратора.</strong>
+                <p>Після зміни пароля система одразу застосує нові облікові дані до вашого профілю.</p>
+              </div>
               <form className="form-grid" onSubmit={(event) => void changePassword(event)}>
                 <label className="full-row">
                   Поточний пароль
@@ -374,11 +446,15 @@ export function AdminPage() {
           </div>
         </div>
 
-        <div className="status-panel">
-          <strong>Статус:</strong> {status}
-        </div>
+        <FeedbackBanner tone="info" title="Поточний статус">
+          {status}
+        </FeedbackBanner>
 
-        {error ? <p className="error-box">{error}</p> : null}
+        {error ? (
+          <FeedbackBanner tone="error" title="Не вдалося виконати дію" onDismiss={() => setError(null)}>
+            {error}
+          </FeedbackBanner>
+        ) : null}
       </div>
 
       <ConfirmDialog

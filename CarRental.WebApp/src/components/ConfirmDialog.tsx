@@ -5,6 +5,7 @@ interface ConfirmDialogProps {
   title: string;
   description: ReactNode;
   confirmLabel: string;
+  confirmDisabled?: boolean;
   cancelLabel?: string;
   tone?: 'default' | 'danger';
   onConfirm: () => void;
@@ -16,6 +17,7 @@ export function ConfirmDialog({
   title,
   description,
   confirmLabel,
+  confirmDisabled = false,
   cancelLabel = 'Скасувати',
   tone = 'default',
   onConfirm,
@@ -47,6 +49,7 @@ export function ConfirmDialog({
             type="button"
             className={`btn ${tone === 'danger' ? 'danger' : 'primary'}`}
             onClick={onConfirm}
+            disabled={confirmDisabled}
           >
             {confirmLabel}
           </button>

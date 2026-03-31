@@ -19,6 +19,14 @@
 - `CarRental.WebApi` автоматично застосовує міграції та seed при старті;
 - `CarRental.Desktop` міграції не виконує і потребує вже підготовленої схеми.
 
+## Data Model Highlights
+
+- `Accounts` isolates authentication from business profiles; `Employees` and `Clients` keep operational and portal data separately.
+- `ClientDocuments`, `VehiclePhotos`, and `DamagePhotos` normalize documents and media instead of storing single-path scalar fields in parent tables.
+- `RentalInspections` stores pickup and return inspection results separately from rental header and payment data.
+- `FuelTypes`, `TransmissionTypes`, and `VehicleStatuses` normalize vehicle classifiers and state.
+- `Clients` and `Vehicles` use audit fields plus soft-delete flags so historical rentals remain intact.
+
 ## Prerequisites
 
 - Windows + PowerShell для локальних скриптів і WPF-клієнта.

@@ -3,10 +3,13 @@ import { useSearchParams } from 'react-router-dom';
 import { Api } from '../api/client';
 import type { Client } from '../api/types';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { EmptyState } from '../components/EmptyState';
+import { FeedbackBanner } from '../components/FeedbackBanner';
 import { FilterField, FilterToolbar, type ActiveFilterChipItem } from '../components/FilterToolbar';
-import { LoadingView } from '../components/LoadingView';
+import { InlineSpinner } from '../components/LoadingView';
 import { PaginationControls } from '../components/PaginationControls';
 import { Panel } from '../components/Panel';
+import { StatCardSkeletons, TableSkeleton } from '../components/Skeleton';
 import { StatCard } from '../components/StatCard';
 import { parseEnumParam, parsePositiveIntParam, withUpdatedSearchParams } from '../utils/searchParams';
 
@@ -202,13 +205,36 @@ export function ClientsPage() {
     }
   };
 
-  if (loading) {
-    return <LoadingView text="Завантаження клієнтів..." />;
+  if (loading && clients.length === 0) {
+    return (
+      <div className="staff-dashboard">
+        <StatCardSkeletons count={2} />
+
+        <Panel title="Реєстр клієнтів" subtitle="Готуємо пошук, blacklist-фільтри та таблицю клієнтів.">
+          <TableSkeleton rows={7} />
+        </Panel>
+
+        <div className="staff-dashboard-grid">
+          <Panel title="Новий клієнт" subtitle="Форма створення нового запису.">
+            <TableSkeleton rows={4} compact />
+          </Panel>
+
+          <Panel title="Деталі клієнта" subtitle="Панель редагування вибраного профілю.">
+            <EmptyState
+              icon="CRM"
+              compact
+              title="Профілі завантажуються."
+              description="Після першої вибірки тут з’явиться картка клієнта з діями редагування, blacklist та видалення."
+            />
+          </Panel>
+        </div>
+      </div>
+    );
   }
 
   return (
     <>
-      <div className="page-grid">
+      <div className="staff-dashboard">
         <section className="stats-grid">
           <StatCard label="Усього у вибірці" value={totalCount} accent="blue" />
           <StatCard
@@ -278,37 +304,73 @@ export function ClientsPage() {
             </FilterField>
           </FilterToolbar>
 
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>ПІБ</th>
-                  <th>Телефон</th>
-                  <th>Водійське</th>
-                  <th>Статус</th>
-                </tr>
-              </thead>
-              <tbody>
-                {clients.map((item) => (
-                  <tr
-                    key={item.id}
-                    onClick={() => setSelectedId(item.id)}
-                    className={selectedId === item.id ? 'selected-row' : ''}
-                  >
-                    <td>{item.id}</td>
-                    <td>{item.fullName}</td>
-                    <td>{item.phone}</td>
-                    <td>{item.driverLicense}</td>
-                    <td>
-                      <span className={`status-pill ${item.blacklisted ? 'bad' : 'ok'}`}>
-                        {item.blacklisted ? 'У чорному списку' : 'Активний'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className={`surface-refresh${loading ? ' is-refreshing' : ''}`}>
+            {clients.length === 0 ? (
+              <EmptyState
+                icon="CRM"
+                title="Клієнтів під поточний фільтр не знайдено."
+                description="Скиньте пошук або blacklist-фільтр, щоб повернутись до повного реєстру та продовжити роботу."
+                actions={(
+                  <>
+                    <button
+                      type="button"
+                      className="btn ghost"
+                      onClick={() => updateListParams({
+                        page: null,
+                        search: null,
+                        blacklisted: null,
+                      })}
+                    >
+                      Скинути фільтри
+                    </button>
+                    <button type="button" className="btn primary" onClick={() => void loadClients()}>
+                      Оновити реєстр
+                    </button>
+                  </>
+                )}
+              />
+            ) : (
+              <>
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>ПІБ</th>
+                        <th>Телефон</th>
+                        <th>Водійське</th>
+                        <th>Статус</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {clients.map((item) => (
+                        <tr
+                          key={item.id}
+                          onClick={() => setSelectedId(item.id)}
+                          className={selectedId === item.id ? 'selected-row' : ''}
+                        >
+                          <td>{item.id}</td>
+                          <td>{item.fullName}</td>
+                          <td>{item.phone}</td>
+                          <td>{item.driverLicense}</td>
+                          <td>
+                            <span className={`status-pill ${item.blacklisted ? 'bad' : 'ok'}`}>
+                              {item.blacklisted ? 'У чорному списку' : 'Активний'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {loading ? (
+                  <div className="refresh-overlay">
+                    <InlineSpinner />
+                  </div>
+                ) : null}
+              </>
+            )}
           </div>
           <PaginationControls
             page={page}
@@ -319,8 +381,12 @@ export function ClientsPage() {
           />
         </Panel>
 
-        <div className="two-col-grid">
+        <div className="staff-dashboard-grid">
           <Panel title="Новий клієнт" subtitle="Створення нового запису">
+            <div className="panel-intro">
+              <strong>Нове досьє клієнта.</strong>
+              <p>Заносьте основні документи й контакт одразу, щоб оренди та перевірки статусу працювали без ручних уточнень.</p>
+            </div>
             <form className="form-grid" onSubmit={(event) => void submitCreate(event)}>
               <label>
                 ПІБ
@@ -347,44 +413,66 @@ export function ClientsPage() {
           </Panel>
 
           <Panel title="Деталі клієнта" subtitle={selected ? `ID ${selected.id}` : 'Оберіть клієнта в таблиці'}>
-            <form className="form-grid" onSubmit={(event) => event.preventDefault()}>
-              <label>
-                ПІБ
-                <input value={form.fullName} onChange={(event) => setForm((prev) => ({ ...prev, fullName: event.target.value }))} disabled={!selected} />
-              </label>
-              <label>
-                Паспортні дані
-                <input value={form.passportData} onChange={(event) => setForm((prev) => ({ ...prev, passportData: event.target.value }))} disabled={!selected} />
-              </label>
-              <label>
-                Водійське посвідчення
-                <input value={form.driverLicense} onChange={(event) => setForm((prev) => ({ ...prev, driverLicense: event.target.value }))} disabled={!selected} />
-              </label>
-              <label>
-                Телефон
-                <input value={form.phone} onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))} disabled={!selected} />
-              </label>
-              <label className="checkbox-row">
-                <input type="checkbox" checked={form.blacklisted} onChange={(event) => setForm((prev) => ({ ...prev, blacklisted: event.target.checked }))} disabled={!selected} />
-                У чорному списку
-              </label>
-              <div className="inline-form">
-                <button type="button" className="btn primary" disabled={!selected} onClick={() => void submitUpdate()}>
-                  Зберегти
-                </button>
-                <button type="button" className="btn warning" disabled={!selected} onClick={() => void toggleBlacklist()}>
-                  Додати/прибрати зі списку
-                </button>
-                <button type="button" className="btn danger" disabled={!selected} onClick={() => setIsDeleteDialogOpen(true)}>
-                  Видалити
-                </button>
-              </div>
-            </form>
+            {selected ? (
+              <form className="form-grid" onSubmit={(event) => event.preventDefault()}>
+                <div className="panel-intro full-row">
+                  <strong>{selected.fullName}</strong>
+                  <p>{selected.phone} • {selected.blacklisted ? 'У чорному списку' : 'Активний профіль'}</p>
+                </div>
+
+                <label>
+                  ПІБ
+                  <input value={form.fullName} onChange={(event) => setForm((prev) => ({ ...prev, fullName: event.target.value }))} />
+                </label>
+                <label>
+                  Паспортні дані
+                  <input value={form.passportData} onChange={(event) => setForm((prev) => ({ ...prev, passportData: event.target.value }))} />
+                </label>
+                <label>
+                  Водійське посвідчення
+                  <input value={form.driverLicense} onChange={(event) => setForm((prev) => ({ ...prev, driverLicense: event.target.value }))} />
+                </label>
+                <label>
+                  Телефон
+                  <input value={form.phone} onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))} />
+                </label>
+                <label className="checkbox-row">
+                  <input type="checkbox" checked={form.blacklisted} onChange={(event) => setForm((prev) => ({ ...prev, blacklisted: event.target.checked }))} />
+                  У чорному списку
+                </label>
+                <div className="inline-form">
+                  <button type="button" className="btn primary" onClick={() => void submitUpdate()}>
+                    Зберегти
+                  </button>
+                  <button type="button" className="btn warning" onClick={() => void toggleBlacklist()}>
+                    Додати/прибрати зі списку
+                  </button>
+                  <button type="button" className="btn danger" onClick={() => setIsDeleteDialogOpen(true)}>
+                    Видалити
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <EmptyState
+                icon="USER"
+                compact
+                title="Оберіть клієнта в таблиці."
+                description="Після вибору тут відкриється повна картка з редагуванням контактів, документів і статусу."
+              />
+            )}
           </Panel>
         </div>
 
-        {message ? <p className="success-box">{message}</p> : null}
-        {error ? <p className="error-box">{error}</p> : null}
+        {message ? (
+          <FeedbackBanner tone="success" title="Профіль оновлено" onDismiss={() => setMessage(null)} autoHideMs={4200}>
+            {message}
+          </FeedbackBanner>
+        ) : null}
+        {error ? (
+          <FeedbackBanner tone="error" title="Не вдалося виконати дію" onDismiss={() => setError(null)}>
+            {error}
+          </FeedbackBanner>
+        ) : null}
       </div>
 
       <ConfirmDialog

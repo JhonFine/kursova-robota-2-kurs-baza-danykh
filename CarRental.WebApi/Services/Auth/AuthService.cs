@@ -1,14 +1,15 @@
-﻿using CarRental.WebApi.Data;
+using CarRental.WebApi.Data;
 using CarRental.WebApi.Models;
 using CarRental.WebApi.Services.Security;
+using CarRental.Shared.Security;
 using Microsoft.EntityFrameworkCore;
 
 namespace CarRental.WebApi.Services.Auth;
 
 public sealed class AuthService(RentalDbContext dbContext) : IAuthService
 {
-    private const int MaxFailedAttempts = 5;
-    private static readonly TimeSpan LockoutDuration = TimeSpan.FromMinutes(10);
+    private const int MaxFailedAttempts = SecurityDefaults.MaxFailedAttempts;
+    private static readonly TimeSpan LockoutDuration = TimeSpan.FromMinutes(SecurityDefaults.LockoutMinutes);
 
     public async Task<AuthResult> AuthenticateAsync(string login, string password, CancellationToken cancellationToken = default)
     {
@@ -19,47 +20,65 @@ public sealed class AuthService(RentalDbContext dbContext) : IAuthService
 
         var normalizedLogin = login.Trim().ToLowerInvariant();
 
-        var employee = await dbContext.Employees
+        var account = await dbContext.Accounts
+            .Include(item => item.Employee)
+            .Include(item => item.Client)
+            .ThenInclude(item => item!.Documents)
             .FirstOrDefaultAsync(item => item.Login == normalizedLogin, cancellationToken);
-        if (employee is null || !employee.IsActive)
+        if (account is null || !account.IsActive)
         {
             return new AuthResult(false, "Невірні облікові дані.");
         }
 
-        if (employee.LockoutUntilUtc.HasValue && employee.LockoutUntilUtc.Value > DateTime.UtcNow)
+        if (account.LockoutUntilUtc.HasValue && account.LockoutUntilUtc.Value > DateTime.UtcNow)
         {
             return new AuthResult(
                 false,
-                $"Обліковий запис заблоковано до {employee.LockoutUntilUtc.Value:HH:mm:ss} UTC.",
+                $"Обліковий запис заблоковано до {account.LockoutUntilUtc.Value:HH:mm:ss} UTC.",
                 IsLockedOut: true,
-                LockedUntilUtc: employee.LockoutUntilUtc);
+                LockedUntilUtc: account.LockoutUntilUtc);
         }
 
-        var isValid = PasswordHasher.VerifyPassword(password, employee.PasswordHash);
+        var isValid = PasswordHasher.VerifyPassword(password, account.PasswordHash);
         if (!isValid)
         {
-            employee.FailedLoginAttempts += 1;
-            if (employee.FailedLoginAttempts >= MaxFailedAttempts)
-            {
-                employee.LockoutUntilUtc = DateTime.UtcNow.Add(LockoutDuration);
-                employee.FailedLoginAttempts = 0;
-            }
+            var newLockoutTime = DateTime.UtcNow.Add(LockoutDuration);
+            await dbContext.Accounts
+                .Where(a => a.Id == account.Id)
+                .ExecuteUpdateAsync(updates =>
+                    updates.SetProperty(p => p.FailedLoginAttempts, p =>
+                                p.FailedLoginAttempts + 1 >= MaxFailedAttempts ? 0 : p.FailedLoginAttempts + 1)
+                           .SetProperty(p => p.LockoutUntilUtc, p =>
+                                p.FailedLoginAttempts + 1 >= MaxFailedAttempts ? (DateTime?)newLockoutTime : p.LockoutUntilUtc),
+                    cancellationToken: cancellationToken);
 
-            await dbContext.SaveChangesAsync(cancellationToken);
             return new AuthResult(false, "Невірні облікові дані.");
         }
 
-        if (PasswordHasher.NeedsRehash(employee.PasswordHash))
+        if (PasswordHasher.NeedsRehash(account.PasswordHash))
         {
-            employee.PasswordHash = PasswordHasher.HashPassword(password);
+            var newHash = PasswordHasher.HashPassword(password);
+            await dbContext.Accounts
+                .Where(a => a.Id == account.Id)
+                .ExecuteUpdateAsync(u => u.SetProperty(p => p.PasswordHash, newHash), cancellationToken);
+            account.PasswordHash = newHash;
         }
 
-        employee.FailedLoginAttempts = 0;
-        employee.LockoutUntilUtc = null;
-        employee.LastLoginUtc = DateTime.UtcNow;
-        await dbContext.SaveChangesAsync(cancellationToken);
+        var lastLoginTime = DateTime.UtcNow;
+        await dbContext.Accounts
+            .Where(a => a.Id == account.Id)
+            .ExecuteUpdateAsync(updates => updates
+                .SetProperty(p => p.FailedLoginAttempts, 0)
+                .SetProperty(p => p.LockoutUntilUtc, (DateTime?)null)
+                .SetProperty(p => p.LastLoginUtc, lastLoginTime),
+            cancellationToken);
 
-        return new AuthResult(true, "Успішний вхід.", employee);
+        account.FailedLoginAttempts = 0;
+        account.LockoutUntilUtc = null;
+        account.LastLoginUtc = lastLoginTime;
+
+        var role = account.Employee?.Role ?? UserRole.User;
+        return new AuthResult(true, "Успішний вхід.", account, account.Employee, account.Client, role);
     }
 
     public async Task<RegistrationResult> RegisterAsync(
@@ -92,88 +111,40 @@ public sealed class AuthService(RentalDbContext dbContext) : IAuthService
 
         var normalizedLogin = login.Trim().ToLowerInvariant();
 
-        var exists = await dbContext.Employees
-            .AnyAsync(item => item.Login == normalizedLogin, cancellationToken);
-        if (exists)
+        if (await dbContext.Accounts.AnyAsync(item => item.Login == normalizedLogin, cancellationToken))
         {
             return new RegistrationResult(false, "Користувач з таким логіном вже існує.");
         }
 
-        var employee = new Employee
+        if (await dbContext.Clients.AnyAsync(item => item.Phone == normalizedPhone, cancellationToken))
         {
-            FullName = fullName.Trim(),
+            return new RegistrationResult(false, "Клієнт з таким телефоном вже існує.");
+        }
+
+        var account = new Account
+        {
             Login = normalizedLogin,
             PasswordHash = PasswordHasher.HashPassword(password),
-            Role = UserRole.User,
             IsActive = true,
             PasswordChangedAtUtc = DateTime.UtcNow
         };
 
-        dbContext.Employees.Add(employee);
+        var client = new Client
+        {
+            FullName = fullName.Trim(),
+            Phone = normalizedPhone,
+            Account = account
+        };
+
+        dbContext.Accounts.Add(account);
+        dbContext.Clients.Add(client);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        var passportData = $"EMP-{employee.Id:D6}";
-        var driverLicense = $"USR-{employee.Id:D6}";
-        var client = await dbContext.Clients.FirstOrDefaultAsync(
-            item => item.Id == employee.ClientId,
-            cancellationToken);
-
-        if (client is null)
-        {
-            client = new Client
-            {
-                FullName = employee.FullName,
-                PassportData = passportData,
-                DriverLicense = driverLicense,
-                Phone = normalizedPhone
-            };
-            dbContext.Clients.Add(client);
-            await dbContext.SaveChangesAsync(cancellationToken);
-        }
-        else
-        {
-            var hasChanges = false;
-            if (!string.Equals(client.FullName, employee.FullName, StringComparison.Ordinal))
-            {
-                client.FullName = employee.FullName;
-                hasChanges = true;
-            }
-
-            if (!string.Equals(client.Phone, normalizedPhone, StringComparison.Ordinal))
-            {
-                client.Phone = normalizedPhone;
-                hasChanges = true;
-            }
-
-            if (!string.Equals(client.PassportData, passportData, StringComparison.Ordinal))
-            {
-                client.PassportData = passportData;
-                hasChanges = true;
-            }
-
-            if (!string.Equals(client.DriverLicense, driverLicense, StringComparison.Ordinal))
-            {
-                client.DriverLicense = driverLicense;
-                hasChanges = true;
-            }
-
-            if (hasChanges)
-            {
-                await dbContext.SaveChangesAsync(cancellationToken);
-            }
-        }
-
-        if (employee.ClientId != client.Id)
-        {
-            employee.ClientId = client.Id;
-            await dbContext.SaveChangesAsync(cancellationToken);
-        }
-
-        return new RegistrationResult(true, "Реєстрація успішна.", employee);
+        return new RegistrationResult(true, "Реєстрація успішна.", account, null, client, UserRole.User);
     }
 
     public async Task<PasswordChangeResult> ChangePasswordAsync(
-        int employeeId,
+        int accountId,
         string currentPassword,
         string newPassword,
         CancellationToken cancellationToken = default)
@@ -183,21 +154,21 @@ public sealed class AuthService(RentalDbContext dbContext) : IAuthService
             return new PasswordChangeResult(false, "Новий пароль має містити щонайменше 8 символів.");
         }
 
-        var employee = await dbContext.Employees.FirstOrDefaultAsync(item => item.Id == employeeId, cancellationToken);
-        if (employee is null)
+        var account = await dbContext.Accounts.FirstOrDefaultAsync(item => item.Id == accountId, cancellationToken);
+        if (account is null)
         {
-            return new PasswordChangeResult(false, "Працівника не знайдено.");
+            return new PasswordChangeResult(false, "Обліковий запис не знайдено.");
         }
 
-        if (!PasswordHasher.VerifyPassword(currentPassword, employee.PasswordHash))
+        if (!PasswordHasher.VerifyPassword(currentPassword, account.PasswordHash))
         {
             return new PasswordChangeResult(false, "Поточний пароль невірний.");
         }
 
-        employee.PasswordHash = PasswordHasher.HashPassword(newPassword);
-        employee.PasswordChangedAtUtc = DateTime.UtcNow;
-        employee.FailedLoginAttempts = 0;
-        employee.LockoutUntilUtc = null;
+        account.PasswordHash = PasswordHasher.HashPassword(newPassword);
+        account.PasswordChangedAtUtc = DateTime.UtcNow;
+        account.FailedLoginAttempts = 0;
+        account.LockoutUntilUtc = null;
         await dbContext.SaveChangesAsync(cancellationToken);
         return new PasswordChangeResult(true, "Пароль оновлено.");
     }
@@ -218,4 +189,3 @@ public sealed class AuthService(RentalDbContext dbContext) : IAuthService
         return "+" + digits;
     }
 }
-

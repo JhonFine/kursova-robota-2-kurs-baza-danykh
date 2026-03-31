@@ -211,3 +211,5 @@ internal static class ApiAuthorization
             policy.RequireRole("Admin"));
     }
 }
+
+public partial class Program;

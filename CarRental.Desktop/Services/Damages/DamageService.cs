@@ -45,7 +45,6 @@ public sealed class DamageService(RentalDbContext dbContext) : IDamageService
             PhotoPath = request.PhotoPath,
             ActNumber = GenerateActNumber(),
             ChargedAmount = 0m,
-            IsChargedToClient = false,
             Status = DamageStatus.Open
         };
 
@@ -53,7 +52,6 @@ public sealed class DamageService(RentalDbContext dbContext) : IDamageService
         {
             rental.TotalAmount += request.RepairCost;
             damage.ChargedAmount = request.RepairCost;
-            damage.IsChargedToClient = true;
             damage.Status = DamageStatus.Charged;
         }
 

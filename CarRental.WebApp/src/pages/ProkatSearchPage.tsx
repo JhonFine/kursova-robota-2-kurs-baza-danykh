@@ -3,10 +3,13 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Api } from '../api/client';
 import type { ClientProfile, Rental, RentalAvailabilitySlot, Vehicle } from '../api/types';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { EmptyState } from '../components/EmptyState';
+import { FeedbackBanner } from '../components/FeedbackBanner';
 import { ActiveFilterChips, type ActiveFilterChipItem } from '../components/FilterToolbar';
-import { LoadingView } from '../components/LoadingView';
+import { InlineSpinner } from '../components/LoadingView';
 import { PaginationControls } from '../components/PaginationControls';
-import { formatCurrency } from '../utils/format';
+import { CardSkeletonGrid, TableSkeleton } from '../components/Skeleton';
+import { formatCurrency, formatVehicleCargoCapacity, formatVehicleConsumption } from '../utils/format';
 import {
   parseBooleanParam,
   parseCsvParam,
@@ -24,7 +27,6 @@ import {
   buildCatalogVehicleCards,
   buildAvailabilityMap,
   buildMaskedCardPaymentNote,
-  classifyVehicle,
   classifyVehicleBySpec,
   DEFAULT_MAX_PRICE,
   DEFAULT_MIN_PRICE,
@@ -37,7 +39,9 @@ import {
   formatCardNumberInput,
   formatDoors,
   formatDuration,
+  getAvailableTimeOptionsForDate,
   getClientProfileCompletionMessage,
+  isDateTimeInPast,
   localImage,
   parseCardExpiry,
   parseDateTime,
@@ -124,6 +128,7 @@ export function ProkatSearchPage() {
   const [failedImageVehicleIds, setFailedImageVehicleIds] = useState<number[]>([]);
   const [activeFilterSection, setActiveFilterSection] = useState<FilterSection>('period');
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
+  const [isCatalogTransitioning, setIsCatalogTransitioning] = useState(false);
   const requestIdRef = useRef(0);
   const catalogResultsRef = useRef<HTMLDivElement | null>(null);
   const hasPaginationMountedRef = useRef(false);
@@ -145,8 +150,17 @@ export function ProkatSearchPage() {
   const catalogPage = parsePositiveIntParam(searchParams.get('page'), 1);
   const selectedVehicleId = parseNullablePositiveIntParam(searchParams.get('vehicle'));
 
+  const currentMoment = new Date();
+  const todayDateValue = toDateInputValue(currentMoment);
   const requestStart = useMemo(() => parseDateTime(startDate, pickupTime), [pickupTime, startDate]);
   const requestEnd = useMemo(() => parseDateTime(endDate, returnTime), [endDate, returnTime]);
+  const pickupTimeOptions = getAvailableTimeOptionsForDate(startDate, currentMoment);
+  const minimumReturnMoment = requestStart > currentMoment ? requestStart : currentMoment;
+  const returnDateMin = startDate > todayDateValue ? startDate : todayDateValue;
+  const returnTimeOptions = getAvailableTimeOptionsForDate(endDate, minimumReturnMoment);
+  const pickupTimeValue = pickupTimeOptions.includes(pickupTime) ? pickupTime : '';
+  const returnTimeValue = returnTimeOptions.includes(returnTime) ? returnTime : '';
+  const requestStartInPast = isDateTimeInPast(startDate, pickupTime, currentMoment);
   const rentalHours = useMemo(() => {
     if (requestEnd <= requestStart) {
       return 0;
@@ -156,7 +170,25 @@ export function ProkatSearchPage() {
   }, [requestEnd, requestStart]);
 
   const requestWindowValid = requestEnd > requestStart;
-  const periodError = requestWindowValid ? null : 'Дата та час повернення мають бути пізнішими за початок оренди.';
+  const periodError = !requestWindowValid
+    ? 'Дата та час повернення мають бути пізнішими за початок оренди.'
+    : pickupTimeOptions.length === 0
+      ? 'На обрану дату вже немає доступного часу початку. Оберіть іншу дату.'
+      : returnTimeOptions.length === 0
+        ? 'На обрану дату вже немає доступного часу повернення. Оберіть іншу дату.'
+        : requestStartInPast
+          ? 'Початок оренди не може бути в минулому.'
+          : null;
+  const startDateError = pickupTimeOptions.length === 0 || requestStartInPast
+    ? periodError
+    : null;
+  const endDateError = endDate < startDate
+    ? 'Дата повернення не може бути раніше дати подачі.'
+    : endDate < todayDateValue
+      ? 'Дата повернення не може бути в минулому.'
+      : startDateError
+        ? null
+        : periodError;
   const periodLabel = `${formatBookingMoment(startDate, pickupTime)} - ${formatBookingMoment(endDate, returnTime)}`;
   const durationLabel = formatDuration(rentalHours);
 
@@ -333,6 +365,7 @@ export function ProkatSearchPage() {
 
   const totalCatalogPages = Math.max(1, Math.ceil(filteredCards.length / VEHICLE_PAGE_SIZE));
   const currentCatalogPage = Math.min(Math.max(catalogPage, 1), totalCatalogPages);
+  const selectedClassesKey = selectedClasses.join(',');
   const pagedCards = useMemo(() => {
     const startIndex = (currentCatalogPage - 1) * VEHICLE_PAGE_SIZE;
     return filteredCards.slice(startIndex, startIndex + VEHICLE_PAGE_SIZE);
@@ -417,7 +450,7 @@ export function ProkatSearchPage() {
     if (minPrice !== DEFAULT_MIN_PRICE || maxPrice !== DEFAULT_MAX_PRICE) {
       items.push({
         key: 'price',
-        label: `Ціна: ${minPrice} - ${maxPrice} €`,
+        label: `Ціна: ${minPrice} - ${maxPrice} грн`,
         onRemove: () => {
           beginInteraction();
           updateSearchState({ min: DEFAULT_MIN_PRICE, max: DEFAULT_MAX_PRICE, page: 1 });
@@ -448,8 +481,47 @@ export function ProkatSearchPage() {
   }, [loadCatalog]);
 
   useEffect(() => {
+    if (pickupTimeOptions.length === 0 || pickupTimeOptions.includes(pickupTime)) {
+      return;
+    }
+
+    updateSearchState({ pickup: pickupTimeOptions[0], page: 1 }, true);
+  }, [pickupTime, pickupTimeOptions, updateSearchState]);
+
+  useEffect(() => {
+    if (returnTimeOptions.length === 0 || returnTimeOptions.includes(returnTime)) {
+      return;
+    }
+
+    updateSearchState({ return: returnTimeOptions[0], page: 1 }, true);
+  }, [returnTime, returnTimeOptions, updateSearchState]);
+
+  useEffect(() => {
     setFailedImageVehicleIds([]);
   }, [vehicles]);
+
+  useEffect(() => {
+    if (loading) {
+      return undefined;
+    }
+
+    setIsCatalogTransitioning(true);
+    const timeoutId = window.setTimeout(() => setIsCatalogTransitioning(false), 180);
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    catalogPage,
+    endDate,
+    loading,
+    maxPrice,
+    minPrice,
+    pickupTime,
+    returnTime,
+    search,
+    selectedClassesKey,
+    showAvailableOnly,
+    sort,
+    startDate,
+  ]);
 
   useEffect(() => {
     const needsSync =
@@ -699,7 +771,7 @@ export function ProkatSearchPage() {
     }
 
     if (requestStart < new Date()) {
-      return 'Клієнт не може оформити бронювання з початком у минулому.';
+      return 'Початок оренди не може бути в минулому.';
     }
 
     if (!pickupLocation.trim() || !returnLocation.trim()) {
@@ -810,13 +882,51 @@ export function ProkatSearchPage() {
     }
   };
 
-  if (loading) {
-    return <LoadingView text="Завантаження каталогу оренди..." />;
+  if (loading && vehicles.length === 0) {
+    return (
+      <div className="page-grid prokat-page">
+        <section className="prokat-hero">
+          <div className="prokat-hero-copy">
+            <span className="topbar-kicker">Пошук авто</span>
+            <h2>Завантажуємо каталог оренди</h2>
+            <p>Готуємо період, доступність, картки авто та фінальний блок оформлення.</p>
+          </div>
+        </section>
+
+        <div className="prokat-layout">
+          <aside className="prokat-filters">
+            <section className="prokat-filter-workbench">
+              <TableSkeleton rows={5} compact />
+            </section>
+          </aside>
+
+          <section className="prokat-main">
+            <CardSkeletonGrid count={4} />
+          </section>
+
+          <aside className="prokat-summary-panel">
+            <section className="status-panel prokat-review-card">
+              <div className="prokat-review-heading">
+                <span>Крок 4</span>
+                <strong>Підготовка оформлення</strong>
+              </div>
+              <div className="prokat-review-content">
+                <TableSkeleton rows={5} compact />
+              </div>
+            </section>
+          </aside>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="page-grid prokat-page">
-      {error ? <p className="error-box">{error}</p> : null}
+      {error ? (
+        <FeedbackBanner tone="error" title="Не вдалося оновити каталог" onDismiss={() => setError(null)}>
+          {error}
+        </FeedbackBanner>
+      ) : null}
       <button
         type="button"
         className="btn primary prokat-mobile-filter-toggle"
@@ -888,23 +998,29 @@ export function ProkatSearchPage() {
                     <input
                       type="date"
                       value={startDate}
+                      min={todayDateValue}
+                      aria-invalid={Boolean(startDateError)}
                       onChange={(event) => {
                         beginInteraction();
                         updateSearchState({ start: event.target.value, page: 1 });
                       }}
                     />
                     <select
-                      value={pickupTime}
+                      value={pickupTimeValue}
+                      disabled={pickupTimeOptions.length === 0}
                       onChange={(event) => {
                         beginInteraction();
                         updateSearchState({ pickup: event.target.value, page: 1 });
                       }}
                     >
-                      {timeOptions.map((time) => (
+                      {pickupTimeOptions.length === 0 ? (
+                        <option value="">Немає доступного часу</option>
+                      ) : pickupTimeOptions.map((time) => (
                         <option key={time} value={time}>{time}</option>
                       ))}
                     </select>
                   </div>
+                  {startDateError ? <small className="prokat-field-hint warn">{startDateError}</small> : null}
                 </label>
 
                 <label>
@@ -913,23 +1029,29 @@ export function ProkatSearchPage() {
                     <input
                       type="date"
                       value={endDate}
+                      min={returnDateMin}
+                      aria-invalid={Boolean(endDateError)}
                       onChange={(event) => {
                         beginInteraction();
                         updateSearchState({ end: event.target.value, page: 1 });
                       }}
                     />
                     <select
-                      value={returnTime}
+                      value={returnTimeValue}
+                      disabled={returnTimeOptions.length === 0}
                       onChange={(event) => {
                         beginInteraction();
                         updateSearchState({ return: event.target.value, page: 1 });
                       }}
                     >
-                      {timeOptions.map((time) => (
+                      {returnTimeOptions.length === 0 ? (
+                        <option value="">Немає доступного часу</option>
+                      ) : returnTimeOptions.map((time) => (
                         <option key={time} value={time}>{time}</option>
                       ))}
                     </select>
                   </div>
+                  {endDateError ? <small className="prokat-field-hint warn">{endDateError}</small> : null}
                 </label>
 
                 <label>
@@ -967,7 +1089,6 @@ export function ProkatSearchPage() {
                   <span>{periodLabel}</span>
                 </div>
 
-                {periodError ? <p className="error-box prokat-inline-alert">{periodError}</p> : null}
               </div>
             </section>
 
@@ -1027,7 +1148,7 @@ export function ProkatSearchPage() {
                   <div className="prokat-price-card-head">
                     <div>
                       <strong>Діапазон ціни</strong>
-                      <span>Каталог оновлюється від {minPrice} € до {maxPrice} € за добу.</span>
+                      <span>Каталог оновлюється від {minPrice} грн до {maxPrice} грн за добу.</span>
                     </div>
                     {minPrice !== DEFAULT_MIN_PRICE || maxPrice !== DEFAULT_MAX_PRICE ? (
                       <button
@@ -1045,11 +1166,12 @@ export function ProkatSearchPage() {
 
                   <div className="inline-form prokat-inline-price">
                     <label>
-                      Від, €
+                      Від, грн
                       <input
                         type="number"
-                        min="0"
-                        step="5"
+                        min="1000"
+                        max="3500"
+                        step="50"
                         value={minPrice}
                         onChange={(event) => {
                           beginInteraction();
@@ -1059,11 +1181,12 @@ export function ProkatSearchPage() {
                     </label>
 
                     <label>
-                      До, €
+                      До, грн
                       <input
                         type="number"
-                        min="0"
-                        step="5"
+                        min="1000"
+                        max="3500"
+                        step="50"
                         value={maxPrice}
                         onChange={(event) => {
                           beginInteraction();
@@ -1161,22 +1284,29 @@ export function ProkatSearchPage() {
             ) : null}
           </div>
 
-          <div id="client-catalog-section" ref={catalogResultsRef} className="prokat-cards-wrap">
+          <div
+            id="client-catalog-section"
+            ref={catalogResultsRef}
+            className={`prokat-cards-wrap surface-refresh${isCatalogTransitioning ? ' is-refreshing' : ''}`}
+          >
             {filteredCards.length === 0 ? (
-              <div className="empty-state">
-                <strong>Немає авто під поточний запит.</strong>
-                <p>Змініть період або скиньте фільтри, щоб повернутись до повного каталогу.</p>
-                <div className="row-actions">
-                  <button type="button" className="btn ghost" onClick={resetFilters}>
-                    Скинути фільтри
-                  </button>
-                  {selectedVehicle ? (
-                    <button type="button" className="btn primary" onClick={revealSelectedVehicle}>
-                      Показати обране авто
+              <EmptyState
+                icon="AUTO"
+                title="Немає авто під поточний запит."
+                description="Змініть період або скиньте фільтри, щоб повернутись до повного каталогу й знову побачити доступні моделі."
+                actions={(
+                  <>
+                    <button type="button" className="btn ghost" onClick={resetFilters}>
+                      Скинути фільтри
                     </button>
-                  ) : null}
-                </div>
-              </div>
+                    {selectedVehicle ? (
+                      <button type="button" className="btn primary" onClick={revealSelectedVehicle}>
+                        Показати обране авто
+                      </button>
+                    ) : null}
+                  </>
+                )}
+              />
             ) : (
               <div className="prokat-cards">
                 {pagedCards.map((card) => {
@@ -1251,8 +1381,8 @@ export function ProkatSearchPage() {
                         <div className="inline-form prokat-card-meta">
                           <span>{vehicle.hasAirConditioning ? 'A/C' : 'Без A/C'}</span>
                           <span>{formatDoors(vehicle.doorsCount)}</span>
-                          <span>{vehicle.cargoCapacityDisplay}</span>
-                          <span>{vehicle.consumptionDisplay}</span>
+                          <span>{formatVehicleCargoCapacity(vehicle.cargoCapacityValue, vehicle.cargoCapacityUnit)}</span>
+                          <span>{formatVehicleConsumption(vehicle.consumptionValue, vehicle.consumptionUnit)}</span>
                         </div>
 
                         <p className={`prokat-card-note ${isAvailable ? 'ok' : 'bad'}`}>
@@ -1293,6 +1423,12 @@ export function ProkatSearchPage() {
                 })}
               </div>
             )}
+
+            {isCatalogTransitioning ? (
+              <div className="refresh-overlay">
+                <InlineSpinner />
+              </div>
+            ) : null}
           </div>
 
           {filteredCards.length > VEHICLE_PAGE_SIZE ? (
@@ -1310,8 +1446,7 @@ export function ProkatSearchPage() {
 
         <aside className="prokat-summary-panel">
           {createdRental ? (
-            <section className="success-box prokat-success-card">
-              <strong>Оренду оформлено</strong>
+            <FeedbackBanner tone="success" title="Оренду оформлено" className="prokat-success-card">
               <div className="prokat-success-grid">
                 <span>Договір</span>
                 <strong>{createdRental.contractNumber}</strong>
@@ -1334,7 +1469,7 @@ export function ProkatSearchPage() {
                   Оформити ще
                 </button>
               </div>
-            </section>
+            </FeedbackBanner>
           ) : null}
 
           <section id="client-review-section" className="status-panel prokat-review-card">
@@ -1347,7 +1482,7 @@ export function ProkatSearchPage() {
                 <div className="prokat-review-vehicle">
                   <div>
                     <h3>{selectedVehicle.make} {selectedVehicle.model}</h3>
-                    <p>{selectedVehicle.licensePlate} • {classifyVehicle(selectedVehicle)}</p>
+                    <p>{selectedVehicle.licensePlate} • {classifyVehicleBySpec(selectedVehicle.make, selectedVehicle.model, selectedVehicle.dailyRate)}</p>
                   </div>
                   <span className={`status-pill ${selectedVehicleAvailability?.state === 'available' ? 'ok' : 'bad'}`}>
                     {selectedVehicleAvailability?.state === 'available' ? 'Готове до оформлення' : 'Потребує зміни'}
@@ -1530,14 +1665,21 @@ export function ProkatSearchPage() {
                   onClick={openConfirmDialog}
                   disabled={submitting || Boolean(checkoutValidationMessage)}
                 >
-                  {submitting ? 'Оформлення...' : 'Оплатити та оформити'}
+                  {submitting ? (
+                    <>
+                      <InlineSpinner />
+                      {' '}Оформлення...
+                    </>
+                  ) : 'Оплатити та оформити'}
                 </button>
               </div>
             ) : (
-              <div className="empty-state prokat-review-empty">
-                <strong>Почніть з вибору авто.</strong>
-                <p>Вкажіть період, знайдіть доступну модель у каталозі та оберіть екземпляр для оформлення.</p>
-              </div>
+              <EmptyState
+                icon="STEP"
+                className="prokat-review-empty"
+                title="Почніть з вибору авто."
+                description="Вкажіть період, знайдіть доступну модель у каталозі та оберіть конкретний екземпляр для оформлення."
+              />
             )}
           </section>
         </aside>

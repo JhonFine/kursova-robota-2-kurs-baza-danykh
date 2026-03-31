@@ -1,9 +1,13 @@
+using CarRental.Shared.ReferenceData;
 using CarRental.WebApi.Contracts;
 using CarRental.WebApi.Data;
+using CarRental.WebApi.Infrastructure;
 using CarRental.WebApi.Models;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.IO;
 
 namespace CarRental.WebApi.Controllers;
 
@@ -14,187 +18,312 @@ public sealed class ProfileController(RentalDbContext dbContext) : ApiController
     [HttpGet("client")]
     [ProducesResponseType<ClientProfileDto>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetClientProfile(CancellationToken cancellationToken)
     {
-        var employeeId = GetCurrentEmployeeId();
-        if (!employeeId.HasValue)
+        var client = await GetCurrentClientAsync(cancellationToken);
+        if (client is null)
         {
-            return Unauthorized();
+            return GetCurrentAccountId().HasValue ? NotFound() : Unauthorized();
         }
 
-        var employee = await dbContext.Employees
-            .FirstOrDefaultAsync(item => item.Id == employeeId.Value, cancellationToken);
-        if (employee is null)
-        {
-            return Unauthorized();
-        }
-
-        var client = await EnsureLinkedClientAsync(employee, cancellationToken);
-        return Ok(ToClientProfileDto(client));
+        return Ok(client.ToProfileDto(ClientProfileRules.IsProfileComplete(client)));
     }
 
     [HttpPut("client")]
     [ProducesResponseType<ClientProfileDto>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> UpdateClientProfile(
         [FromBody] UpdateClientProfileRequest request,
         CancellationToken cancellationToken)
     {
-        var employeeId = GetCurrentEmployeeId();
-        if (!employeeId.HasValue)
-        {
-            return Unauthorized();
-        }
-
-        var employee = await dbContext.Employees
-            .FirstOrDefaultAsync(item => item.Id == employeeId.Value, cancellationToken);
-        if (employee is null)
-        {
-            return Unauthorized();
-        }
-
-        var normalizedPhone = TryNormalizePhone(request.Phone);
-        if (normalizedPhone is null)
-        {
-            return BadRequest(new { message = "Вкажіть коректний телефон (10-15 цифр)." });
-        }
-
-        var fullName = request.FullName.Trim();
-        var passportData = request.PassportData.Trim();
-        var driverLicense = request.DriverLicense.Trim();
-        if (string.IsNullOrWhiteSpace(fullName) ||
-            string.IsNullOrWhiteSpace(passportData) ||
-            string.IsNullOrWhiteSpace(driverLicense))
-        {
-            return BadRequest(new { message = "Усі поля профілю мають бути заповнені." });
-        }
-
-        var client = await EnsureLinkedClientAsync(employee, cancellationToken);
-
-        var duplicateDriverLicense = await dbContext.Clients
-            .AnyAsync(item => item.Id != client.Id && item.DriverLicense == driverLicense, cancellationToken);
-        if (duplicateDriverLicense)
-        {
-            return Conflict(new { message = "Клієнт з таким номером посвідчення вже існує." });
-        }
-
-        client.FullName = fullName;
-        client.Phone = normalizedPhone;
-        client.PassportData = passportData;
-        client.DriverLicense = driverLicense;
-        if (!string.Equals(employee.FullName, fullName, StringComparison.Ordinal))
-        {
-            employee.FullName = fullName;
-        }
-
-        await dbContext.SaveChangesAsync(cancellationToken);
-        return Ok(ToClientProfileDto(client));
-    }
-
-    private async Task<Client> EnsureLinkedClientAsync(Employee employee, CancellationToken cancellationToken)
-    {
-        Client? client = null;
-        if (employee.ClientId.HasValue)
-        {
-            client = await dbContext.Clients
-                .FirstOrDefaultAsync(item => item.Id == employee.ClientId.Value, cancellationToken);
-        }
-
+        var client = await GetCurrentClientAsync(cancellationToken);
         if (client is null)
         {
-            var passportData = BuildLegacyPassport(employee.Id);
-            var driverLicense = BuildLegacyDriverLicense(employee.Id);
+            return GetCurrentAccountId().HasValue ? NotFound() : Unauthorized();
+        }
 
-            client = await dbContext.Clients
-                .FirstOrDefaultAsync(
-                    item => item.PassportData == passportData || item.DriverLicense == driverLicense,
-                    cancellationToken);
-
-            if (client is null)
+        var validation = await ValidateProfileRequestAsync(client.Id, request, cancellationToken);
+        if (!validation.Success)
+        {
+            if (!string.IsNullOrWhiteSpace(validation.ConflictMessage))
             {
-                client = new Client
-                {
-                    FullName = employee.FullName,
-                    PassportData = passportData,
-                    DriverLicense = driverLicense,
-                    Phone = TryNormalizePhone(employee.Login) ?? "+380000000000",
-                    Blacklisted = false
-                };
-                dbContext.Clients.Add(client);
-                await dbContext.SaveChangesAsync(cancellationToken);
+                return Conflict(new { message = validation.ConflictMessage });
             }
+
+            return BadRequest(new { message = validation.ErrorMessage ?? "Не вдалося перевірити дані профілю." });
         }
 
-        var hasChanges = false;
-        if (employee.ClientId != client.Id)
-        {
-            employee.ClientId = client.Id;
-            hasChanges = true;
-        }
+        client.FullName = request.FullName.Trim();
+        client.Phone = validation.NormalizedPhone!;
+        ClientProfileRules.UpsertDocuments(client, validation.Documents);
 
-        if (!string.Equals(client.FullName, employee.FullName, StringComparison.Ordinal))
-        {
-            client.FullName = employee.FullName;
-            hasChanges = true;
-        }
-
-        if (hasChanges)
+        try
         {
             await dbContext.SaveChangesAsync(cancellationToken);
         }
+        catch (DbUpdateException exception) when (IsUniqueConstraintViolation(exception))
+        {
+            return Conflict(new { message = "Номер документа або телефон уже існує в системі." });
+        }
 
-        return client;
+        return Ok(client.ToProfileDto(ClientProfileRules.IsProfileComplete(client)));
     }
 
-    private static ClientProfileDto ToClientProfileDto(Client client)
+    [HttpPost("client/documents/{documentType}")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(ProtectedDocumentStorage.MaxFileSizeBytes)]
+    [ProducesResponseType<ClientProfileDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UploadClientDocumentPhoto(
+        string documentType,
+        [FromForm] IFormFile? file,
+        CancellationToken cancellationToken)
     {
-        return new ClientProfileDto(
+        var client = await GetCurrentClientAsync(cancellationToken);
+        if (client is null)
+        {
+            return GetCurrentAccountId().HasValue ? NotFound() : Unauthorized();
+        }
+
+        if (!TryResolveClientDocumentCode(documentType, out var documentTypeCode, out var storageDocumentType))
+        {
+            return BadRequest(new { message = "Unknown document type. Use passport-photo or driver-license-photo." });
+        }
+
+        var storeResult = await ProtectedDocumentStorage.StoreDocumentPhotoAsync(
+            file,
             client.Id,
-            client.FullName,
-            client.PassportData,
-            client.DriverLicense,
-            client.Phone,
-            client.Blacklisted,
-            IsProfileComplete(client));
+            storageDocumentType,
+            cancellationToken);
+        if (!storeResult.Success || string.IsNullOrWhiteSpace(storeResult.StoredPath))
+        {
+            return BadRequest(new { message = storeResult.ErrorMessage ?? "Failed to store document photo." });
+        }
+
+        var previousPath = ClientProfileRules.GetActiveDocument(client, documentTypeCode)?.StoredPath;
+
+        ClientProfileRules.UpsertDocuments(
+            client,
+            new[]
+            {
+                new ClientDocumentUpsertRequest
+                {
+                    DocumentTypeCode = ClientDocumentTypes.Passport,
+                    DocumentNumber = client.PassportData,
+                    ExpirationDate = client.PassportExpirationDate,
+                    StoredPath = documentTypeCode == ClientDocumentTypes.Passport ? storeResult.StoredPath : client.PassportPhotoPath
+                },
+                new ClientDocumentUpsertRequest
+                {
+                    DocumentTypeCode = ClientDocumentTypes.DriverLicense,
+                    DocumentNumber = client.DriverLicense,
+                    ExpirationDate = client.DriverLicenseExpirationDate,
+                    StoredPath = documentTypeCode == ClientDocumentTypes.DriverLicense ? storeResult.StoredPath : client.DriverLicensePhotoPath
+                }
+            });
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        ProtectedDocumentStorage.TryDeleteStoredPhoto(previousPath);
+
+        return Ok(client.ToProfileDto(ClientProfileRules.IsProfileComplete(client)));
     }
 
-    private static bool IsProfileComplete(Client client)
+    [HttpGet("client/documents/{documentType}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetClientDocumentPhoto(string documentType, CancellationToken cancellationToken)
     {
-        return !string.IsNullOrWhiteSpace(client.FullName) &&
-               !string.IsNullOrWhiteSpace(client.Phone) &&
-               !string.IsNullOrWhiteSpace(client.PassportData) &&
-               !string.IsNullOrWhiteSpace(client.DriverLicense) &&
-               !IsLegacyIdentityValue(client.PassportData, "EMP-") &&
-               !IsLegacyIdentityValue(client.DriverLicense, "USR-") &&
-               TryNormalizePhone(client.Phone) is not null;
+        var client = await GetCurrentClientAsync(cancellationToken);
+        if (client is null)
+        {
+            return GetCurrentAccountId().HasValue ? NotFound() : Unauthorized();
+        }
+
+        if (!TryResolveClientDocumentCode(documentType, out var documentTypeCode, out _))
+        {
+            return NotFound();
+        }
+
+        var storedPath = ClientProfileRules.GetActiveDocument(client, documentTypeCode)?.StoredPath;
+        if (!ProtectedDocumentStorage.TryResolveStoredPhotoPath(
+                storedPath,
+                requireFileExists: true,
+                out var fullPath,
+                out _)
+            || string.IsNullOrWhiteSpace(fullPath))
+        {
+            return NotFound();
+        }
+
+        var stream = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        return File(stream, ProtectedDocumentStorage.ResolveContentType(fullPath));
     }
 
-    private static bool IsLegacyIdentityValue(string? value, string prefix)
+    private async Task<Client?> GetCurrentClientAsync(CancellationToken cancellationToken)
     {
-        return !string.IsNullOrWhiteSpace(value) &&
-               value.Trim().StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string BuildLegacyPassport(int employeeId)
-        => $"EMP-{employeeId:D6}";
-
-    private static string BuildLegacyDriverLicense(int employeeId)
-        => $"USR-{employeeId:D6}";
-
-    private static string? TryNormalizePhone(string? phone)
-    {
-        if (string.IsNullOrWhiteSpace(phone))
+        var clientId = GetCurrentClientId();
+        var accountId = GetCurrentAccountId();
+        if (!clientId.HasValue && !accountId.HasValue)
         {
             return null;
         }
 
-        var digits = new string(phone.Where(char.IsDigit).ToArray());
-        if (digits.Length is < 10 or > 15)
+        var query = dbContext.Clients
+            .Include(item => item.Documents)
+            .AsQueryable();
+
+        if (clientId.HasValue)
         {
-            return null;
+            return await query.FirstOrDefaultAsync(item => item.Id == clientId.Value, cancellationToken);
         }
 
-        return "+" + digits;
+        return await query.FirstOrDefaultAsync(item => item.AccountId == accountId!.Value, cancellationToken);
     }
+
+    private async Task<ProfileRequestValidationResult> ValidateProfileRequestAsync(
+        int clientId,
+        UpdateClientProfileRequest request,
+        CancellationToken cancellationToken)
+    {
+        var normalizedPhone = ClientProfileRules.TryNormalizePhone(request.Phone);
+
+        if (string.IsNullOrWhiteSpace(request.FullName.Trim()))
+        {
+            return new ProfileRequestValidationResult(false, null, Array.Empty<ClientDocumentUpsertRequest>(), null, "Вкажіть ПІБ.");
+        }
+
+        if (normalizedPhone is null)
+        {
+            return new ProfileRequestValidationResult(false, null, Array.Empty<ClientDocumentUpsertRequest>(), null, "Вкажіть коректний номер телефону у форматі +380671234567. Дозволено 10-15 цифр.");
+        }
+
+        if (!TryNormalizeDocuments(request.ResolveDocuments(), out var documents, out var errorMessage))
+        {
+            return new ProfileRequestValidationResult(false, null, Array.Empty<ClientDocumentUpsertRequest>(), null, errorMessage);
+        }
+
+        var driverLicenseDocument = documents.FirstOrDefault(item => item.DocumentTypeCode == ClientDocumentTypes.DriverLicense);
+        if (driverLicenseDocument is null || string.IsNullOrWhiteSpace(driverLicenseDocument.DocumentNumber))
+        {
+            return new ProfileRequestValidationResult(false, null, Array.Empty<ClientDocumentUpsertRequest>(), null, "Вкажіть номер посвідчення водія.");
+        }
+
+        if (!driverLicenseDocument.ExpirationDate.HasValue)
+        {
+            return new ProfileRequestValidationResult(false, null, Array.Empty<ClientDocumentUpsertRequest>(), null, "Вкажіть дату, до якої чинне посвідчення водія.");
+        }
+
+        if (driverLicenseDocument.ExpirationDate.Value.Date < DateTime.UtcNow.Date)
+        {
+            return new ProfileRequestValidationResult(false, null, Array.Empty<ClientDocumentUpsertRequest>(), null, "Посвідчення водія має бути чинним на сьогодні або пізніше.");
+        }
+
+        foreach (var document in documents)
+        {
+            var duplicateExists = await dbContext.ClientDocuments
+                .IgnoreQueryFilters()
+                .AnyAsync(
+                    item => !item.IsDeleted &&
+                            item.ClientId != clientId &&
+                            item.DocumentTypeCode == document.DocumentTypeCode &&
+                            item.DocumentNumber == document.DocumentNumber,
+                    cancellationToken);
+            if (duplicateExists)
+            {
+                return new ProfileRequestValidationResult(
+                    false,
+                    null,
+                    Array.Empty<ClientDocumentUpsertRequest>(),
+                    document.DocumentTypeCode == ClientDocumentTypes.Passport
+                        ? "Такий номер паспорта вже використовується іншим клієнтом."
+                        : "Таке посвідчення водія вже використовується іншим клієнтом.",
+                    null);
+            }
+        }
+
+        var phoneExists = await dbContext.Clients
+            .AnyAsync(item => item.Id != clientId && item.Phone == normalizedPhone, cancellationToken);
+        if (phoneExists)
+        {
+            return new ProfileRequestValidationResult(false, null, Array.Empty<ClientDocumentUpsertRequest>(), "Цей номер телефону вже використовується іншим клієнтом.", null);
+        }
+
+        return new ProfileRequestValidationResult(true, normalizedPhone, documents, null, null);
+    }
+
+    private static bool TryNormalizeDocuments(
+        IReadOnlyList<ClientDocumentUpsertRequest> requests,
+        out IReadOnlyList<ClientDocumentUpsertRequest> normalized,
+        out string? errorMessage)
+    {
+        normalized = Array.Empty<ClientDocumentUpsertRequest>();
+        errorMessage = null;
+        var documents = new List<ClientDocumentUpsertRequest>();
+
+        foreach (var request in requests)
+        {
+            var documentTypeCode = request.DocumentTypeCode.Trim().ToUpperInvariant();
+            if (documentTypeCode is not (ClientDocumentTypes.Passport or ClientDocumentTypes.DriverLicense))
+            {
+                errorMessage = $"Непідтримуваний тип документа '{request.DocumentTypeCode}'.";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(request.DocumentNumber))
+            {
+                errorMessage = documentTypeCode == ClientDocumentTypes.Passport
+                    ? "Вкажіть номер паспорта."
+                    : "Вкажіть номер посвідчення водія.";
+                return false;
+            }
+
+            if (!ProtectedDocumentStorage.TryNormalizeStoredPhotoPath(request.StoredPath, out var storedPath))
+            {
+                errorMessage = "Некоректний шлях до фото документа. Дозволені лише файли із захищеного сховища документів.";
+                return false;
+            }
+
+            documents.Add(new ClientDocumentUpsertRequest
+            {
+                DocumentTypeCode = documentTypeCode,
+                DocumentNumber = request.DocumentNumber.Trim(),
+                ExpirationDate = request.ExpirationDate?.Date,
+                StoredPath = storedPath
+            });
+        }
+
+        normalized = documents;
+        return true;
+    }
+
+    private static bool TryResolveClientDocumentCode(
+        string documentType,
+        out string documentTypeCode,
+        out ClientDocumentPhotoType storageDocumentType)
+    {
+        if (!ProtectedDocumentStorage.TryParseDocumentType(documentType, out storageDocumentType))
+        {
+            documentTypeCode = string.Empty;
+            return false;
+        }
+
+        documentTypeCode = storageDocumentType == ClientDocumentPhotoType.Passport
+            ? ClientDocumentTypes.Passport
+            : ClientDocumentTypes.DriverLicense;
+        return true;
+    }
+
+    private sealed record ProfileRequestValidationResult(
+        bool Success,
+        string? NormalizedPhone,
+        IReadOnlyList<ClientDocumentUpsertRequest> Documents,
+        string? ConflictMessage,
+        string? ErrorMessage);
 }

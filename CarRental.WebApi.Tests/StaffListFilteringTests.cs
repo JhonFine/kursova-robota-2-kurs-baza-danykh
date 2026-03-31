@@ -213,15 +213,25 @@ public sealed class StaffListFilteringTests
 
     private static void SeedVehicles(RentalDbContext dbContext)
     {
+        TestLookupSeed.SeedVehicleLookups(dbContext);
+
         dbContext.Vehicles.AddRange(
             new Vehicle
             {
                 Id = 20,
                 Make = "Toyota",
                 Model = "Yaris",
+                FuelType = "Бензин",
+                TransmissionType = "Автомат",
+                PowertrainCapacityValue = 1.5m,
+                PowertrainCapacityUnit = "L",
+                CargoCapacityValue = 286m,
+                CargoCapacityUnit = "L",
+                ConsumptionValue = 5.5m,
+                ConsumptionUnit = "L_PER_100KM",
                 LicensePlate = "AA1000AA",
                 Mileage = 50000,
-                DailyRate = 40m,
+                DailyRate = 1200m,
                 IsAvailable = true,
                 ServiceIntervalKm = 10000
             },
@@ -230,9 +240,17 @@ public sealed class StaffListFilteringTests
                 Id = 21,
                 Make = "Audi",
                 Model = "A4",
+                FuelType = "Бензин",
+                TransmissionType = "Автомат",
+                PowertrainCapacityValue = 2m,
+                PowertrainCapacityUnit = "L",
+                CargoCapacityValue = 460m,
+                CargoCapacityUnit = "L",
+                ConsumptionValue = 7.2m,
+                ConsumptionUnit = "L_PER_100KM",
                 LicensePlate = "AA2000AA",
                 Mileage = 25000,
-                DailyRate = 75m,
+                DailyRate = 2200m,
                 IsAvailable = true,
                 ServiceIntervalKm = 10000
             },
@@ -241,9 +259,17 @@ public sealed class StaffListFilteringTests
                 Id = 22,
                 Make = "Tesla",
                 Model = "Model 3",
+                FuelType = "Електро",
+                TransmissionType = "Автомат",
+                PowertrainCapacityValue = 75m,
+                PowertrainCapacityUnit = "KWH",
+                CargoCapacityValue = 425m,
+                CargoCapacityUnit = "L",
+                ConsumptionValue = 16m,
+                ConsumptionUnit = "KWH_PER_100KM",
                 LicensePlate = "TES123",
                 Mileage = 12000,
-                DailyRate = 110m,
+                DailyRate = 3000m,
                 IsAvailable = true,
                 ServiceIntervalKm = 10000
             },
@@ -252,9 +278,17 @@ public sealed class StaffListFilteringTests
                 Id = 23,
                 Make = "BMW",
                 Model = "320",
+                FuelType = "Дизель",
+                TransmissionType = "Автомат",
+                PowertrainCapacityValue = 2m,
+                PowertrainCapacityUnit = "L",
+                CargoCapacityValue = 480m,
+                CargoCapacityUnit = "L",
+                ConsumptionValue = 6.3m,
+                ConsumptionUnit = "L_PER_100KM",
                 LicensePlate = "AA3000AA",
                 Mileage = 32000,
-                DailyRate = 80m,
+                DailyRate = 2600m,
                 IsAvailable = false,
                 ServiceIntervalKm = 10000
             });
@@ -264,6 +298,8 @@ public sealed class StaffListFilteringTests
 
     private static void SeedRentalsScenario(RentalDbContext dbContext)
     {
+        TestLookupSeed.SeedVehicleLookups(dbContext);
+
         dbContext.Employees.Add(new Employee
         {
             Id = 1,
@@ -300,6 +336,14 @@ public sealed class StaffListFilteringTests
                 Id = 40,
                 Make = "Skoda",
                 Model = "Octavia",
+                FuelType = "Бензин",
+                TransmissionType = "Автомат",
+                PowertrainCapacityValue = 1.8m,
+                PowertrainCapacityUnit = "L",
+                CargoCapacityValue = 600m,
+                CargoCapacityUnit = "L",
+                ConsumptionValue = 6.4m,
+                ConsumptionUnit = "L_PER_100KM",
                 LicensePlate = "AA9090TT",
                 Mileage = 15000,
                 DailyRate = 55m,
@@ -311,6 +355,14 @@ public sealed class StaffListFilteringTests
                 Id = 41,
                 Make = "Ford",
                 Model = "Focus",
+                FuelType = "Бензин",
+                TransmissionType = "Механіка",
+                PowertrainCapacityValue = 1.6m,
+                PowertrainCapacityUnit = "L",
+                CargoCapacityValue = 375m,
+                CargoCapacityUnit = "L",
+                ConsumptionValue = 6.1m,
+                ConsumptionUnit = "L_PER_100KM",
                 LicensePlate = "BB8080KK",
                 Mileage = 18000,
                 DailyRate = 50m,

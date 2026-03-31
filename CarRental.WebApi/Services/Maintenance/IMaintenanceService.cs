@@ -9,11 +9,14 @@ public interface IMaintenanceService
 
 public sealed record MaintenanceRequest(
     int VehicleId,
+    int? PerformedByEmployeeId,
     DateTime ServiceDate,
     int MileageAtService,
     string Description,
     decimal Cost,
-    int NextServiceMileage);
+    int NextServiceMileage,
+    string MaintenanceTypeCode,
+    string? ServiceProviderName);
 
 public sealed record MaintenanceResult(bool Success, string Message);
 

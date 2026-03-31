@@ -13,16 +13,21 @@ internal sealed class WebApiPostgresTestDatabase : IAsyncDisposable
     private readonly string _adminConnectionString;
     private readonly string _databaseName;
     private readonly DbContextOptions<RentalDbContext> _contextOptions;
+    private readonly string _connectionString;
 
     private WebApiPostgresTestDatabase(
         string adminConnectionString,
         string databaseName,
+        string connectionString,
         DbContextOptions<RentalDbContext> contextOptions)
     {
         _adminConnectionString = adminConnectionString;
         _databaseName = databaseName;
+        _connectionString = connectionString;
         _contextOptions = contextOptions;
     }
+
+    public string ConnectionString => _connectionString;
 
     public static async Task<WebApiPostgresTestDatabase> CreateAsync(bool applyMigrations = true)
     {
@@ -57,7 +62,7 @@ internal sealed class WebApiPostgresTestDatabase : IAsyncDisposable
             }
         }
 
-        return new WebApiPostgresTestDatabase(adminConnectionString, databaseName, contextOptions);
+        return new WebApiPostgresTestDatabase(adminConnectionString, databaseName, builder.ConnectionString, contextOptions);
     }
 
     public RentalDbContext CreateDbContext() => new(_contextOptions);

@@ -182,11 +182,17 @@
                                         </Grid.ColumnDefinitions>
                                         <DatePicker Grid.Column="0"
                                                     Margin="0,0,6,0"
+                                                    DisplayDateStart="{Binding MinStartDate, Mode=OneWay}"
                                                     SelectedDate="{Binding StartDate}" />
                                         <ComboBox Grid.Column="1"
                                                   ItemsSource="{Binding TimeOptions}"
                                                   SelectedItem="{Binding PickupTime}" />
                                     </Grid>
+                                    <TextBlock Margin="0,4,0,0"
+                                               Foreground="{StaticResource DangerBrush}"
+                                               Text="{Binding CheckoutStartDateValidationMessage}"
+                                               TextWrapping="Wrap"
+                                               Visibility="{Binding HasCheckoutStartDateValidationMessage, Converter={StaticResource BoolToVisibilityConverter}}" />
                                 </StackPanel>
 
                                 <StackPanel Grid.Row="2" Margin="0,0,0,10">
@@ -204,11 +210,17 @@
                                         </Grid.ColumnDefinitions>
                                         <DatePicker Grid.Column="0"
                                                     Margin="0,0,6,0"
+                                                    DisplayDateStart="{Binding MinEndDate, Mode=OneWay}"
                                                     SelectedDate="{Binding EndDate}" />
                                         <ComboBox Grid.Column="1"
                                                   ItemsSource="{Binding TimeOptions}"
                                                   SelectedItem="{Binding ReturnTime}" />
                                     </Grid>
+                                    <TextBlock Margin="0,4,0,0"
+                                               Foreground="{StaticResource DangerBrush}"
+                                               Text="{Binding CheckoutEndDateValidationMessage}"
+                                               TextWrapping="Wrap"
+                                               Visibility="{Binding HasCheckoutEndDateValidationMessage, Converter={StaticResource BoolToVisibilityConverter}}" />
                                 </StackPanel>
                             </Grid>
 
@@ -349,7 +361,7 @@
 
                     <Border Style="{StaticResource FilterSectionStyle}">
                         <StackPanel>
-                            <TextBlock Text="Ціна, €" Style="{StaticResource FilterHeaderTextStyle}" />
+                            <TextBlock Text="Ціна, грн" Style="{StaticResource FilterHeaderTextStyle}" />
                             <TextBlock Text="Вкажіть мінімальну та максимальну добову ставку або скористайтеся слайдерами."
                                        Style="{StaticResource FilterSubtleTextStyle}" />
                             <Grid Margin="0,12,0,8">
@@ -368,13 +380,13 @@
                                     <TextBox Text="{Binding MaxPriceInput, UpdateSourceTrigger=PropertyChanged}" />
                                 </StackPanel>
                             </Grid>
-                            <Slider Minimum="20"
-                                    Maximum="290"
+                            <Slider Minimum="1000"
+                                    Maximum="3500"
                                     Margin="0,4,0,8"
                                     Value="{Binding MinPriceValue, Mode=TwoWay}"
                                     primitives:Thumb.DragCompleted="PriceSlider_DragCompleted" />
-                            <Slider Minimum="20"
-                                    Maximum="290"
+                            <Slider Minimum="1000"
+                                    Maximum="3500"
                                     Margin="0,0,0,12"
                                     Value="{Binding MaxPriceValue, Mode=TwoWay}"
                                     primitives:Thumb.DragCompleted="PriceSlider_DragCompleted" />
@@ -703,7 +715,7 @@
                                 <DataGridTextColumn Header="Пробіг" Binding="{Binding MileageDisplay}" Width="130" />
                                 <DataGridTextColumn Header="Стан" Binding="{Binding Condition}" Width="*" />
                                 <DataGridTextColumn Header="Статус" Binding="{Binding AvailabilityDisplay}" Width="170" />
-                                <DataGridTextColumn Header="Тариф/доба" Binding="{Binding DailyRate, StringFormat={}{0:0} €}" Width="110" />
+                                <DataGridTextColumn Header="Тариф/доба" Binding="{Binding DailyRate, StringFormat={}{0:N0} грн}" Width="110" />
                                 <DataGridTemplateColumn Header="Дія" Width="120">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
@@ -846,11 +858,19 @@
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="100" />
                                         </Grid.ColumnDefinitions>
-                                        <DatePicker Grid.Column="0" SelectedDate="{Binding EndDate}" Margin="0,0,6,0" />
+                                        <DatePicker Grid.Column="0"
+                                                    Margin="0,0,6,0"
+                                                    DisplayDateStart="{Binding MinEndDate, Mode=OneWay}"
+                                                    SelectedDate="{Binding EndDate}" />
                                         <ComboBox Grid.Column="1"
                                                   ItemsSource="{Binding TimeOptions}"
                                                   SelectedItem="{Binding ReturnTime}" />
                                     </Grid>
+                                    <TextBlock Margin="0,4,0,0"
+                                               Foreground="{StaticResource DangerBrush}"
+                                               Text="{Binding CheckoutEndDateValidationMessage}"
+                                               TextWrapping="Wrap"
+                                               Visibility="{Binding HasCheckoutEndDateValidationMessage, Converter={StaticResource BoolToVisibilityConverter}}" />
                                 </StackPanel>
                             </Border>
 

@@ -2,180 +2,194 @@
 
 ## 1. Scope
 
-This package documents the database design and SQL artifacts for the car rental information system.
+This package describes the current business schema used by the car rental system after the deep schema redesign.
 
-Artifacts included:
+Included artifacts:
 
-- ER model and relationship map
-- normalization proof to 3NF
+- ER model with business and lookup entities only
+- normalization notes up to 3NF
 - PostgreSQL DDL script
 - seed DML script
 - analytical SQL queries and views
-- integrity trigger and stored function examples
+- integrity verification queries
+
+`__EFMigrationsHistory` and `ContractSequences` are intentionally excluded from the defense ER model because they are technical tables, not domain entities.
 
 ## 2. ER Diagram
 
 ```mermaid
 erDiagram
-    EMPLOYEES ||--o{ RENTALS : creates
-    EMPLOYEES ||--o{ PAYMENTS : records
-    CLIENTS ||--o{ RENTALS : has
+    ACCOUNTS ||--o| EMPLOYEES : authenticates
+    ACCOUNTS o|--o| CLIENTS : portal_profile
+    EMPLOYEE_ROLES ||--o{ EMPLOYEES : classifies
+
+    CLIENTS ||--o{ CLIENT_DOCUMENTS : owns
+    CLIENT_DOCUMENT_TYPES ||--o{ CLIENT_DOCUMENTS : classifies
+
+    FUEL_TYPES ||--o{ VEHICLES : classifies
+    TRANSMISSION_TYPES ||--o{ VEHICLES : classifies
+    VEHICLE_STATUSES ||--o{ VEHICLES : classifies
+    VEHICLES ||--o{ VEHICLE_PHOTOS : stores
+
+    CLIENTS ||--o{ RENTALS : rents
     VEHICLES ||--o{ RENTALS : assigned
+    EMPLOYEES ||--o{ RENTALS : created_by
+    EMPLOYEES o|--o{ RENTALS : closed_by
+    EMPLOYEES o|--o{ RENTALS : canceled_by
+    RENTAL_STATUSES ||--o{ RENTALS : classifies
+
+    RENTALS ||--o{ RENTAL_INSPECTIONS : inspected
+    INSPECTION_TYPES ||--o{ RENTAL_INSPECTIONS : classifies
+    EMPLOYEES ||--o{ RENTAL_INSPECTIONS : performs
+
     RENTALS ||--o{ PAYMENTS : contains
+    EMPLOYEES ||--o{ PAYMENTS : records
+    PAYMENT_METHODS ||--o{ PAYMENTS : classifies
+    PAYMENT_DIRECTIONS ||--o{ PAYMENTS : classifies
+    PAYMENT_STATUSES ||--o{ PAYMENTS : classifies
+
     VEHICLES ||--o{ DAMAGES : has
-    RENTALS o|--o{ DAMAGES : may-link
+    RENTALS o|--o{ DAMAGES : may_link
+    EMPLOYEES ||--o{ DAMAGES : reports
+    DAMAGE_STATUSES ||--o{ DAMAGES : classifies
+    DAMAGES ||--o{ DAMAGE_PHOTOS : stores
+
     VEHICLES ||--o{ MAINTENANCE_RECORDS : has
-
-    EMPLOYEES {
-        int Id PK
-        string Login UK
-        string FullName
-        string PasswordHash
-        int Role
-        bool IsActive
-        int FailedLoginAttempts
-    }
-
-    CLIENTS {
-        int Id PK
-        string DriverLicense UK
-        string FullName
-        string PassportData
-        string Phone
-        bool Blacklisted
-    }
-
-    VEHICLES {
-        int Id PK
-        string LicensePlate UK
-        string Make
-        string Model
-        int Mileage
-        decimal DailyRate
-        bool IsAvailable
-        int ServiceIntervalKm
-    }
-
-    RENTALS {
-        int Id PK
-        string ContractNumber UK
-        int ClientId FK
-        int VehicleId FK
-        int EmployeeId FK
-        datetime StartDate
-        datetime EndDate
-        int StartMileage
-        int EndMileage
-        decimal TotalAmount
-        int Status
-        bool IsClosed
-    }
-
-    PAYMENTS {
-        int Id PK
-        int RentalId FK
-        int EmployeeId FK
-        decimal Amount
-        int Method
-        int Direction
-        datetime CreatedAtUtc
-    }
-
-    DAMAGES {
-        int Id PK
-        int VehicleId FK
-        int RentalId FK NULL
-        string ActNumber UK
-        decimal RepairCost
-        decimal ChargedAmount
-        bool IsChargedToClient
-        int Status
-    }
-
-    MAINTENANCE_RECORDS {
-        int Id PK
-        int VehicleId FK
-        datetime ServiceDate
-        int MileageAtService
-        int NextServiceMileage
-        decimal Cost
-    }
-
-    CONTRACT_SEQUENCES {
-        int Id PK
-        int Year UK
-        int LastNumber
-    }
+    EMPLOYEES o|--o{ MAINTENANCE_RECORDS : performs
+    MAINTENANCE_TYPES ||--o{ MAINTENANCE_RECORDS : classifies
 ```
 
-## 3. Normalization
+Optionality notes used in the defense model:
 
-### 3.1 1NF
+- `Clients.AccountId` is `0..1`
+- `Rentals.ClosedByEmployeeId` is `0..1`
+- `Rentals.CanceledByEmployeeId` is `0..1`
+- `Rentals.EndMileage` is `0..1`
+- `Rentals.ClosedAtUtc` is `0..1`
+- `Rentals.CanceledAtUtc` is `0..1`
+- `Rentals.CancellationReason` is `0..1`
+- `Damages.RentalId` is `0..1`
+- `MaintenanceRecords.PerformedByEmployeeId` is `0..1`
+- `MaintenanceRecords.ServiceProviderName` is `0..1`
+- `Payments.ExternalTransactionId` is `0..1`
+
+## 3. Lookup Legend
+
+Lookup tables replace opaque integers in the defense model:
+
+| Lookup table | Values |
+| --- | --- |
+| `EmployeeRoles` | `1=Admin`, `2=Manager`, `3=User` |
+| `RentalStatuses` | `1=Booked`, `2=Active`, `3=Closed`, `4=Canceled` |
+| `PaymentMethods` | `1=Cash`, `2=Card` |
+| `PaymentDirections` | `1=Incoming`, `2=Refund` |
+| `PaymentStatuses` | `1=Pending`, `2=Completed`, `3=Canceled`, `4=Refunded` |
+| `InspectionTypes` | `1=Pickup`, `2=Return` |
+| `DamageStatuses` | `1=Open`, `2=Charged`, `3=Resolved` |
+| `VehicleStatuses` | `READY`, `RENTED`, `MAINTENANCE`, `DAMAGED`, `INACTIVE` |
+| `ClientDocumentTypes` | `PASSPORT`, `DRIVER_LICENSE` |
+| `MaintenanceTypes` | `SCHEDULED`, `REPAIR`, `TIRES`, `INSPECTION` |
+
+## 4. Business Tables
+
+### 4.1 Accounts and people
+
+- `Accounts` stores authentication state only.
+- `Employees` stores staff profile and role.
+- `Clients` stores customer profile, blacklist state, and optional portal linkage.
+- `ClientDocuments` stores passport and driver-license facts as separate rows with `ExpirationDate date`.
+
+### 4.2 Fleet
+
+- `Vehicles` stores atomic technical characteristics plus lookup-based status.
+- `VehiclePhotos` stores one-to-many vehicle images.
+- Availability is not persisted; it is computed from:
+  - `NOT Vehicles.IsDeleted`
+  - `Vehicles.VehicleStatusCode = 'READY'`
+  - no overlapping `Booked` or `Active` rental for the selected period
+
+### 4.3 Operations
+
+- `Rentals` keeps the lifecycle through `Status`, `ClosedAtUtc`, `CanceledAtUtc`, and actor FKs.
+- `RentalInspections` stores pickup and return inspections separately.
+- `Payments` stores method, direction, status, and optional external transaction id.
+- `Damages` keeps repair and charge facts, with DB-level consistency between `RentalId` and `VehicleId`.
+- `DamagePhotos` stores one-to-many evidence images.
+- `MaintenanceRecords` stores service events with optional performer and provider.
+
+## 5. Normalization
+
+### 5.1 1NF
 
 All persisted attributes are atomic:
 
-- no array/list columns are stored in base tables;
-- each row represents one business fact;
-- one-to-many relationships are modeled through separate tables and FKs.
+- no UI-ready spec strings are stored in `Vehicles`;
+- client documents are separated into `ClientDocuments`;
+- vehicle and damage media are separated into `VehiclePhotos` and `DamagePhotos`;
+- inspection stages are stored as separate `RentalInspections` rows.
 
-### 3.2 2NF
+### 5.2 2NF
 
-All base tables use a single-column surrogate primary key (`Id`), so partial dependency on composite keys does not occur.
+All main transactional relations use a single-column surrogate key (`Id`) or a stable lookup key (`Code`), so partial dependency on a composite key does not occur.
 
-### 3.3 3NF
+### 5.3 3NF
 
-| Relation | Key | Non-key attributes | Main FDs | 3NF result |
-| --- | --- | --- | --- | --- |
-| `Employees` | `Id` | login, profile, role, activity, auth timestamps | `Id -> ...`, `Login -> Id` | no transitive dependency between non-key attributes |
-| `Clients` | `Id` | identity and contact fields | `Id -> ...`, `DriverLicense -> Id` | no transitive dependency inside relation |
-| `Vehicles` | `Id` | plate, make, model, mileage, rate, availability | `Id -> ...`, `LicensePlate -> Id` | no transitive dependency inside relation |
-| `Rentals` | `Id` | FK refs, contract/date/mileage/status/amount fields | `Id -> ...`, `ContractNumber -> Id` | no non-key attribute determines another non-key attribute |
-| `Payments` | `Id` | rental, employee, amount, method, direction, time, notes | `Id -> ...` | referenced entities are not duplicated |
-| `Damages` | `Id` | vehicle, rental, act, repair/charge fields, status | `Id -> ...`, `ActNumber -> Id` | no transitive dependency inside relation |
-| `MaintenanceRecords` | `Id` | vehicle, service date, mileage, cost, next mileage, description | `Id -> ...` | no transitive dependency inside relation |
-| `ContractSequences` | `Id` | year, last number | `Id -> ...`, `Year -> Id` | no transitive dependency inside relation |
+| Relation | Key | 3NF result |
+| --- | --- | --- |
+| `Accounts` | `Id` | authentication state is isolated from business profiles |
+| `Employees` | `Id` | staff profile depends only on employee key; role meaning is delegated to lookup |
+| `Clients` | `Id` | customer profile depends only on client key; documents are separated |
+| `ClientDocuments` | `Id` | one document fact per row, typed by lookup |
+| `Vehicles` | `Id` | technical characteristics and status depend only on vehicle key |
+| `Rentals` | `Id` | lifecycle and actors are explicit, without duplicated boolean flags |
+| `Payments` | `Id` | payment event facts are isolated from rental header data |
+| `Damages` | `Id` | charge semantics are derived from `Status` and `ChargedAmount`, not duplicated booleans |
+| `MaintenanceRecords` | `Id` | service facts depend only on the maintenance record key |
 
-Decomposition notes:
+## 6. Integrity Rules
 
-- payments are separated from rentals to avoid repeating payment groups;
-- damages are separated from rentals to avoid nullable repeating damage columns;
-- maintenance history is separated from vehicles to avoid repeating service groups;
-- balance and debt are computed in queries/views instead of stored as mutable duplicates.
+Implemented through `FK`, `UNIQUE`, filtered indexes, `CHECK`, and a PostgreSQL exclusion constraint:
 
-Note: `Vehicles.IsAvailable` is a controlled denormalized cache used for faster filtering and kept in sync by service logic and DB triggers.
-
-## 4. Integrity Rules
-
-Implemented through CHECK, FK, UNIQUE constraints and indexes:
-
+- `Accounts.Login` is unique
+- `Employees.AccountId` is unique
+- `Clients.AccountId` is unique when present
+- `Clients.Phone` is unique among non-deleted clients
+- `(ClientDocuments.DocumentTypeCode, ClientDocuments.DocumentNumber)` is unique among non-deleted documents
+- `Vehicles.LicensePlate` is unique among non-deleted vehicles
+- `Rentals.ContractNumber` is unique
+- `Damages.ActNumber` is unique
+- `Payments.ExternalTransactionId` is unique when present
+- `(RentalInspections.RentalId, RentalInspections.Type)` is unique
+- `(VehiclePhotos.VehicleId, VehiclePhotos.SortOrder)` and `(DamagePhotos.DamageId, DamagePhotos.SortOrder)` are unique
 - `Rentals.StartDate <= Rentals.EndDate`
-- non-negative money and mileage
-- enum range validation for roles, statuses, methods, directions
-- `Damages.ChargedAmount` consistency with `IsChargedToClient`
-- unique keys for login, license plate, contract number and damage act number
+- `Rentals.EndMileage >= Rentals.StartMileage`
+- `FuelPercent` stays in `0..100`
+- non-negative money and mileage are enforced
+- `Damages.Status` stays consistent with `ChargedAmount`
+- `Damages (RentalId, VehicleId)` must match the linked rental
+- no overlapping `Booked` or `Active` rentals exist for the same vehicle
 
-See executable SQL scripts in [sql](../sql) and runtime migrations in `CarRental.WebApi`.
+## 7. Time Model
 
-## 5. Transaction and Concurrency Design
+The schema follows one rule set:
 
-- rental creation runs in a serializable transaction
-- PostgreSQL path uses advisory lock per `VehicleId`
-- transient serialization and lock conflicts are retried in service logic
+- all `...Utc` columns use `timestamp with time zone`
+- operational local-time facts keep `timestamp without time zone`
+- document expiration uses `date`
 
-## 6. SQL Package
+This removes the mismatch where UTC was claimed by naming but not guaranteed by type.
 
-- `sql/01_schema_postgres.sql` — DDL, constraints, functions, triggers
-- `sql/02_seed_postgres.sql` — minimal seed data
-- `sql/03_views_and_reports.sql` — views and analytical queries
-- `sql/04_integrity_checks.sql` — verification queries
+## 8. SQL Package
 
-## 7. Defense Checklist
+- `sql/01_schema_postgres.sql` - DDL, lookup tables, constraints, indexes, exclusion constraint, helper function
+- `sql/02_seed_postgres.sql` - minimal seed data aligned with the redesigned schema
+- `sql/03_views_and_reports.sql` - views and analytical queries
+- `sql/04_integrity_checks.sql` - verification queries for defense and smoke checks
 
-- [x] ER model
-- [x] normalization to 3NF
-- [x] DDL script
-- [x] DML script
-- [x] complex SELECT/report queries
-- [x] trigger/function examples
-- [x] constraints and indexes
-- [x] migration-based reproducibility
+## 9. Defense Notes
+
+- show business and lookup entities only on the final ER diagram
+- do not show `__EFMigrationsHistory`
+- do not show `ContractSequences` on the defense ER diagram; explain it separately as a technical contract-number counter
+- explain availability as a computed read-model rule, not a stored fact
+- explain that authentication is separated into `Accounts`, while `Employees` and `Clients` keep business profiles

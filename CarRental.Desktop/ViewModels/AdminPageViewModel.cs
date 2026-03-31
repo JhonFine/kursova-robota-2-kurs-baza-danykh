@@ -1,4 +1,5 @@
 ﻿using CarRental.Desktop.Data;
+using CarRental.Desktop.Infrastructure;
 using CarRental.Desktop.Models;
 using CarRental.Desktop.Services.Auth;
 using CommunityToolkit.Mvvm.Input;
@@ -263,22 +264,22 @@ public sealed class AdminPageViewModel : PageDataViewModelBase, ITransientStateO
         try
         {
             var selectedEmployeeId = SelectedEmployee?.Id;
-            var employees = await _dbContext.Employees
-                .AsNoTracking()
+            var employees = await StaffVisibilityQuery.VisibleStaff(_dbContext)
                 .OrderBy(item => item.FullName)
+                .Select(item => new EmployeeRow(
+                    item.Id,
+                    item.FullName,
+                    item.Account != null ? item.Account.Login : string.Empty,
+                    item.Role,
+                    item.Account != null && item.Account.IsActive,
+                    item.Account != null ? item.Account.LockoutUntilUtc : null,
+                    item.Account != null ? item.Account.LastLoginUtc : null))
                 .ToListAsync();
 
             Employees.Clear();
             foreach (var employee in employees)
             {
-                Employees.Add(new EmployeeRow(
-                    employee.Id,
-                    employee.FullName,
-                    employee.Login,
-                    employee.Role,
-                    employee.IsActive,
-                    employee.LockoutUntilUtc,
-                    employee.LastLoginUtc));
+                Employees.Add(employee);
             }
 
             UpdateStatistics();

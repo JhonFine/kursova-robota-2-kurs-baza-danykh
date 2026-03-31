@@ -328,14 +328,32 @@ public partial class App : Application
     {
         try
         {
-            dbContext.Database.ExecuteSqlRaw("SELECT 1 FROM \"Employees\" LIMIT 1;");
-            dbContext.Database.ExecuteSqlRaw("SELECT 1 FROM \"Clients\" LIMIT 1;");
-            dbContext.Database.ExecuteSqlRaw("SELECT 1 FROM \"Vehicles\" LIMIT 1;");
+            var requiredChecks = new[]
+            {
+                "SELECT 1 FROM \"Accounts\" LIMIT 1;",
+                "SELECT 1 FROM \"Employees\" LIMIT 1;",
+                "SELECT 1 FROM \"Clients\" LIMIT 1;",
+                "SELECT 1 FROM \"ClientDocuments\" LIMIT 1;",
+                "SELECT 1 FROM \"Vehicles\" LIMIT 1;",
+                "SELECT 1 FROM \"VehiclePhotos\" LIMIT 1;",
+                "SELECT 1 FROM \"Damages\" LIMIT 1;",
+                "SELECT 1 FROM \"DamagePhotos\" LIMIT 1;",
+                "SELECT 1 FROM \"Payments\" LIMIT 1;",
+                "SELECT 1 FROM \"MaintenanceRecords\" LIMIT 1;",
+                "SELECT \"CreatedByEmployeeId\" FROM \"Rentals\" LIMIT 1;",
+                "SELECT \"VehicleStatusCode\" FROM \"Vehicles\" LIMIT 1;",
+                "SELECT \"ReportedByEmployeeId\" FROM \"Damages\" LIMIT 1;"
+            };
+
+            foreach (var sql in requiredChecks)
+            {
+                dbContext.Database.ExecuteSqlRaw(sql);
+            }
         }
         catch (Exception exception)
         {
             throw new InvalidOperationException(
-                "PostgreSQL schema is not initialized. Run RunWeb.ps1 or FactoryReset.ps1 to apply WebApi migrations, then retry desktop startup.",
+                "PostgreSQL schema is outdated or incomplete for the desktop app. Run RunWeb.ps1 or FactoryReset.ps1 to apply current WebApi migrations, then retry desktop startup.",
                 exception);
         }
     }

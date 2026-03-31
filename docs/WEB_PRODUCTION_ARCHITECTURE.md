@@ -15,21 +15,37 @@ Desktop and Web API write to the same PostgreSQL schema. Web API applies EF Core
 
 `RentalDbContext` in `CarRental.WebApi` defines the runtime model for:
 
+- `Accounts`
 - `Employees`
+- `EmployeeRoles`
 - `Clients`
+- `ClientDocuments`
+- `ClientDocumentTypes`
 - `Vehicles`
+- `VehiclePhotos`
+- `VehicleStatuses`
 - `Rentals`
+- `RentalStatuses`
+- `RentalInspections`
+- `InspectionTypes`
 - `Payments`
+- `PaymentMethods`
+- `PaymentDirections`
+- `PaymentStatuses`
 - `Damages`
+- `DamagePhotos`
+- `DamageStatuses`
 - `MaintenanceRecords`
+- `MaintenanceTypes`
 - `ContractSequences`
 
 Implemented integrity mechanisms:
 
-- unique keys for `Employees.Login`, `Clients.DriverLicense`, `Vehicles.LicensePlate`, `Rentals.ContractNumber`, `ContractSequences.Year`
+- unique keys for `Accounts.Login`, active `ClientDocuments`, active `Clients.Phone`, `Vehicles.LicensePlate`, `Rentals.ContractNumber`, `Damages.ActNumber`, `ContractSequences.Year`
 - FK constraints with explicit delete behavior
 - money precision via `decimal(10,2)`
-- enum storage as integers
+- integer enums replaced by lookup tables or code-based reference tables
+- computed vehicle availability based on `VehicleStatusCode`, soft delete, and conflicting rentals
 - query indexes for rentals, payments, damages, maintenance, vehicles, clients, employees
 
 ## 3. Security

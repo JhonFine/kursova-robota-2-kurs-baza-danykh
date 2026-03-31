@@ -1,3 +1,4 @@
+using CarRental.Shared.ReferenceData;
 using CarRental.WebApi.Contracts;
 using CarRental.WebApi.Data;
 using CarRental.WebApi.Infrastructure;
@@ -5,7 +6,6 @@ using CarRental.WebApi.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
 using System.IO;
 
 namespace CarRental.WebApi.Controllers;
@@ -28,8 +28,13 @@ public sealed class VehiclesController(RentalDbContext dbContext) : ApiControlle
         CancellationToken cancellationToken)
     {
         var pagination = PaginationExtensions.Normalize(page, pageSize);
+        var activeRentalVehicleIdsQuery = dbContext.Rentals
+            .AsNoTracking()
+            .Where(item => item.Status == RentalStatus.Active)
+            .Select(item => item.VehicleId);
         var query = dbContext.Vehicles
             .AsNoTracking()
+            .Include(item => item.Photos)
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -43,7 +48,15 @@ public sealed class VehiclesController(RentalDbContext dbContext) : ApiControlle
 
         if (availability.HasValue)
         {
-            query = query.Where(item => item.IsAvailable == availability.Value);
+            query = availability.Value
+                ? query.Where(item =>
+                    !item.IsDeleted &&
+                    item.VehicleStatusCode == VehicleStatuses.Ready &&
+                    !activeRentalVehicleIdsQuery.Contains(item.Id))
+                : query.Where(item =>
+                    item.IsDeleted ||
+                    item.VehicleStatusCode != VehicleStatuses.Ready ||
+                    activeRentalVehicleIdsQuery.Contains(item.Id));
         }
 
         query = ApplyVehicleClassFilter(query, vehicleClass);
@@ -55,12 +68,12 @@ public sealed class VehiclesController(RentalDbContext dbContext) : ApiControlle
             Response.ApplyPaginationHeaders(pagination.Value, totalCount);
         }
 
+        var activeRentalVehicleIds = (await activeRentalVehicleIdsQuery.ToListAsync(cancellationToken)).ToHashSet();
         var vehicles = await query
             .ApplyPagination(pagination)
-            .Select(item => ToDto(item))
             .ToListAsync(cancellationToken);
 
-        return Ok(vehicles);
+        return Ok(vehicles.Select(item => item.ToDto(IsVehicleAvailable(item, activeRentalVehicleIds))).ToList());
     }
 
     [Authorize(Policy = ApiAuthorization.ManageRentals)]
@@ -69,13 +82,20 @@ public sealed class VehiclesController(RentalDbContext dbContext) : ApiControlle
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(int id, CancellationToken cancellationToken)
     {
+        var activeRentalVehicleIds = (await dbContext.Rentals
+            .AsNoTracking()
+            .Where(item => item.Status == RentalStatus.Active)
+            .Select(item => item.VehicleId)
+            .ToListAsync(cancellationToken)).ToHashSet();
+
         var vehicle = await dbContext.Vehicles
             .AsNoTracking()
-            .Where(item => item.Id == id)
-            .Select(item => ToDto(item))
-            .FirstOrDefaultAsync(cancellationToken);
+            .Include(item => item.Photos)
+            .FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
 
-        return vehicle is null ? NotFound() : Ok(vehicle);
+        return vehicle is null
+            ? NotFound()
+            : Ok(vehicle.ToDto(IsVehicleAvailable(vehicle, activeRentalVehicleIds)));
     }
 
     [AllowAnonymous]
@@ -84,10 +104,12 @@ public sealed class VehiclesController(RentalDbContext dbContext) : ApiControlle
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetPhoto(int id, CancellationToken cancellationToken)
     {
-        var photoPath = await dbContext.Vehicles
+        var photoPath = await dbContext.VehiclePhotos
             .AsNoTracking()
-            .Where(item => item.Id == id)
-            .Select(item => item.PhotoPath)
+            .Where(item => item.VehicleId == id)
+            .OrderByDescending(item => item.IsPrimary)
+            .ThenBy(item => item.SortOrder)
+            .Select(item => item.StoredPath)
             .FirstOrDefaultAsync(cancellationToken);
 
         if (string.IsNullOrWhiteSpace(photoPath))
@@ -108,39 +130,41 @@ public sealed class VehiclesController(RentalDbContext dbContext) : ApiControlle
     [Authorize(Policy = ApiAuthorization.ManageFleet)]
     [HttpPost]
     [ProducesResponseType<VehicleDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Create([FromBody] VehicleUpsertRequest request, CancellationToken cancellationToken)
     {
-        var normalizedPlate = request.LicensePlate.Trim().ToUpperInvariant();
-        var plateExists = await dbContext.Vehicles
-            .AnyAsync(item => item.LicensePlate == normalizedPlate, cancellationToken);
-        if (plateExists)
+        var validation = await ValidateVehicleRequestAsync(request, null, cancellationToken);
+        if (!validation.Success)
         {
-            return Conflict(new { message = "License plate already exists." });
-        }
-
-        if (!VehiclePhotoCatalog.TryNormalizeStoredPhotoPath(request.PhotoPath, requireFileExists: true, out var normalizedPhotoPath))
-        {
-            return BadRequest(new { message = "Invalid photo path. Only files from /images/vehicles are allowed." });
+            return BuildVehicleValidationResult(validation.ConflictMessage, validation.ErrorMessage);
         }
 
         var entity = new Vehicle
         {
             Make = request.Make.Trim(),
             Model = request.Model.Trim(),
-            EngineDisplay = request.EngineDisplay.Trim(),
-            FuelType = request.FuelType.Trim(),
-            TransmissionType = request.TransmissionType.Trim(),
+            PowertrainCapacityValue = request.PowertrainCapacityValue,
+            PowertrainCapacityUnit = validation.PowertrainUnit,
+            FuelTypeCode = validation.FuelTypeCode!,
+            TransmissionTypeCode = validation.TransmissionTypeCode!,
+            VehicleStatusCode = validation.VehicleStatusCode!,
             DoorsCount = request.DoorsCount,
-            CargoCapacityDisplay = request.CargoCapacityDisplay.Trim(),
-            ConsumptionDisplay = request.ConsumptionDisplay.Trim(),
+            CargoCapacityValue = request.CargoCapacityValue,
+            CargoCapacityUnit = validation.CargoCapacityUnit,
+            ConsumptionValue = request.ConsumptionValue,
+            ConsumptionUnit = validation.ConsumptionUnit,
             HasAirConditioning = request.HasAirConditioning,
-            LicensePlate = normalizedPlate,
+            LicensePlate = validation.NormalizedPlate!,
             Mileage = request.Mileage,
             DailyRate = request.DailyRate,
-            IsAvailable = request.IsAvailable,
             ServiceIntervalKm = request.ServiceIntervalKm,
-            PhotoPath = normalizedPhotoPath
+            Photos = validation.Photos.Select((item, index) => new VehiclePhoto
+            {
+                StoredPath = item.StoredPath,
+                SortOrder = item.SortOrder == 0 && validation.Photos.Count == 1 ? 0 : item.SortOrder,
+                IsPrimary = item.IsPrimary || (validation.Photos.Count == 1 && index == 0)
+            }).ToList()
         };
 
         dbContext.Vehicles.Add(entity);
@@ -153,50 +177,59 @@ public sealed class VehiclesController(RentalDbContext dbContext) : ApiControlle
             return Conflict(new { message = "License plate already exists." });
         }
 
-        return CreatedAtAction(nameof(GetById), new { id = entity.Id }, ToDto(entity));
+        return CreatedAtAction(nameof(GetById), new { id = entity.Id }, entity.ToDto(entity.IsAvailable));
     }
 
     [Authorize(Policy = ApiAuthorization.ManageFleet)]
     [HttpPut("{id:int}")]
     [ProducesResponseType<VehicleDto>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Update(int id, [FromBody] VehicleUpsertRequest request, CancellationToken cancellationToken)
     {
-        var entity = await dbContext.Vehicles.FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
+        var entity = await dbContext.Vehicles
+            .Include(item => item.Photos)
+            .FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
         if (entity is null)
         {
             return NotFound();
         }
 
-        var normalizedPlate = request.LicensePlate.Trim().ToUpperInvariant();
-        var plateExists = await dbContext.Vehicles
-            .AnyAsync(item => item.Id != id && item.LicensePlate == normalizedPlate, cancellationToken);
-        if (plateExists)
+        var validation = await ValidateVehicleRequestAsync(request, id, cancellationToken);
+        if (!validation.Success)
         {
-            return Conflict(new { message = "License plate already exists." });
-        }
-
-        if (!VehiclePhotoCatalog.TryNormalizeStoredPhotoPath(request.PhotoPath, requireFileExists: true, out var normalizedPhotoPath))
-        {
-            return BadRequest(new { message = "Invalid photo path. Only files from /images/vehicles are allowed." });
+            return BuildVehicleValidationResult(validation.ConflictMessage, validation.ErrorMessage);
         }
 
         entity.Make = request.Make.Trim();
         entity.Model = request.Model.Trim();
-        entity.EngineDisplay = request.EngineDisplay.Trim();
-        entity.FuelType = request.FuelType.Trim();
-        entity.TransmissionType = request.TransmissionType.Trim();
+        entity.PowertrainCapacityValue = request.PowertrainCapacityValue;
+        entity.PowertrainCapacityUnit = validation.PowertrainUnit;
+        entity.FuelTypeCode = validation.FuelTypeCode!;
+        entity.TransmissionTypeCode = validation.TransmissionTypeCode!;
+        entity.VehicleStatusCode = validation.VehicleStatusCode!;
         entity.DoorsCount = request.DoorsCount;
-        entity.CargoCapacityDisplay = request.CargoCapacityDisplay.Trim();
-        entity.ConsumptionDisplay = request.ConsumptionDisplay.Trim();
+        entity.CargoCapacityValue = request.CargoCapacityValue;
+        entity.CargoCapacityUnit = validation.CargoCapacityUnit;
+        entity.ConsumptionValue = request.ConsumptionValue;
+        entity.ConsumptionUnit = validation.ConsumptionUnit;
         entity.HasAirConditioning = request.HasAirConditioning;
-        entity.LicensePlate = normalizedPlate;
+        entity.LicensePlate = validation.NormalizedPlate!;
         entity.Mileage = request.Mileage;
         entity.DailyRate = request.DailyRate;
-        entity.IsAvailable = request.IsAvailable;
         entity.ServiceIntervalKm = request.ServiceIntervalKm;
-        entity.PhotoPath = normalizedPhotoPath;
+        entity.Photos.Clear();
+        foreach (var (photo, index) in validation.Photos.Select((item, index) => (item, index)))
+        {
+            entity.Photos.Add(new VehiclePhoto
+            {
+                VehicleId = entity.Id,
+                StoredPath = photo.StoredPath,
+                SortOrder = photo.SortOrder == 0 && validation.Photos.Count == 1 ? 0 : photo.SortOrder,
+                IsPrimary = photo.IsPrimary || (validation.Photos.Count == 1 && index == 0)
+            });
+        }
 
         try
         {
@@ -207,7 +240,10 @@ public sealed class VehiclesController(RentalDbContext dbContext) : ApiControlle
             return Conflict(new { message = "License plate already exists." });
         }
 
-        return Ok(ToDto(entity));
+        var hasActiveRental = await HasActiveRentalAsync(id, cancellationToken);
+        return Ok(entity.ToDto(!hasActiveRental &&
+                               !entity.IsDeleted &&
+                               string.Equals(entity.VehicleStatusCode, VehicleStatuses.Ready, StringComparison.OrdinalIgnoreCase)));
     }
 
     [Authorize(Policy = ApiAuthorization.ManagePricing)]
@@ -216,7 +252,9 @@ public sealed class VehiclesController(RentalDbContext dbContext) : ApiControlle
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> UpdateRate(int id, [FromBody] UpdateVehicleRateRequest request, CancellationToken cancellationToken)
     {
-        var entity = await dbContext.Vehicles.FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
+        var entity = await dbContext.Vehicles
+            .Include(item => item.Photos)
+            .FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
         if (entity is null)
         {
             return NotFound();
@@ -224,14 +262,15 @@ public sealed class VehiclesController(RentalDbContext dbContext) : ApiControlle
 
         entity.DailyRate = request.DailyRate;
         await dbContext.SaveChangesAsync(cancellationToken);
-        return Ok(ToDto(entity));
+        return Ok(entity.ToDto(!await HasActiveRentalAsync(id, cancellationToken) &&
+                               !entity.IsDeleted &&
+                               string.Equals(entity.VehicleStatusCode, VehicleStatuses.Ready, StringComparison.OrdinalIgnoreCase)));
     }
 
     [Authorize(Policy = ApiAuthorization.DeleteRecords)]
     [HttpDelete("{id:int}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken)
     {
         var entity = await dbContext.Vehicles.FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
@@ -240,44 +279,178 @@ public sealed class VehiclesController(RentalDbContext dbContext) : ApiControlle
             return NotFound();
         }
 
-        var hasRentals = await dbContext.Rentals.AnyAsync(item => item.VehicleId == id, cancellationToken);
-        if (hasRentals)
-        {
-            return Conflict(new { message = "Cannot delete vehicle with rentals history." });
-        }
-
         dbContext.Vehicles.Remove(entity);
         await dbContext.SaveChangesAsync(cancellationToken);
         return NoContent();
     }
 
-    private static VehicleDto ToDto(Vehicle vehicle)
-        => new(
-            vehicle.Id,
-            vehicle.Make,
-            vehicle.Model,
-            vehicle.EngineDisplay,
-            vehicle.FuelType,
-            vehicle.TransmissionType,
-            vehicle.DoorsCount,
-            vehicle.CargoCapacityDisplay,
-            vehicle.ConsumptionDisplay,
-            vehicle.HasAirConditioning,
-            vehicle.LicensePlate,
-            vehicle.Mileage,
-            vehicle.DailyRate,
-            vehicle.IsAvailable,
-            vehicle.ServiceIntervalKm,
-            vehicle.PhotoPath);
+    private async Task<VehicleRequestValidationResult> ValidateVehicleRequestAsync(
+        VehicleUpsertRequest request,
+        int? currentVehicleId,
+        CancellationToken cancellationToken)
+    {
+        var normalizedPlate = VehicleDomainRules.NormalizeLicensePlate(request.LicensePlate);
+        var normalizedFuelTypeCode = request.ResolveFuelTypeCode();
+        var normalizedTransmissionTypeCode = request.ResolveTransmissionTypeCode();
+        var normalizedVehicleStatusCode = request.ResolveVehicleStatusCode();
+        var powertrainUnit = request.PowertrainCapacityUnit.Trim().ToUpperInvariant();
+        var cargoCapacityUnit = request.CargoCapacityUnit.Trim().ToUpperInvariant();
+        var consumptionUnit = request.ConsumptionUnit.Trim().ToUpperInvariant();
+
+        if (!VehicleDomainRules.IsValidLicensePlate(normalizedPlate))
+        {
+            return VehicleRequestValidationResult.Fail("Invalid license plate format. Use AA1234BB.");
+        }
+
+        if (!VehicleSpecificationUnits.IsValidPowertrainUnit(powertrainUnit))
+        {
+            return VehicleRequestValidationResult.Fail("Invalid powertrain capacity unit.");
+        }
+
+        if (!VehicleSpecificationUnits.IsValidCargoUnit(cargoCapacityUnit))
+        {
+            return VehicleRequestValidationResult.Fail("Invalid cargo capacity unit.");
+        }
+
+        if (!VehicleSpecificationUnits.IsValidConsumptionUnit(consumptionUnit))
+        {
+            return VehicleRequestValidationResult.Fail("Invalid consumption unit.");
+        }
+
+        if (string.IsNullOrWhiteSpace(normalizedFuelTypeCode) ||
+            !await dbContext.FuelTypes.AnyAsync(item => item.Code == normalizedFuelTypeCode, cancellationToken))
+        {
+            return VehicleRequestValidationResult.Fail("Unknown fuel type.");
+        }
+
+        if (string.IsNullOrWhiteSpace(normalizedTransmissionTypeCode) ||
+            !await dbContext.TransmissionTypes.AnyAsync(item => item.Code == normalizedTransmissionTypeCode, cancellationToken))
+        {
+            return VehicleRequestValidationResult.Fail("Unknown transmission type.");
+        }
+
+        if (string.IsNullOrWhiteSpace(normalizedVehicleStatusCode) ||
+            !await dbContext.VehicleStatuses.AnyAsync(item => item.Code == normalizedVehicleStatusCode, cancellationToken))
+        {
+            return VehicleRequestValidationResult.Fail("Unknown vehicle status.");
+        }
+
+        var plateExists = await dbContext.Vehicles
+            .AnyAsync(item => item.Id != currentVehicleId && item.LicensePlate == normalizedPlate, cancellationToken);
+        if (plateExists)
+        {
+            return VehicleRequestValidationResult.Conflict("License plate already exists.");
+        }
+
+        if (!TryNormalizeVehiclePhotos(request.ResolvePhotos(), out var photos, out var errorMessage))
+        {
+            return VehicleRequestValidationResult.Fail(errorMessage ?? "Vehicle photos are invalid.");
+        }
+
+        return VehicleRequestValidationResult.SuccessResult(
+            normalizedPlate,
+            normalizedFuelTypeCode,
+            normalizedTransmissionTypeCode,
+            normalizedVehicleStatusCode,
+            powertrainUnit,
+            cargoCapacityUnit,
+            consumptionUnit,
+            photos);
+    }
+
+    private static bool TryNormalizeVehiclePhotos(
+        IReadOnlyList<MediaAssetUpsertRequest> requests,
+        out IReadOnlyList<MediaAssetUpsertRequest> normalized,
+        out string? errorMessage)
+    {
+        normalized = Array.Empty<MediaAssetUpsertRequest>();
+        errorMessage = null;
+        var photos = new List<MediaAssetUpsertRequest>();
+
+        foreach (var request in requests)
+        {
+            if (!VehiclePhotoCatalog.TryNormalizeStoredPhotoPath(request.StoredPath, requireFileExists: true, out var storedPath))
+            {
+                errorMessage = "Invalid photo path. Only files from /images/vehicles are allowed.";
+                return false;
+            }
+
+            photos.Add(new MediaAssetUpsertRequest
+            {
+                StoredPath = storedPath!,
+                SortOrder = request.SortOrder,
+                IsPrimary = request.IsPrimary
+            });
+        }
+
+        if (photos.Count > 0 && photos.All(item => !item.IsPrimary))
+        {
+            photos[0].IsPrimary = true;
+        }
+
+        normalized = photos;
+        return true;
+    }
+
+    private static bool IsVehicleAvailable(Vehicle vehicle, IReadOnlySet<int> activeRentalVehicleIds)
+        => !vehicle.IsDeleted &&
+           string.Equals(vehicle.VehicleStatusCode, VehicleStatuses.Ready, StringComparison.OrdinalIgnoreCase) &&
+           !activeRentalVehicleIds.Contains(vehicle.Id);
+
+    private Task<bool> HasActiveRentalAsync(int vehicleId, CancellationToken cancellationToken)
+        => dbContext.Rentals.AnyAsync(
+            item => item.VehicleId == vehicleId && item.Status == RentalStatus.Active,
+            cancellationToken);
+
+    private static IActionResult BuildVehicleValidationResult(string? conflictMessage, string? errorMessage)
+    {
+        if (!string.IsNullOrWhiteSpace(conflictMessage))
+        {
+            return new ConflictObjectResult(new { message = conflictMessage });
+        }
+
+        return new BadRequestObjectResult(new { message = errorMessage ?? "Vehicle validation failed." });
+    }
+
+    private sealed record VehicleRequestValidationResult(
+        bool Success,
+        string? NormalizedPlate,
+        string? FuelTypeCode,
+        string? TransmissionTypeCode,
+        string? VehicleStatusCode,
+        string PowertrainUnit,
+        string CargoCapacityUnit,
+        string ConsumptionUnit,
+        IReadOnlyList<MediaAssetUpsertRequest> Photos,
+        string? ConflictMessage,
+        string? ErrorMessage)
+    {
+        public static VehicleRequestValidationResult Fail(string errorMessage)
+            => new(false, null, null, null, null, string.Empty, string.Empty, string.Empty, Array.Empty<MediaAssetUpsertRequest>(), null, errorMessage);
+
+        public static VehicleRequestValidationResult Conflict(string conflictMessage)
+            => new(false, null, null, null, null, string.Empty, string.Empty, string.Empty, Array.Empty<MediaAssetUpsertRequest>(), conflictMessage, null);
+
+        public static VehicleRequestValidationResult SuccessResult(
+            string normalizedPlate,
+            string fuelTypeCode,
+            string transmissionTypeCode,
+            string vehicleStatusCode,
+            string powertrainUnit,
+            string cargoCapacityUnit,
+            string consumptionUnit,
+            IReadOnlyList<MediaAssetUpsertRequest> photos)
+            => new(true, normalizedPlate, fuelTypeCode, transmissionTypeCode, vehicleStatusCode, powertrainUnit, cargoCapacityUnit, consumptionUnit, photos, null, null);
+    }
 
     private static IQueryable<Vehicle> ApplyVehicleClassFilter(IQueryable<Vehicle> query, string? vehicleClass)
     {
         return NormalizeVehicleClass(vehicleClass) switch
         {
-            "Economy" => query.Where(item => item.DailyRate < 45m),
-            "Mid" => query.Where(item => item.DailyRate >= 45m && item.DailyRate < 70m),
-            "Business" => query.Where(item => item.DailyRate >= 70m && item.DailyRate < 95m),
-            "Premium" => query.Where(item => item.DailyRate >= 95m),
+            "Economy" => query.Where(item => item.DailyRate < VehicleDomainRules.EconomyUpperBound),
+            "Mid" => query.Where(item => item.DailyRate >= VehicleDomainRules.EconomyUpperBound && item.DailyRate < VehicleDomainRules.MidUpperBound),
+            "Business" => query.Where(item => item.DailyRate >= VehicleDomainRules.MidUpperBound && item.DailyRate < VehicleDomainRules.BusinessUpperBound),
+            "Premium" => query.Where(item => item.DailyRate >= VehicleDomainRules.BusinessUpperBound),
             _ => query
         };
     }
@@ -327,5 +500,4 @@ public sealed class VehiclesController(RentalDbContext dbContext) : ApiControlle
             _ => "application/octet-stream"
         };
     }
-
 }

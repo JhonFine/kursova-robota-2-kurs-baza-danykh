@@ -17,3 +17,4 @@ public enum EmployeePermission
     DeleteRecords = 1 << 10,
     All = int.MaxValue
 }
+

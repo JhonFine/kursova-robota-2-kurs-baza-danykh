@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations.Schema;
+
 namespace CarRental.Desktop.Models;
 
 public sealed class Rental
@@ -8,7 +10,11 @@ public sealed class Rental
 
     public int VehicleId { get; set; }
 
-    public int EmployeeId { get; set; }
+    public int CreatedByEmployeeId { get; set; }
+
+    public int? ClosedByEmployeeId { get; set; }
+
+    public int? CanceledByEmployeeId { get; set; }
 
     public string ContractNumber { get; set; } = string.Empty;
 
@@ -28,8 +34,6 @@ public sealed class Rental
 
     public decimal TotalAmount { get; set; }
 
-    public bool IsClosed { get; set; }
-
     public RentalStatus Status { get; set; } = RentalStatus.Booked;
 
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
@@ -40,25 +44,59 @@ public sealed class Rental
 
     public string? CancellationReason { get; set; }
 
-    public DateTime? PickupInspectionCompletedAtUtc { get; set; }
+    [NotMapped]
+    public int EmployeeId
+    {
+        get => CreatedByEmployeeId;
+        set => CreatedByEmployeeId = value;
+    }
 
-    public int? PickupFuelPercent { get; set; }
+    [NotMapped]
+    public bool IsClosed
+    {
+        get => Status == RentalStatus.Closed;
+        set
+        {
+            if (!value)
+            {
+                if (Status == RentalStatus.Closed)
+                {
+                    Status = RentalStatus.Booked;
+                }
 
-    public string? PickupInspectionNotes { get; set; }
+                ClosedAtUtc = null;
+                return;
+            }
 
-    public DateTime? ReturnInspectionCompletedAtUtc { get; set; }
-
-    public int? ReturnFuelPercent { get; set; }
-
-    public string? ReturnInspectionNotes { get; set; }
+            Status = RentalStatus.Closed;
+            ClosedAtUtc ??= DateTime.UtcNow;
+            CanceledAtUtc = null;
+            CancellationReason = null;
+        }
+    }
 
     public Client? Client { get; set; }
 
     public Vehicle? Vehicle { get; set; }
 
-    public Employee? Employee { get; set; }
+    public Employee? CreatedByEmployee { get; set; }
+
+    public Employee? ClosedByEmployee { get; set; }
+
+    public Employee? CanceledByEmployee { get; set; }
+
+    [NotMapped]
+    public Employee? Employee
+    {
+        get => CreatedByEmployee;
+        set => CreatedByEmployee = value;
+    }
+
+    public RentalStatusLookup? StatusLookup { get; set; }
 
     public ICollection<Payment> Payments { get; set; } = new List<Payment>();
 
     public ICollection<Damage> Damages { get; set; } = new List<Damage>();
+
+    public ICollection<RentalInspection> Inspections { get; set; } = new List<RentalInspection>();
 }

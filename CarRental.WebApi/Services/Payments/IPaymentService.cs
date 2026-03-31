@@ -17,7 +17,9 @@ public sealed record PaymentRequest(
     decimal Amount,
     PaymentMethod Method,
     PaymentDirection Direction,
-    string Notes);
+    string Notes = "",
+    PaymentStatus Status = PaymentStatus.Completed,
+    string? ExternalTransactionId = null);
 
 public sealed record PaymentResult(bool Success, string Message, int PaymentId = 0);
 

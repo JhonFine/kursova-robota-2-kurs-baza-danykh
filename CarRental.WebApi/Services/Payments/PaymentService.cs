@@ -31,6 +31,8 @@ public sealed class PaymentService(RentalDbContext dbContext) : IPaymentService
             Amount = request.Amount,
             Method = request.Method,
             Direction = request.Direction,
+            Status = request.Status,
+            ExternalTransactionId = string.IsNullOrWhiteSpace(request.ExternalTransactionId) ? null : request.ExternalTransactionId.Trim(),
             Notes = request.Notes.Trim(),
             CreatedAtUtc = DateTime.UtcNow
         };
@@ -44,6 +46,8 @@ public sealed class PaymentService(RentalDbContext dbContext) : IPaymentService
     {
         return await dbContext.Payments
             .AsNoTracking()
+            .Include(item => item.Employee)
+            .ThenInclude(item => item!.Account)
             .Where(item => item.RentalId == rentalId)
             .OrderByDescending(item => item.CreatedAtUtc)
             .ToListAsync(cancellationToken);
@@ -60,6 +64,7 @@ public sealed class PaymentService(RentalDbContext dbContext) : IPaymentService
         var paid = await dbContext.Payments
             .AsNoTracking()
             .Where(item => item.RentalId == rentalId)
+            .Where(item => item.Status == PaymentStatus.Completed)
             .SumAsync(
                 item => (decimal?)(item.Direction == PaymentDirection.Incoming ? item.Amount : -item.Amount),
                 cancellationToken) ?? 0m;

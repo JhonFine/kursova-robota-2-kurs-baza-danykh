@@ -1,4 +1,5 @@
 using CarRental.Desktop.Data;
+using CarRental.Desktop.Infrastructure;
 using CarRental.Desktop.Models;
 using CarRental.Desktop.Services.Analytics;
 using CommunityToolkit.Mvvm.Input;
@@ -151,9 +152,9 @@ public sealed class ReportsPageViewModel : PageDataViewModelBase, ITransientStat
                 .OrderBy(item => item.Make)
                 .ThenBy(item => item.Model)
                 .ToListAsync();
-            var employees = await _dbContext.Employees
-                .AsNoTracking()
+            var employees = await StaffVisibilityQuery.VisibleStaff(_dbContext)
                 .OrderBy(item => item.FullName)
+                .Select(item => new EmployeeFilterOption(item.Id, item.FullName))
                 .ToListAsync();
 
             VehicleFilters.Clear();
@@ -164,10 +165,10 @@ public sealed class ReportsPageViewModel : PageDataViewModelBase, ITransientStat
             }
 
             EmployeeFilters.Clear();
-            EmployeeFilters.Add(new EmployeeFilterOption(null, "Усі менеджери"));
+            EmployeeFilters.Add(new EmployeeFilterOption(null, "Усі співробітники"));
             foreach (var employee in employees)
             {
-                EmployeeFilters.Add(new EmployeeFilterOption(employee.Id, employee.FullName));
+                EmployeeFilters.Add(employee);
             }
 
             SelectedVehicle ??= VehicleFilters.FirstOrDefault();

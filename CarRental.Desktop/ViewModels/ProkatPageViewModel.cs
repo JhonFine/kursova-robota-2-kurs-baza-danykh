@@ -2,6 +2,7 @@
 using CarRental.Desktop.Models;
 using CarRental.Desktop.Services.Rentals;
 using CarRental.Desktop.Infrastructure;
+using CarRental.Shared.ReferenceData;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.EntityFrameworkCore;
@@ -23,6 +24,8 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
     private const int CardExpiryMaxDigits = 4;
     private const int CardExpiryInputMaxLength = 5;
     private const int CardCvvMaxDigits = 4;
+    private const int DefaultMinPrice = (int)VehicleDomainRules.MinDailyRate;
+    private const int DefaultMaxPrice = (int)VehicleDomainRules.MaxDailyRate;
 
     private readonly RentalDbContext _dbContext;
     private readonly IRentalService _rentalService;
@@ -34,15 +37,15 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
     private DateTime _startDate = DateTime.Today;
     private DateTime _endDate = DateTime.Today.AddDays(1);
     private string _statusMessage = string.Empty;
-    private string _pickupLocation = "Київ";
-    private string _returnLocation = "Київ";
+    private string _pickupLocation = DemoSeedReferenceData.LocationSeeds[0].City;
+    private string _returnLocation = DemoSeedReferenceData.LocationSeeds[0].City;
     private string _pickupTime = "10:00";
     private string _returnTime = "10:00";
     private string _selectedSortOption = "Спочатку популярні";
-    private string _minPriceInput = "20";
-    private string _maxPriceInput = "290";
-    private double _minPriceValue = 20;
-    private double _maxPriceValue = 290;
+    private string _minPriceInput = "1000";
+    private string _maxPriceInput = "3500";
+    private double _minPriceValue = DefaultMinPrice;
+    private double _maxPriceValue = DefaultMaxPrice;
     private readonly List<ProkatCarCard> _allCards = [];
     private readonly Dictionary<int, IReadOnlyList<VehicleVariantRow>> _vehicleVariantsByCardId = [];
     private bool _isVehicleDetailsDialogOpen;
@@ -74,7 +77,7 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
         CloseVehicleDetailsCommand = new RelayCommand(CloseVehicleDetailsDialog);
         ChooseVehicleVariantCommand = new AsyncRelayCommand<VehicleVariantRow?>(ChooseVehicleVariantAsync, _ => !IsLoading);
         CloseCheckoutCommand = new RelayCommand(CloseCheckoutDialog);
-        CompleteCheckoutCommand = new AsyncRelayCommand(CompleteCheckoutAsync, () => !IsLoading);
+        CompleteCheckoutCommand = new AsyncRelayCommand(CompleteCheckoutAsync, CanCompleteCheckout);
         ApplyPriceCommand = new RelayCommand(ApplyPriceFilter);
         RentVehicleCommand = new AsyncRelayCommand(RentVehicleAsync, () => !IsLoading);
         SelectVehicleCommand = new RelayCommand<ProkatCarCard?>(SelectVehicle);
@@ -85,24 +88,9 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
 
     public ObservableCollection<ProkatCarCard> Vehicles { get; } = [];
 
-    public ObservableCollection<string> Locations { get; } = ["Київ", "Львів", "Одеса", "Дніпро", "Харків"];
+    public ObservableCollection<string> Locations { get; } = [.. DemoSeedReferenceData.SupportedLocations];
 
-    public ObservableCollection<string> TimeOptions { get; } =
-    [
-        "08:00",
-        "09:00",
-        "10:00",
-        "11:00",
-        "12:00",
-        "13:00",
-        "14:00",
-        "15:00",
-        "16:00",
-        "17:00",
-        "18:00",
-        "19:00",
-        "20:00"
-    ];
+    public ObservableCollection<string> TimeOptions { get; } = [.. DemoSeedReferenceData.TimeOptions];
 
     public ObservableCollection<string> SortOptions { get; } =
     [
@@ -166,6 +154,10 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
         set => SetProperty(ref _selectedVehicle, value);
     }
 
+    public DateTime MinStartDate => DateTime.Today;
+
+    public DateTime MinEndDate => StartDate.Date > DateTime.Today ? StartDate.Date : DateTime.Today;
+
     public DateTime StartDate
     {
         get => _startDate;
@@ -175,7 +167,7 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
             {
                 if (EndDate.Date < value.Date)
                 {
-                    EndDate = value.Date.AddDays(1);
+                    EndDate = value.Date;
                 }
 
                 OnPropertyChanged(nameof(CheckoutPeriodSummary));
@@ -200,6 +192,14 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
             }
         }
     }
+
+    public string CheckoutStartDateValidationMessage => ResolveCheckoutStartDateValidationMessage() ?? string.Empty;
+
+    public bool HasCheckoutStartDateValidationMessage => !string.IsNullOrWhiteSpace(CheckoutStartDateValidationMessage);
+
+    public string CheckoutEndDateValidationMessage => ResolveCheckoutEndDateValidationMessage() ?? string.Empty;
+
+    public bool HasCheckoutEndDateValidationMessage => !string.IsNullOrWhiteSpace(CheckoutEndDateValidationMessage);
 
     public string StatusMessage
     {
@@ -446,7 +446,7 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
             }
 
             var total = CalculateProratedAmount(SelectedVehicleVariant.DailyRate, rentalHours);
-            return $"До сплати: {total:0.##} € за {FormatRentalDuration(rentalHours)}";
+            return $"До сплати: {total:N0} грн за {FormatRentalDuration(rentalHours)}";
         }
     }
 
@@ -456,7 +456,7 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
         {
             var summary = new List<string>
             {
-                $"Ціна: {MinPriceInput} - {MaxPriceInput} €",
+                $"Ціна: {MinPriceInput} - {MaxPriceInput} грн",
                 $"Сортування: {SelectedSortOption}"
             };
 
@@ -725,7 +725,7 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
         ReturnLocation = string.IsNullOrWhiteSpace(ReturnLocation) ? PickupLocation : ReturnLocation;
         if (EndDate.Date < StartDate.Date)
         {
-            EndDate = StartDate.Date.AddDays(1);
+            EndDate = StartDate.Date;
         }
 
         if (string.IsNullOrWhiteSpace(ReturnTime))
@@ -815,6 +815,14 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
         if (pickupDateTime >= returnDateTime)
         {
             const string message = "Час повернення має бути пізніше часу подачі.";
+            StatusMessage = message;
+            SetCheckoutAttemptHint(message);
+            return false;
+        }
+
+        if (pickupDateTime < DateTime.Now)
+        {
+            const string message = "Початок оренди не може бути в минулому.";
             StatusMessage = message;
             SetCheckoutAttemptHint(message);
             return false;
@@ -957,9 +965,16 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
             return "Оберіть пункт повернення.";
         }
 
-        if (BuildReturnDateTime() <= BuildPickupDateTime())
+        var startDateValidationError = ResolveCheckoutStartDateValidationMessage();
+        if (!string.IsNullOrWhiteSpace(startDateValidationError))
         {
-            return "Дата/час повернення мають бути пізніше подачі.";
+            return startDateValidationError;
+        }
+
+        var endDateValidationError = ResolveCheckoutEndDateValidationMessage();
+        if (!string.IsNullOrWhiteSpace(endDateValidationError))
+        {
+            return endDateValidationError;
         }
 
         if (string.IsNullOrWhiteSpace(CardholderNameInput))
@@ -992,6 +1007,32 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
         return null;
     }
 
+    private bool CanCompleteCheckout()
+    {
+        return !IsLoading &&
+               string.IsNullOrWhiteSpace(ResolveCheckoutStartDateValidationMessage()) &&
+               string.IsNullOrWhiteSpace(ResolveCheckoutEndDateValidationMessage());
+    }
+
+    private string? ResolveCheckoutStartDateValidationMessage()
+    {
+        return BuildPickupDateTime() < DateTime.Now
+            ? "Початок оренди не може бути в минулому."
+            : null;
+    }
+
+    private string? ResolveCheckoutEndDateValidationMessage()
+    {
+        if (EndDate.Date < StartDate.Date)
+        {
+            return "Дата повернення не може бути раніше дати подачі.";
+        }
+
+        return BuildReturnDateTime() <= BuildPickupDateTime()
+            ? "Дата/час повернення мають бути пізніше подачі."
+            : null;
+    }
+
     private DateTime BuildPickupDateTime()
     {
         return CombineDateAndTime(StartDate, PickupTime, new TimeSpan(10, 0, 0));
@@ -1004,8 +1045,14 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
             _checkoutAttemptHint = string.Empty;
         }
 
+        OnPropertyChanged(nameof(MinEndDate));
+        OnPropertyChanged(nameof(CheckoutStartDateValidationMessage));
+        OnPropertyChanged(nameof(HasCheckoutStartDateValidationMessage));
+        OnPropertyChanged(nameof(CheckoutEndDateValidationMessage));
+        OnPropertyChanged(nameof(HasCheckoutEndDateValidationMessage));
         OnPropertyChanged(nameof(CheckoutActionHint));
         OnPropertyChanged(nameof(HasCheckoutActionHint));
+        CompleteCheckoutCommand.NotifyCanExecuteChanged();
     }
 
     private void SetCheckoutAttemptHint(string? value)
@@ -1263,6 +1310,9 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
     private async Task<int?> EnsureClientProfileAsync()
     {
         var employee = await _dbContext.Employees
+            .Include(item => item.Account)
+                .ThenInclude(item => item!.Client)
+                .ThenInclude(item => item!.Documents)
             .FirstOrDefaultAsync(item => item.Id == _currentEmployee.Id);
         if (employee is null)
         {
@@ -1272,17 +1322,25 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
         var passportData = $"EMP-{employee.Id:D6}";
         var driverLicense = $"USR-{employee.Id:D6}";
 
-        Client? client = null;
-        if (employee.ClientId.HasValue)
+        Client? client = employee.Account?.Client;
+        if (client is null && employee.PortalClientId.HasValue)
         {
             client = await _dbContext.Clients
-                .FirstOrDefaultAsync(item => item.Id == employee.ClientId.Value);
+                .FirstOrDefaultAsync(item => item.Id == employee.PortalClientId.Value);
+        }
+
+        if (client is null && employee.AccountId > 0)
+        {
+            client = await _dbContext.Clients
+                .FirstOrDefaultAsync(item => item.AccountId == employee.AccountId);
         }
 
         client ??= await _dbContext.Clients
             .FirstOrDefaultAsync(existing =>
-                existing.PassportData == passportData ||
-                existing.DriverLicense == driverLicense);
+                _dbContext.ClientDocuments.Any(document =>
+                    document.ClientId == existing.Id &&
+                    ((document.DocumentTypeCode == ClientDocumentTypes.Passport && document.DocumentNumber == passportData) ||
+                     (document.DocumentTypeCode == ClientDocumentTypes.DriverLicense && document.DocumentNumber == driverLicense))));
 
         if (client is null)
         {
@@ -1312,10 +1370,10 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
             hasChanges = true;
         }
 
-        if (employee.ClientId != client.Id)
+        if (employee.PortalClientId != client.Id)
         {
-            employee.ClientId = client.Id;
-            _currentEmployee.ClientId = client.Id;
+            employee.PortalClientId = client.Id;
+            _currentEmployee.PortalClientId = client.Id;
             hasChanges = true;
         }
 
@@ -1407,7 +1465,7 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
                 "Вкажіть коректний період оренди.");
         }
 
-        if (!vehicle.IsAvailable)
+        if (!vehicle.IsBookable)
         {
             return new VehicleAvailability(
                 vehicle.Id,
@@ -1460,8 +1518,8 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
 
     private void ApplyPriceFilter()
     {
-        var min = ParsePriceInput(MinPriceInput, 20);
-        var max = ParsePriceInput(MaxPriceInput, 290);
+        var min = ParsePriceInput(MinPriceInput, DefaultMinPrice);
+        var max = ParsePriceInput(MaxPriceInput, DefaultMaxPrice);
 
         if (min > max)
         {
@@ -1567,10 +1625,10 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
             SetFilterSelection(TransmissionFilters);
             SetFilterSelection(VehicleStatusFilters, AvailableStatusKey);
             SelectedSortOption = "Спочатку популярні";
-            MinPriceValue = 20;
-            MaxPriceValue = 290;
-            MinPriceInput = "20";
-            MaxPriceInput = "290";
+            MinPriceValue = DefaultMinPrice;
+            MaxPriceValue = DefaultMaxPrice;
+            MinPriceInput = DefaultMinPrice.ToString(CultureInfo.InvariantCulture);
+            MaxPriceInput = DefaultMaxPrice.ToString(CultureInfo.InvariantCulture);
         }
         finally
         {
@@ -1650,17 +1708,17 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
             return "Позашляховик";
         }
 
-        if (dailyRate >= 95m)
+        if (dailyRate >= VehicleDomainRules.BusinessUpperBound)
         {
             return "Преміум";
         }
 
-        if (dailyRate >= 70m)
+        if (dailyRate >= VehicleDomainRules.MidUpperBound)
         {
             return "Бізнес";
         }
 
-        return dailyRate >= 45m ? "Середній" : "Економ";
+        return dailyRate >= VehicleDomainRules.EconomyUpperBound ? "Середній" : "Економ";
     }
 
     private static bool ContainsAny(string source, params string[] tokens)
@@ -1727,7 +1785,7 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
                         vehicle.LicensePlate,
                         vehicle.Mileage,
                         condition,
-                        availability?.IsAvailableNow ?? vehicle.IsAvailable,
+                        availability?.IsAvailableNow ?? ResolveVehicleAvailabilityFallback(vehicle),
                         availability?.AvailableFrom ?? DateTime.Today,
                         availability?.AvailabilityLabel ?? "Доступне на обраний період",
                         vehicle.DailyRate);
@@ -1834,8 +1892,11 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
     {
         return availabilityByVehicleId.TryGetValue(vehicle.Id, out var availability)
             ? availability.IsAvailableNow
-            : vehicle.IsAvailable;
+            : ResolveVehicleAvailabilityFallback(vehicle);
     }
+
+    private static bool ResolveVehicleAvailabilityFallback(Vehicle vehicle)
+        => !vehicle.IsDeleted && vehicle.IsBookable;
 
     private static string ResolveCardDisplayName(Vehicle vehicle, VehicleCatalogSeeds.CatalogVehicleSeed? seed)
     {
@@ -2109,8 +2170,8 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
             var low = decimal.Round(Math.Min(minPrice, maxPrice), 0, MidpointRounding.AwayFromZero);
             var high = decimal.Round(Math.Max(minPrice, maxPrice), 0, MidpointRounding.AwayFromZero);
             return high > low
-                ? $"{low:0}-{high:0} €"
-                : $"{low:0} €";
+                ? $"{low:N0}-{high:N0} грн"
+                : $"{low:N0} грн";
         }
     }
 

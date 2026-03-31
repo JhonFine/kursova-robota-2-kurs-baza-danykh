@@ -49,7 +49,10 @@ public sealed record CreateRentalRequest(
     DateTime StartDate,
     DateTime EndDate,
     string PickupLocation = "",
-    string ReturnLocation = "");
+    string ReturnLocation = "")
+{
+    public int CreatedByEmployeeId => EmployeeId;
+}
 
 public sealed record CreateRentalWithPaymentRequest(
     int ClientId,
@@ -61,7 +64,10 @@ public sealed record CreateRentalWithPaymentRequest(
     string ReturnLocation = "",
     PaymentMethod Method = PaymentMethod.Cash,
     PaymentDirection Direction = PaymentDirection.Incoming,
-    string Notes = "");
+    string Notes = "")
+{
+    public int CreatedByEmployeeId => EmployeeId;
+}
 
 public sealed record CreateRentalResult(
     bool Success,
@@ -74,6 +80,7 @@ public sealed record CloseRentalRequest(
     int RentalId,
     DateTime ActualEndDate,
     int EndMileage,
+    int ClosedByEmployeeId = 1,
     int? ReturnFuelPercent = null,
     string ReturnInspectionNotes = "");
 
@@ -82,7 +89,7 @@ public sealed record CloseRentalResult(
     string Message,
     decimal TotalAmount = 0m);
 
-public sealed record CancelRentalRequest(int RentalId, string Reason);
+public sealed record CancelRentalRequest(int RentalId, string Reason, int CanceledByEmployeeId = 1);
 
 public sealed record CancelRentalResult(bool Success, string Message);
 
@@ -90,7 +97,10 @@ public sealed record RescheduleRentalRequest(
     int RentalId,
     DateTime StartDate,
     DateTime EndDate,
-    int EmployeeId);
+    int EmployeeId)
+{
+    public int UpdatedByEmployeeId => EmployeeId;
+}
 
 public sealed record RescheduleRentalResult(
     bool Success,
@@ -111,7 +121,8 @@ public sealed record SettleRentalBalanceResult(
 public sealed record PickupInspectionRequest(
     int RentalId,
     int FuelPercent,
-    string Notes);
+    string Notes = "",
+    int PerformedByEmployeeId = 1);
 
 public sealed record PickupInspectionResult(bool Success, string Message);
 

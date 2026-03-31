@@ -186,8 +186,8 @@ public sealed class RentalsControllerAccessTests
             {
                 ClientId = 10,
                 VehicleId = 20,
-                StartDate = DateTime.Now.AddHours(-2),
-                EndDate = DateTime.Now.AddHours(2),
+                StartDate = DateTime.UtcNow.AddHours(-2),
+                EndDate = DateTime.UtcNow.AddHours(2),
                 PickupLocation = "Київ",
                 ReturnLocation = "Київ"
             },
@@ -210,8 +210,8 @@ public sealed class RentalsControllerAccessTests
             {
                 ClientId = 10,
                 VehicleId = 20,
-                StartDate = DateTime.Now.AddDays(1),
-                EndDate = DateTime.Now.AddDays(2),
+                StartDate = DateTime.UtcNow.AddDays(1),
+                EndDate = DateTime.UtcNow.AddDays(2),
                 PickupLocation = "Київ",
                 ReturnLocation = "Київ"
             },
@@ -240,6 +240,8 @@ public sealed class RentalsControllerAccessTests
 
     private static void SeedControllerData(RentalDbContext dbContext)
     {
+        TestLookupSeed.SeedVehicleLookups(dbContext);
+
         dbContext.Employees.AddRange(
             new Employee
             {
@@ -258,7 +260,7 @@ public sealed class RentalsControllerAccessTests
                 PasswordHash = "x",
                 Role = UserRole.User,
                 IsActive = true,
-                ClientId = 10
+                PortalClientId = 10
             });
 
         dbContext.Clients.AddRange(
@@ -286,6 +288,14 @@ public sealed class RentalsControllerAccessTests
             Id = 20,
             Make = "Toyota",
             Model = "Camry",
+            FuelType = "Бензин",
+            TransmissionType = "Автомат",
+            PowertrainCapacityValue = 2m,
+            PowertrainCapacityUnit = "L",
+            CargoCapacityValue = 500m,
+            CargoCapacityUnit = "L",
+            ConsumptionValue = 7m,
+            ConsumptionUnit = "L_PER_100KM",
             LicensePlate = "AA2020AA",
             Mileage = 12000,
             DailyRate = 70m,

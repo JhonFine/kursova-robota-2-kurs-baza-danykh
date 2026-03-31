@@ -16,7 +16,8 @@
       "launchUrl": "swagger",
       "applicationUrl": "http://localhost:5079",
       "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "CAR_RENTAL_JWT_SIGNING_KEY": "2f8f6f9a6e7b4c2d9a1e5f3b7c8d4a6e1b9c3d7f5a2e8c4b6d1f9a7c3e5b8d2"
       }
     },
     "IIS Express": {
@@ -24,7 +25,8 @@
       "launchBrowser": true,
       "launchUrl": "swagger",
       "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "CAR_RENTAL_JWT_SIGNING_KEY": "2f8f6f9a6e7b4c2d9a1e5f3b7c8d4a6e1b9c3d7f5a2e8c4b6d1f9a7c3e5b8d2"
       }
     }
   }

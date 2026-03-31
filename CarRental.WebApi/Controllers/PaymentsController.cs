@@ -1,5 +1,6 @@
 using CarRental.WebApi.Contracts;
 using CarRental.WebApi.Data;
+using CarRental.WebApi.Infrastructure;
 using CarRental.WebApi.Services.Payments;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -18,7 +19,7 @@ public sealed class PaymentsController(
     public async Task<ActionResult<IReadOnlyList<PaymentDto>>> GetRentalPayments(int rentalId, CancellationToken cancellationToken)
     {
         var payments = await paymentService.GetRentalPaymentsAsync(rentalId, cancellationToken);
-        return Ok(payments.Select(ToDto).ToList());
+        return Ok(payments.Select(item => item.ToDto()).ToList());
     }
 
     [HttpGet("rentals/{rentalId:int}/balance")]
@@ -43,12 +44,14 @@ public sealed class PaymentsController(
 
         var result = await paymentService.AddPaymentAsync(
             new PaymentRequest(
-                request.RentalId,
-                employeeId.Value,
-                request.Amount,
-                request.Method,
-                request.Direction,
-                request.Notes),
+                RentalId: request.RentalId,
+                EmployeeId: employeeId.Value,
+                Amount: request.Amount,
+                Method: request.Method,
+                Direction: request.Direction,
+                Notes: request.Notes,
+                Status: request.Status,
+                ExternalTransactionId: request.ExternalTransactionId),
             cancellationToken);
 
         if (!result.Success)
@@ -58,23 +61,14 @@ public sealed class PaymentsController(
 
         var payment = await dbContext.Payments
             .AsNoTracking()
+            .Include(item => item.Employee)
+            .ThenInclude(item => item!.Account)
             .FirstOrDefaultAsync(item => item.Id == result.PaymentId, cancellationToken);
         if (payment is null)
         {
             return BadRequest(new { message = "Payment created but could not be loaded." });
         }
 
-        return CreatedAtAction(nameof(GetRentalPayments), new { rentalId = payment.RentalId }, ToDto(payment));
+        return CreatedAtAction(nameof(GetRentalPayments), new { rentalId = payment.RentalId }, payment.ToDto());
     }
-
-    private static PaymentDto ToDto(CarRental.WebApi.Models.Payment item)
-        => new(
-            item.Id,
-            item.RentalId,
-            item.EmployeeId,
-            item.Amount,
-            item.Method,
-            item.Direction,
-            item.CreatedAtUtc,
-            item.Notes);
 }

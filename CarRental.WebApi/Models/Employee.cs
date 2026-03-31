@@ -1,33 +1,183 @@
-﻿namespace CarRental.WebApi.Models;
+using System.ComponentModel.DataAnnotations.Schema;
 
-public sealed class Employee
+namespace CarRental.WebApi.Models;
+
+public sealed class Employee : IAuditableEntity
 {
+    private int? _legacyPortalClientId;
+    private string? _legacyLogin;
+    private string? _legacyPasswordHash;
+    private bool? _legacyIsActive;
+    private int? _legacyFailedLoginAttempts;
+    private DateTime? _legacyLockoutUntilUtc;
+    private DateTime? _legacyLastLoginUtc;
+    private DateTime _legacyPasswordChangedAtUtc = DateTime.UtcNow;
+
     public int Id { get; set; }
 
-    public int? ClientId { get; set; }
+    public int AccountId { get; set; }
 
     public string FullName { get; set; } = string.Empty;
 
-    public string Login { get; set; } = string.Empty;
-
-    public string PasswordHash { get; set; } = string.Empty;
-
     public UserRole Role { get; set; }
 
-    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
-    public int FailedLoginAttempts { get; set; }
+    public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
 
-    public DateTime? LockoutUntilUtc { get; set; }
+    [NotMapped]
+    public string Login
+    {
+        get => Account?.Login ?? _legacyLogin ?? string.Empty;
+        set
+        {
+            _legacyLogin = value;
+            if (Account is not null)
+            {
+                Account.Login = value;
+            }
+        }
+    }
 
-    public DateTime? LastLoginUtc { get; set; }
+    [NotMapped]
+    public string PasswordHash
+    {
+        get => Account?.PasswordHash ?? _legacyPasswordHash ?? string.Empty;
+        set
+        {
+            _legacyPasswordHash = value;
+            if (Account is not null)
+            {
+                Account.PasswordHash = value;
+            }
+        }
+    }
 
-    public DateTime PasswordChangedAtUtc { get; set; } = DateTime.UtcNow;
+    [NotMapped]
+    public bool IsActive
+    {
+        get => Account?.IsActive ?? _legacyIsActive ?? false;
+        set
+        {
+            _legacyIsActive = value;
+            if (Account is not null)
+            {
+                Account.IsActive = value;
+            }
+        }
+    }
 
-    public Client? Client { get; set; }
+    [NotMapped]
+    public int FailedLoginAttempts
+    {
+        get => Account?.FailedLoginAttempts ?? _legacyFailedLoginAttempts ?? 0;
+        set
+        {
+            _legacyFailedLoginAttempts = value;
+            if (Account is not null)
+            {
+                Account.FailedLoginAttempts = value;
+            }
+        }
+    }
 
-    public ICollection<Rental> Rentals { get; set; } = new List<Rental>();
+    [NotMapped]
+    public DateTime? LockoutUntilUtc
+    {
+        get => Account?.LockoutUntilUtc ?? _legacyLockoutUntilUtc;
+        set
+        {
+            _legacyLockoutUntilUtc = value;
+            if (Account is not null)
+            {
+                Account.LockoutUntilUtc = value;
+            }
+        }
+    }
+
+    [NotMapped]
+    public DateTime? LastLoginUtc
+    {
+        get => Account?.LastLoginUtc ?? _legacyLastLoginUtc;
+        set
+        {
+            _legacyLastLoginUtc = value;
+            if (Account is not null)
+            {
+                Account.LastLoginUtc = value;
+            }
+        }
+    }
+
+    [NotMapped]
+    public DateTime PasswordChangedAtUtc
+    {
+        get => Account?.PasswordChangedAtUtc ?? _legacyPasswordChangedAtUtc;
+        set
+        {
+            _legacyPasswordChangedAtUtc = value;
+            if (Account is not null)
+            {
+                Account.PasswordChangedAtUtc = value;
+            }
+        }
+    }
+
+    [NotMapped]
+    public int? PortalClientId
+    {
+        get => Account?.Client?.Id ?? _legacyPortalClientId;
+        set
+        {
+            _legacyPortalClientId = value;
+
+            if (value is null)
+            {
+                if (Account?.Client is not null)
+                {
+                    Account.Client.AccountId = null;
+                }
+
+                return;
+            }
+
+            if (Account?.Client is not null)
+            {
+                Account.Client.AccountId = AccountId;
+            }
+        }
+    }
+
+    [NotMapped]
+    public Client? PortalClient
+    {
+        get => Account?.Client;
+        set
+        {
+            if (value is not null)
+            {
+                value.AccountId = AccountId;
+            }
+        }
+    }
+
+    public Account? Account { get; set; }
+
+    public EmployeeRoleLookup? RoleLookup { get; set; }
+
+    public ICollection<Rental> CreatedRentals { get; set; } = new List<Rental>();
+
+    public ICollection<Rental> ClosedRentals { get; set; } = new List<Rental>();
+
+    public ICollection<Rental> CanceledRentals { get; set; } = new List<Rental>();
 
     public ICollection<Payment> Payments { get; set; } = new List<Payment>();
-}
 
+    public ICollection<RentalInspection> Inspections { get; set; } = new List<RentalInspection>();
+
+    public ICollection<Damage> ReportedDamages { get; set; } = new List<Damage>();
+
+    public ICollection<MaintenanceRecord> MaintenanceRecords { get; set; } = new List<MaintenanceRecord>();
+
+    internal int? PendingPortalClientId => _legacyPortalClientId;
+}

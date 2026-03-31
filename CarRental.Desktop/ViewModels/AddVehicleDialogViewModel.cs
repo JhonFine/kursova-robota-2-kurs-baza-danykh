@@ -1,4 +1,5 @@
-﻿using CarRental.Desktop.Models;
+using CarRental.Desktop.Infrastructure;
+using CarRental.Desktop.Models;
 
 namespace CarRental.Desktop.ViewModels;
 
@@ -131,6 +132,12 @@ public sealed class AddVehicleDialogViewModel : ViewModelBase
             string.IsNullOrWhiteSpace(ServiceIntervalKm))
         {
             validationError = "Заповніть усі обов'язкові поля перед додаванням.";
+            return false;
+        }
+
+        if (!VehicleDomainRules.IsValidLicensePlate(VehicleDomainRules.NormalizeLicensePlate(LicensePlate)))
+        {
+            validationError = "Некоректний формат номера. Використовуйте шаблон AA1234BB.";
             return false;
         }
 
