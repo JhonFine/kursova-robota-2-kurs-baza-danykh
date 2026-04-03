@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 
 namespace CarRental.Desktop.Infrastructure;
 
@@ -262,3 +262,4 @@ internal static class VehiclePhotoCatalog
         return new string(buffer.ToArray()).Trim('-');
     }
 }
+

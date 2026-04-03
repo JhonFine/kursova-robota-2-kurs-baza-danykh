@@ -12,276 +12,247 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Border x:Name="RentalsOverviewCard"
+        <Border x:Name="RentalsToolbarCard"
                 Grid.Row="0"
                 Margin="0,0,0,12"
                 Style="{StaticResource FilterCardStyle}">
-            <!-- Верхня картка дає один статусний вхід у весь workspace договорів, платежів і календаря. -->
-            <DockPanel>
-                <StackPanel DockPanel.Dock="Left">
-                    <TextBlock Text="Керування орендами в одному робочому просторі"
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="Операції з орендами"
                                Style="{StaticResource FilterHeaderTextStyle}" />
-                    <TextBlock Text="Договори, платежі та календар завантаженості доступні без відкриття додаткових вікон."
+                    <TextBlock Text="Договори, платежі та календар у компактному staff-інтерфейсі."
                                Style="{StaticResource FilterSubtleTextStyle}" />
-                    <TextBlock Margin="0,10,0,0"
-                               Text="{Binding StatusMessage}"
-                               Foreground="{StaticResource TextSecondaryBrush}"
-                               TextWrapping="Wrap" />
                 </StackPanel>
-                <Button DockPanel.Dock="Right"
+
+                <Button x:Name="OpenCreateRentalDialogButton"
+                        Grid.Column="1"
+                        Margin="0,0,10,0"
                         Style="{StaticResource PrimaryButtonStyle}"
-                        Content="Оновити дані"
+                        Content="+ Створити оренду"
+                        IsEnabled="{Binding CanManageRentals}"
+                        Command="{Binding OpenCreateRentalDialogCommand}" />
+
+                <Button x:Name="RefreshRentalsButton"
+                        Grid.Column="2"
+                        Padding="18,10"
+                        Content="Оновити"
                         Command="{Binding RefreshCommand}" />
-            </DockPanel>
+            </Grid>
         </Border>
 
         <TabControl x:Name="RentalsTabControl" Grid.Row="1">
             <TabItem x:Name="ContractsTab" Header="Договори">
                 <Grid Margin="0,12,0,0">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2.3*" />
+                        <ColumnDefinition Width="1.15*" />
+                    </Grid.ColumnDefinitions>
 
-                    <Border x:Name="CreateRentalGroup"
-                            Grid.Row="0"
-                            Style="{StaticResource FilterCardStyle}">
-                        <!-- Створення договору зібране в одну форму, бо live search і валідація дат залежать від спільного VM-стану. -->
+                    <GroupBox x:Name="RentalsListGroup"
+                              Grid.Column="0"
+                              Margin="0,0,10,0"
+                              Header="Список договорів і бронювань">
+                        <DataGrid ItemsSource="{Binding Rentals}"
+                                  SelectedItem="{Binding SelectedRental}"
+                                  AutoGenerateColumns="False"
+                                  IsReadOnly="True">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="60" />
+                                <DataGridTextColumn Header="Договір" Binding="{Binding ContractNumber}" Width="120" />
+                                <DataGridTextColumn Header="Клієнт" Binding="{Binding ClientName}" Width="180" />
+                                <DataGridTextColumn Header="Авто" Binding="{Binding VehicleName}" Width="170" />
+                                <DataGridTextColumn Header="Початок" Binding="{Binding StartDate, StringFormat=dd.MM.yyyy HH:mm}" Width="132" />
+                                <DataGridTextColumn Header="Кінець" Binding="{Binding EndDate, StringFormat=dd.MM.yyyy HH:mm}" Width="132" />
+                                <DataGridTextColumn Header="Сума" Binding="{Binding TotalAmount, StringFormat={}{0:C}}" Width="110" />
+                                <DataGridTextColumn Header="Сплачено" Binding="{Binding PaidAmount, StringFormat={}{0:C}}" Width="110" />
+                                <DataGridTextColumn Header="Залишок" Binding="{Binding Balance, StringFormat={}{0:C}}" Width="110" />
+                                <DataGridTemplateColumn Header="Статус" Width="130">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Border Style="{StaticResource StatusBadgeBorderStyle}"
+                                                    Background="{Binding StatusDisplay, Converter={StaticResource StatusBadgeBackgroundConverter}}">
+                                                <TextBlock Style="{StaticResource StatusBadgeTextStyle}"
+                                                           Text="{Binding StatusDisplay}"
+                                                           Foreground="{Binding StatusDisplay, Converter={StaticResource StatusBadgeForegroundConverter}}" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </GroupBox>
+
+                    <GroupBox x:Name="RentalDetailsGroup" Grid.Column="1" Header="Деталі обраної оренди">
                         <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-
-                            <StackPanel Grid.Row="0" Margin="0,0,0,12">
-                                <TextBlock Text="Дані для створення бронювання або оренди"
-                                           Style="{StaticResource FilterHeaderTextStyle}" />
-                                <TextBlock Text="Пошук клієнта та авто працює без відкриття окремих діалогів і оновлюється під час введення."
-                                           Style="{StaticResource FilterSubtleTextStyle}" />
-                            </StackPanel>
-
-                            <Grid Grid.Row="1">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="2*" />
-                                    <ColumnDefinition Width="2*" />
-                                    <ColumnDefinition Width="1.4*" />
-                                    <ColumnDefinition Width="1.4*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-
-                                <StackPanel Grid.Column="0" Margin="0,0,10,0">
-                                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Клієнт (пошук)" />
-                                    <ComboBox ItemsSource="{Binding Clients}"
-                                              DisplayMemberPath="Display"
-                                              SelectedItem="{Binding SelectedClient}"
-                                              Text="{Binding ClientSearchText, UpdateSourceTrigger=PropertyChanged}"
-                                              IsEditable="True"
-                                              IsTextSearchEnabled="False"
-                                              StaysOpenOnEdit="True"
-                                              MaxDropDownHeight="360"
-                                              ToolTip="Введіть ПІБ, посвідчення водія, телефон або паспортні дані" />
-                                </StackPanel>
-
-                                <StackPanel Grid.Column="1" Margin="0,0,10,0">
-                                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Авто (пошук)" />
-                                    <ComboBox ItemsSource="{Binding Vehicles}"
-                                              DisplayMemberPath="Display"
-                                              SelectedItem="{Binding SelectedVehicle}"
-                                              Text="{Binding VehicleSearchText, UpdateSourceTrigger=PropertyChanged}"
-                                              IsEditable="True"
-                                              IsTextSearchEnabled="False"
-                                              StaysOpenOnEdit="True"
-                                              MaxDropDownHeight="360"
-                                              ToolTip="Введіть марку, модель або номерний знак" />
-                                </StackPanel>
-
-                                <StackPanel Grid.Column="2" Margin="0,0,10,0">
-                                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Початок" />
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="90" />
-                                        </Grid.ColumnDefinitions>
-                                        <DatePicker DisplayDateStart="{Binding MinCreateStartDate, Mode=OneWay}"
-                                                    SelectedDate="{Binding StartDate}" />
-                                        <ComboBox Grid.Column="1"
-                                                  Margin="8,0,0,0"
-                                                  ItemsSource="{Binding TimeOptions}"
-                                                  SelectedItem="{Binding StartTime}" />
-                                    </Grid>
-                                    <TextBlock Margin="0,4,0,0"
-                                               Foreground="{StaticResource DangerBrush}"
-                                               Text="{Binding CreateStartDateValidationMessage}"
-                                               TextWrapping="Wrap"
-                                               Visibility="{Binding HasCreateStartDateValidationMessage, Converter={StaticResource BoolToVisibilityConverter}}" />
-                                </StackPanel>
-
-                                <StackPanel Grid.Column="3" Margin="0,0,10,0">
-                                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Повернення" />
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="90" />
-                                        </Grid.ColumnDefinitions>
-                                        <DatePicker DisplayDateStart="{Binding MinCreateEndDate, Mode=OneWay}"
-                                                    SelectedDate="{Binding EndDate}" />
-                                        <ComboBox Grid.Column="1"
-                                                  Margin="8,0,0,0"
-                                                  ItemsSource="{Binding TimeOptions}"
-                                                  SelectedItem="{Binding EndTime}" />
-                                    </Grid>
-                                    <TextBlock Margin="0,4,0,0"
-                                               Foreground="{StaticResource DangerBrush}"
-                                               Text="{Binding CreateEndDateValidationMessage}"
-                                               TextWrapping="Wrap"
-                                               Visibility="{Binding HasCreateEndDateValidationMessage, Converter={StaticResource BoolToVisibilityConverter}}" />
-                                </StackPanel>
-
-                                <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Bottom">
-                                    <Button Content="Створити оренду"
-                                            Style="{StaticResource PrimaryButtonStyle}"
-                                            Width="150"
-                                            Margin="0,0,10,0"
-                                            IsEnabled="{Binding CanManageRentals}"
-                                            Command="{Binding CreateRentalCommand}" />
-                                    <CheckBox Content="Автодрук PDF"
-                                              VerticalAlignment="Center"
-                                              IsChecked="{Binding AutoPrintContract}" />
-                                </StackPanel>
-                            </Grid>
-                        </Grid>
-                    </Border>
-
-                    <Grid Grid.Row="1">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="2.2*" />
-                            <ColumnDefinition Width="1.1*" />
-                        </Grid.ColumnDefinitions>
-
-                        <GroupBox x:Name="RentalsListGroup"
-                                  Grid.Column="0"
-                                  Margin="0,0,10,0"
-                                  Header="Список договорів і бронювань">
-                            <DataGrid ItemsSource="{Binding Rentals}"
-                                      SelectedItem="{Binding SelectedRental}"
-                                      AutoGenerateColumns="False"
-                                      IsReadOnly="True">
-                                <DataGrid.Columns>
-                                    <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="60" />
-                                    <DataGridTextColumn Header="Договір" Binding="{Binding ContractNumber}" Width="120" />
-                                    <DataGridTextColumn Header="Клієнт" Binding="{Binding ClientName}" Width="180" />
-                                    <DataGridTextColumn Header="Авто" Binding="{Binding VehicleName}" Width="170" />
-                                    <DataGridTextColumn Header="Початок" Binding="{Binding StartDate, StringFormat=dd.MM.yyyy HH:mm}" Width="132" />
-                                    <DataGridTextColumn Header="Кінець" Binding="{Binding EndDate, StringFormat=dd.MM.yyyy HH:mm}" Width="132" />
-                                    <DataGridTextColumn Header="Сума" Binding="{Binding TotalAmount, StringFormat={}{0:C}}" Width="110" />
-                                    <DataGridTextColumn Header="Сплачено" Binding="{Binding PaidAmount, StringFormat={}{0:C}}" Width="110" />
-                                    <DataGridTextColumn Header="Залишок" Binding="{Binding Balance, StringFormat={}{0:C}}" Width="110" />
-                                    <DataGridTemplateColumn Header="Статус" Width="130">
-                                        <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <Border Style="{StaticResource StatusBadgeBorderStyle}"
-                                                        Background="{Binding StatusDisplay, Converter={StaticResource StatusBadgeBackgroundConverter}}">
-                                                    <TextBlock Style="{StaticResource StatusBadgeTextStyle}"
-                                                               Text="{Binding StatusDisplay}"
-                                                               Foreground="{Binding StatusDisplay, Converter={StaticResource StatusBadgeForegroundConverter}}" />
-                                                </Border>
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                    </DataGridTemplateColumn>
-                                </DataGrid.Columns>
-                            </DataGrid>
-                        </GroupBox>
-
-                        <GroupBox x:Name="RentalDetailsGroup" Grid.Column="1" Header="Деталі обраної оренди">
-                            <ScrollViewer VerticalScrollBarVisibility="Auto"
-                                          HorizontalScrollBarVisibility="Disabled">
-                                <StackPanel>
-                                    <!-- Права колонка працює як inspector: деталі, закриття та платежі зав'язані на SelectedRental. -->
-                                    <TextBlock Text="Інформація"
+                            <Border Visibility="{Binding HasNoSelectedRental, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="Оренду не вибрано"
                                                Style="{StaticResource SectionTitleStyle}"
-                                               FontSize="16" />
-                                    <Grid Margin="0,8,0,12">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="Auto" />
-                                        </Grid.RowDefinitions>
+                                               HorizontalAlignment="Center" />
+                                    <TextBlock Margin="0,8,0,0"
+                                               Text="Оберіть договір у таблиці або створіть нову оренду."
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               TextWrapping="Wrap"
+                                               TextAlignment="Center" />
+                                    <Button Margin="0,16,0,0"
+                                            HorizontalAlignment="Center"
+                                            Style="{StaticResource PrimaryButtonStyle}"
+                                            Content="Створити оренду"
+                                            IsEnabled="{Binding CanManageRentals}"
+                                            Command="{Binding OpenCreateRentalDialogCommand}" />
+                                </StackPanel>
+                            </Border>
 
-                                        <TextBlock Grid.Row="0" Grid.Column="0" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="Договір:" />
-                                        <TextBlock Grid.Row="0" Grid.Column="1" Margin="0,0,0,6" Text="{Binding SelectedRental.ContractNumber, TargetNullValue=—}" />
-
-                                        <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="Клієнт:" />
-                                        <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,0,0,6" Text="{Binding SelectedRental.ClientName, TargetNullValue=—}" />
-
-                                        <TextBlock Grid.Row="2" Grid.Column="0" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="Авто:" />
-                                        <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,0,0,6" Text="{Binding SelectedRental.VehicleName, TargetNullValue=—}" />
-
-                                        <TextBlock Grid.Row="3" Grid.Column="0" Margin="0,0,8,0" Style="{StaticResource FormLabelStyle}" Text="Баланс:" />
-                                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedRental.Balance, StringFormat={}{0:C}, TargetNullValue=—}" />
-                                    </Grid>
-
-                                    <Expander IsExpanded="True">
-                                        <Expander.Header>
-                                            <TextBlock Text="Закриття оренди"
+                            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled"
+                                          Visibility="{Binding HasSelectedRental, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <StackPanel>
+                                    <Border Padding="14"
+                                            Background="#F8FAFC"
+                                            BorderBrush="#E2E8F0"
+                                            BorderThickness="1"
+                                            CornerRadius="10">
+                                        <StackPanel>
+                                            <TextBlock Text="Інформація"
                                                        Style="{StaticResource SectionTitleStyle}"
-                                                       FontSize="15" />
-                                        </Expander.Header>
-                                        <Border Margin="0,10,0,10"
-                                                Padding="12"
-                                                Background="#F8FAFC"
-                                                BorderBrush="#E5E7EB"
-                                                BorderThickness="1"
-                                                CornerRadius="10">
-                                            <StackPanel>
-                                                <TextBlock Style="{StaticResource FormLabelStyle}" Text="Дата повернення" Margin="0,0,0,4" />
-                                                <DatePicker SelectedDate="{Binding ActualReturnDate}" />
-                                                <TextBlock Style="{StaticResource FormLabelStyle}"
-                                                           Margin="0,8,0,0"
-                                                           Text="Після огляду авто внесіть новий пробіг для повернення в автопарк."
-                                                           TextWrapping="Wrap" />
-                                                <TextBlock Style="{StaticResource FormLabelStyle}" Text="Кінцевий пробіг" Margin="0,10,0,4" />
-                                                <TextBox Text="{Binding EndMileageInput, UpdateSourceTrigger=PropertyChanged}" />
-                                                <Button Content="Закрити оренду"
-                                                        Margin="0,12,0,0"
-                                                        Style="{StaticResource PrimaryButtonStyle}"
-                                                        IsEnabled="{Binding CanManageRentals}"
-                                                        Command="{Binding CloseRentalCommand}" />
-                                            </StackPanel>
-                                        </Border>
-                                    </Expander>
+                                                       FontSize="16" />
+                                            <Grid Margin="0,10,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                </Grid.RowDefinitions>
 
-                                    <Expander IsExpanded="False">
-                                        <Expander.Header>
+                                                <TextBlock Grid.Row="0" Grid.Column="0" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="Договір:" />
+                                                <TextBlock Grid.Row="0" Grid.Column="1" Margin="0,0,0,6" Text="{Binding SelectedRental.ContractNumber, TargetNullValue=-}" />
+
+                                                <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="Клієнт:" />
+                                                <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,0,0,6" Text="{Binding SelectedRental.ClientName, TargetNullValue=-}" />
+
+                                                <TextBlock Grid.Row="2" Grid.Column="0" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="Авто:" />
+                                                <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,0,0,6" Text="{Binding SelectedRental.VehicleName, TargetNullValue=-}" />
+
+                                                <TextBlock Grid.Row="3" Grid.Column="0" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="Період:" />
+                                                <TextBlock Grid.Row="3" Grid.Column="1" Margin="0,0,0,6">
+                                                    <Run Text="{Binding SelectedRental.StartDate, StringFormat=dd.MM.yyyy HH:mm}" />
+                                                    <Run Text=" - " />
+                                                    <Run Text="{Binding SelectedRental.EndDate, StringFormat=dd.MM.yyyy HH:mm}" />
+                                                </TextBlock>
+
+                                                <TextBlock Grid.Row="4" Grid.Column="0" Margin="0,0,8,0" Style="{StaticResource FormLabelStyle}" Text="Статус:" />
+                                                <Border Grid.Row="4"
+                                                        Grid.Column="1"
+                                                        HorizontalAlignment="Left"
+                                                        Style="{StaticResource StatusBadgeBorderStyle}"
+                                                        Background="{Binding SelectedRental.StatusDisplay, Converter={StaticResource StatusBadgeBackgroundConverter}}">
+                                                    <TextBlock Style="{StaticResource StatusBadgeTextStyle}"
+                                                               Text="{Binding SelectedRental.StatusDisplay}"
+                                                               Foreground="{Binding SelectedRental.StatusDisplay, Converter={StaticResource StatusBadgeForegroundConverter}}" />
+                                                </Border>
+                                            </Grid>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Margin="0,12,0,0"
+                                            Padding="14"
+                                            Background="#F8FAFC"
+                                            BorderBrush="#E2E8F0"
+                                            BorderThickness="1"
+                                            CornerRadius="10">
+                                        <StackPanel>
+                                            <TextBlock Text="Маршрут і фінанси"
+                                                       Style="{StaticResource SectionTitleStyle}"
+                                                       FontSize="16" />
+                                            <Grid Margin="0,10,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                </Grid.RowDefinitions>
+
+                                                <TextBlock Grid.Row="0" Grid.Column="0" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="Маршрут:" />
+                                                <TextBlock Grid.Row="0" Grid.Column="1" Margin="0,0,0,6" Text="{Binding SelectedRental.RouteDisplay, TargetNullValue=-}" TextWrapping="Wrap" />
+
+                                                <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="Сума:" />
+                                                <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,0,0,6" Text="{Binding SelectedRental.TotalAmount, StringFormat={}{0:C}, TargetNullValue=-}" />
+
+                                                <TextBlock Grid.Row="2" Grid.Column="0" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="Сплачено:" />
+                                                <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,0,0,6" Text="{Binding SelectedRental.PaidAmount, StringFormat={}{0:C}, TargetNullValue=-}" />
+
+                                                <TextBlock Grid.Row="3" Grid.Column="0" Margin="0,0,8,0" Style="{StaticResource FormLabelStyle}" Text="Баланс:" />
+                                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedRental.Balance, StringFormat={}{0:C}, TargetNullValue=-}" />
+                                            </Grid>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Margin="0,12,0,0"
+                                            Padding="14"
+                                            Background="#F8FAFC"
+                                            BorderBrush="#E2E8F0"
+                                            BorderThickness="1"
+                                            CornerRadius="10">
+                                        <StackPanel>
+                                            <TextBlock Text="Дії"
+                                                       Style="{StaticResource SectionTitleStyle}"
+                                                       FontSize="16" />
+                                            <TextBlock Margin="0,8,0,0"
+                                                       Text="Закриття оренди"
+                                                       Style="{StaticResource FormLabelStyle}" />
+                                            <TextBlock Text="Після огляду авто внесіть новий пробіг для повернення в автопарк."
+                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                       TextWrapping="Wrap" />
+                                            <TextBlock Margin="0,10,0,4" Style="{StaticResource FormLabelStyle}" Text="Дата повернення" />
+                                            <DatePicker SelectedDate="{Binding ActualReturnDate}" />
+                                            <TextBlock Margin="0,10,0,4" Style="{StaticResource FormLabelStyle}" Text="Кінцевий пробіг" />
+                                            <TextBox Text="{Binding EndMileageInput, UpdateSourceTrigger=PropertyChanged}" />
+                                            <Button Margin="0,12,0,0"
+                                                    Content="Закрити оренду"
+                                                    Style="{StaticResource PrimaryButtonStyle}"
+                                                    IsEnabled="{Binding CanManageRentals}"
+                                                    Command="{Binding CloseRentalCommand}" />
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Margin="0,12,0,0"
+                                            Padding="14"
+                                            Background="#FFF7F7"
+                                            BorderBrush="#FECACA"
+                                            BorderThickness="1"
+                                            CornerRadius="10">
+                                        <StackPanel>
                                             <TextBlock Text="Скасування оренди"
                                                        Style="{StaticResource SectionTitleStyle}"
-                                                       FontSize="15" />
-                                        </Expander.Header>
-                                        <Border Margin="0,10,0,0"
-                                                Padding="12"
-                                                Background="#FFF7F7"
-                                                BorderBrush="#FECACA"
-                                                BorderThickness="1"
-                                                CornerRadius="10">
-                                            <StackPanel>
-                                                <TextBlock Style="{StaticResource FormLabelStyle}" Text="Причина" Margin="0,0,0,4" />
-                                                <TextBox Text="{Binding CancelReason, UpdateSourceTrigger=PropertyChanged}" />
-                                                <Button Content="Скасувати оренду"
-                                                        Margin="0,12,0,0"
-                                                        Style="{StaticResource DangerButtonStyle}"
-                                                        IsEnabled="{Binding CanManageRentals}"
-                                                        Command="{Binding CancelRentalCommand}" />
-                                            </StackPanel>
-                                        </Border>
-                                    </Expander>
+                                                       FontSize="16" />
+                                            <TextBlock Margin="0,10,0,4" Style="{StaticResource FormLabelStyle}" Text="Причина" />
+                                            <TextBox Text="{Binding CancelReason, UpdateSourceTrigger=PropertyChanged}" />
+                                            <Button Margin="0,12,0,0"
+                                                    Content="Скасувати оренду"
+                                                    Style="{StaticResource DangerButtonStyle}"
+                                                    IsEnabled="{Binding CanManageRentals}"
+                                                    Command="{Binding CancelRentalCommand}" />
+                                        </StackPanel>
+                                    </Border>
                                 </StackPanel>
                             </ScrollViewer>
-                        </GroupBox>
-                    </Grid>
+                        </Grid>
+                    </GroupBox>
                 </Grid>
             </TabItem>
 
@@ -483,10 +454,276 @@
 
         <Border Grid.Row="2"
                 Margin="0,12,0,0"
-                Style="{StaticResource StatusPanelStyle}">
+                Style="{StaticResource StatusPanelStyle}"
+                Visibility="{Binding HasStatusMessage, Converter={StaticResource BoolToVisibilityConverter}}">
             <TextBlock Text="{Binding StatusMessage}"
                        Foreground="{StaticResource TextPrimaryBrush}"
                        TextWrapping="Wrap" />
+        </Border>
+
+        <Border x:Name="CreateRentalDialogOverlay"
+                Grid.RowSpan="3"
+                Background="#CC0F172A"
+                Visibility="{Binding IsCreateRentalDialogOpen, Converter={StaticResource BoolToVisibilityConverter}}"
+                Panel.ZIndex="900">
+            <Border Margin="32"
+                    Padding="20"
+                    MaxWidth="980"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Background="White"
+                    BorderBrush="#CBD5E1"
+                    BorderThickness="1"
+                    CornerRadius="14">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="0,0,0,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Створення оренди"
+                                       Style="{StaticResource SectionTitleStyle}"
+                                       FontSize="24" />
+                            <TextBlock Margin="0,4,0,0"
+                                       Text="Пошук клієнта й авто працює без переходу на інші сторінки."
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <Button Grid.Column="1"
+                                Width="34"
+                                Height="30"
+                                FontSize="16"
+                                Content="X"
+                                IsEnabled="{Binding IsCreateRentalInteractive}"
+                                Command="{Binding CloseCreateRentalDialogCommand}" />
+                    </Grid>
+
+                    <ScrollViewer Grid.Row="1"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel>
+                            <Border Margin="0,0,0,12"
+                                    Padding="12"
+                                    Background="#FFF7ED"
+                                    BorderBrush="#FDBA74"
+                                    BorderThickness="1"
+                                    CornerRadius="10"
+                                    Visibility="{Binding CreateDraft.HasFormMessage, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock Text="{Binding CreateDraft.FormMessage}"
+                                           Foreground="#9A3412"
+                                           TextWrapping="Wrap" />
+                            </Border>
+
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Клієнт (пошук)" />
+                                    <ComboBox ItemsSource="{Binding Clients}"
+                                              DisplayMemberPath="Display"
+                                              SelectedItem="{Binding CreateDraft.SelectedClient}"
+                                              Text="{Binding CreateDraft.ClientSearchText, UpdateSourceTrigger=PropertyChanged}"
+                                              IsEditable="True"
+                                              IsTextSearchEnabled="False"
+                                              StaysOpenOnEdit="True"
+                                              MaxDropDownHeight="360"
+                                              ToolTip="Введіть ПІБ, посвідчення водія, телефон або паспортні дані" />
+                                    <TextBlock Margin="0,4,0,0"
+                                               Foreground="{StaticResource DangerBrush}"
+                                               Text="{Binding CreateClientValidationMessage}"
+                                               TextWrapping="Wrap"
+                                               Visibility="{Binding HasCreateClientValidationMessage, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Авто (пошук)" />
+                                    <ComboBox ItemsSource="{Binding Vehicles}"
+                                              DisplayMemberPath="Display"
+                                              SelectedItem="{Binding CreateDraft.SelectedVehicle}"
+                                              Text="{Binding CreateDraft.VehicleSearchText, UpdateSourceTrigger=PropertyChanged}"
+                                              IsEditable="True"
+                                              IsTextSearchEnabled="False"
+                                              StaysOpenOnEdit="True"
+                                              MaxDropDownHeight="360"
+                                              ToolTip="Введіть марку, модель або номерний знак" />
+                                    <TextBlock Margin="0,4,0,0"
+                                               Foreground="{StaticResource DangerBrush}"
+                                               Text="{Binding CreateVehicleValidationMessage}"
+                                               TextWrapping="Wrap"
+                                               Visibility="{Binding HasCreateVehicleValidationMessage, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                </StackPanel>
+                            </Grid>
+
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Початок" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="90" />
+                                        </Grid.ColumnDefinitions>
+                                        <DatePicker DisplayDateStart="{Binding MinCreateStartDate, Mode=OneWay}"
+                                                    SelectedDate="{Binding CreateDraft.StartDate}" />
+                                        <ComboBox Grid.Column="1"
+                                                  Margin="8,0,0,0"
+                                                  ItemsSource="{Binding TimeOptions}"
+                                                  SelectedItem="{Binding CreateDraft.StartTime}" />
+                                    </Grid>
+                                    <TextBlock Margin="0,4,0,0"
+                                               Foreground="{StaticResource DangerBrush}"
+                                               Text="{Binding CreateStartDateValidationMessage}"
+                                               TextWrapping="Wrap"
+                                               Visibility="{Binding HasCreateStartDateValidationMessage, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Повернення" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="90" />
+                                        </Grid.ColumnDefinitions>
+                                        <DatePicker DisplayDateStart="{Binding MinCreateEndDate, Mode=OneWay}"
+                                                    SelectedDate="{Binding CreateDraft.EndDate}" />
+                                        <ComboBox Grid.Column="1"
+                                                  Margin="8,0,0,0"
+                                                  ItemsSource="{Binding TimeOptions}"
+                                                  SelectedItem="{Binding CreateDraft.EndTime}" />
+                                    </Grid>
+                                    <TextBlock Margin="0,4,0,0"
+                                               Foreground="{StaticResource DangerBrush}"
+                                               Text="{Binding CreateEndDateValidationMessage}"
+                                               TextWrapping="Wrap"
+                                               Visibility="{Binding HasCreateEndDateValidationMessage, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                </StackPanel>
+                            </Grid>
+
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Локація отримання" />
+                                    <ComboBox ItemsSource="{Binding Locations}"
+                                              SelectedItem="{Binding CreateDraft.PickupLocation}" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Локація повернення" />
+                                    <ComboBox ItemsSource="{Binding Locations}"
+                                              SelectedItem="{Binding CreateDraft.ReturnLocation}" />
+                                </StackPanel>
+                            </Grid>
+
+                            <TextBlock Margin="0,0,0,12"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       Text="{Binding CreateRentalEstimatedAmountSummary}"
+                                       TextWrapping="Wrap" />
+
+                            <CheckBox Margin="0,0,0,10"
+                                      Content="Створити початковий платіж разом з орендою"
+                                      IsChecked="{Binding CreateDraft.CreateInitialPayment}" />
+
+                            <Grid Margin="0,0,0,12"
+                                  Visibility="{Binding CreateDraft.CreateInitialPayment, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,10,10">
+                                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Сума" />
+                                    <TextBox Text="{Binding CreateDraft.InitialPaymentAmountInput, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Margin="0,4,0,0"
+                                               Foreground="{StaticResource DangerBrush}"
+                                               Text="{Binding CreatePaymentValidationMessage}"
+                                               TextWrapping="Wrap"
+                                               Visibility="{Binding HasCreatePaymentValidationMessage, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="0" Grid.Column="1" Margin="0,0,10,10">
+                                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Метод" />
+                                    <ComboBox SelectedValue="{Binding CreateDraft.PaymentMethod}"
+                                              SelectedValuePath="Tag">
+                                        <ComboBoxItem Content="Готівка" Tag="{x:Static models:PaymentMethod.Cash}" />
+                                        <ComboBoxItem Content="Карта" Tag="{x:Static models:PaymentMethod.Card}" />
+                                    </ComboBox>
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="0" Grid.Column="2" Margin="0,0,0,10">
+                                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Тип платежу" />
+                                    <ComboBox SelectedValue="{Binding CreateDraft.PaymentDirection}"
+                                              SelectedValuePath="Tag">
+                                        <ComboBoxItem Content="Надходження" Tag="{x:Static models:PaymentDirection.Incoming}" />
+                                        <ComboBoxItem Content="Повернення" Tag="{x:Static models:PaymentDirection.Refund}" />
+                                    </ComboBox>
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="1" Grid.ColumnSpan="3">
+                                    <TextBlock Style="{StaticResource FormLabelStyle}" Text="Нотатка" />
+                                    <TextBox Text="{Binding CreateDraft.PaymentNotes, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                            </Grid>
+
+                            <CheckBox Content="Автодрук PDF"
+                                      IsChecked="{Binding CreateDraft.AutoPrintContract}" />
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <StackPanel Grid.Row="2"
+                                Margin="0,16,0,0">
+                        <Border Margin="0,0,0,10"
+                                Padding="10"
+                                Background="#FFF7ED"
+                                BorderBrush="#FDBA74"
+                                BorderThickness="1"
+                                CornerRadius="10"
+                                Visibility="{Binding CreateDraft.HasFormMessage, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <TextBlock Text="{Binding CreateDraft.FormMessage}"
+                                       Foreground="#9A3412"
+                                       TextWrapping="Wrap" />
+                        </Border>
+
+                        <StackPanel Orientation="Horizontal"
+                                    HorizontalAlignment="Right">
+                            <Button Margin="0,0,10,0"
+                                    Padding="18,10"
+                                    Content="Скасувати"
+                                    IsEnabled="{Binding IsCreateRentalInteractive}"
+                                    Command="{Binding CloseCreateRentalDialogCommand}" />
+                            <Button Padding="18,10"
+                                    MinWidth="180"
+                                    Style="{StaticResource PrimaryButtonStyle}"
+                                    Content="{Binding CreateRentalSubmitButtonText}"
+                                    Command="{Binding SubmitCreateRentalCommand}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+            </Border>
         </Border>
 
         <Border x:Name="GuideOverlay"

@@ -1,4 +1,4 @@
-namespace CarRental.Desktop.Models;
+﻿namespace CarRental.Desktop.Models;
 
 public sealed class ClientDocumentTypeLookup
 {
@@ -8,3 +8,4 @@ public sealed class ClientDocumentTypeLookup
 
     public ICollection<ClientDocument> Documents { get; set; } = new List<ClientDocument>();
 }
+

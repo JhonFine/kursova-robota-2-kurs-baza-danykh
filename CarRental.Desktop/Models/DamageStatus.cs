@@ -1,4 +1,4 @@
-namespace CarRental.Desktop.Models;
+﻿namespace CarRental.Desktop.Models;
 
 public enum DamageStatus
 {
@@ -6,4 +6,5 @@ public enum DamageStatus
     Charged = 2,
     Resolved = 3
 }
+
 

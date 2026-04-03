@@ -1,4 +1,4 @@
-using CarRental.Desktop.ViewModels;
+﻿using CarRental.Desktop.ViewModels;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -124,3 +124,4 @@ public partial class LoginWindow : Window
         }
     }
 }
+

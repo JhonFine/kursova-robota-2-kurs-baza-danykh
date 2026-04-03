@@ -86,7 +86,7 @@ public sealed class MainViewModel : ViewModelBase
 
     public Employee CurrentEmployee { get; }
 
-    public string CurrentEmployeeRole => CurrentEmployee.Role.ToDisplay();
+    public string CurrentEmployeeRole => CurrentEmployee.RoleId.ToDisplay();
 
     public FleetPageViewModel FleetPage { get; }
 
@@ -130,7 +130,7 @@ public sealed class MainViewModel : ViewModelBase
 
     public event Action? LogoutRequested;
 
-    public bool IsUser => CurrentEmployee.Role == UserRole.User;
+    public bool IsUser => CurrentEmployee.RoleId == UserRole.User;
 
     public bool CanSelfManageRole
         => false;
@@ -155,7 +155,7 @@ public sealed class MainViewModel : ViewModelBase
 
     public bool CanSeeDamages => !IsUser;
 
-    public bool CanSeeAdmin => CurrentEmployee.Role == UserRole.Admin;
+    public bool CanSeeAdmin => CurrentEmployee.RoleId == UserRole.Admin;
 
     public string Header
     {
@@ -465,4 +465,27 @@ public sealed class MainViewModel : ViewModelBase
         await _refreshCoordinator.EnsurePageDataAsync(PageRefreshArea.Prokat, ProkatPage);
         await ProkatPage.PrepareRebookingAsync(vehicleId);
     }
+
+    public async Task NavigateToRentalsAsync(int preferredClientId)
+    {
+        if (!CanSeeRentals)
+        {
+            return;
+        }
+
+        ActivateRentalsPage();
+        await RentalsPage.PrepareForClientAsync(preferredClientId);
+    }
+
+    public async Task NavigateToFleetAsync(int preferredVehicleId, bool openDetails = true)
+    {
+        if (!CanSeeFleet)
+        {
+            return;
+        }
+
+        ActivateFleetPage();
+        await FleetPage.PrepareForVehicleAsync(preferredVehicleId, openDetails);
+    }
 }
+

@@ -1,4 +1,4 @@
-using CarRental.Desktop.Infrastructure;
+﻿using CarRental.Desktop.Infrastructure;
 using CarRental.Desktop.Models;
 
 namespace CarRental.Desktop.ViewModels;
@@ -160,3 +160,4 @@ public sealed class AddVehicleDialogViewModel : ViewModelBase
         return true;
     }
 }
+

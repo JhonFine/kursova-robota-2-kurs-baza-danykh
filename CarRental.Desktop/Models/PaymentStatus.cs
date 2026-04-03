@@ -1,4 +1,4 @@
-namespace CarRental.Desktop.Models;
+﻿namespace CarRental.Desktop.Models;
 
 public enum PaymentStatus
 {
@@ -7,3 +7,4 @@ public enum PaymentStatus
     Canceled = 3,
     Refunded = 4
 }
+

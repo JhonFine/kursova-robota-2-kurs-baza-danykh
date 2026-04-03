@@ -1,4 +1,4 @@
-namespace CarRental.Desktop.Models;
+﻿namespace CarRental.Desktop.Models;
 
 public sealed class EmployeeRoleLookup
 {
@@ -8,3 +8,4 @@ public sealed class EmployeeRoleLookup
 
     public ICollection<Employee> Employees { get; set; } = new List<Employee>();
 }
+

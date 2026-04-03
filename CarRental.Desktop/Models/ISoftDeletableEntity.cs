@@ -1,6 +1,7 @@
-namespace CarRental.Desktop.Models;
+﻿namespace CarRental.Desktop.Models;
 
 public interface ISoftDeletableEntity
 {
     bool IsDeleted { get; set; }
 }
+

@@ -9,13 +9,14 @@ using CarRental.Shared.ReferenceData;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.EntityFrameworkCore;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 
 namespace CarRental.Desktop.ViewModels;
 
 // Операційний workspace для менеджера оренд:
-// тут в одному місці живуть створення договору, оплати, закриття та таймлайн завантаженості.
+// список договорів, платежі та точкові дії живуть на одній сторінці, а створення винесене в overlay-діалог.
 public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStateOwner
 {
     private readonly RentalDbContext _dbContext;
@@ -26,20 +27,21 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
     private readonly IAuthorizationService _authorizationService;
     private readonly PageRefreshCoordinator _refreshCoordinator;
     private readonly Employee _currentEmployee;
+    private readonly SemaphoreSlim _dbContextOperationGate = new(1, 1);
     private const int ClientSearchLimit = 40;
     private const int VehicleSearchLimit = 40;
-    private const string VehicleAvailableLabel = "\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0435";
-    private const string VehicleUnavailableLabel = "\u0437\u0430\u0439\u043D\u044F\u0442\u0435";
+    private const string VehicleAvailableForPeriodLabel = "доступне на обрані дати";
+    private const string VehicleConflictLabel = "конфлікт на обрані дати";
+    private const string VehicleUnavailableLabel = "тимчасово недоступне";
+    private const string VehiclePeriodRequiredLabel = "перевірте період";
+    private const string MissingDriverLicenseLabel = "без посвідчення";
+    private const string CreateRentalSubmitText = "Створити оренду";
+    private const string CreateRentalSubmitBusyText = "Створення...";
 
     private bool _isLoading;
-    private ClientOption? _selectedClient;
-    private VehicleOption? _selectedVehicle;
-    private string _clientSearchText = string.Empty;
-    private string _vehicleSearchText = string.Empty;
-    private DateTime _startDate = DateTime.Today;
-    private string _startTime = "10:00";
-    private DateTime _endDate = DateTime.Today.AddDays(1);
-    private string _endTime = "10:00";
+    private bool _isCreateRentalDialogOpen;
+    private bool _isCreateRentalBusy;
+    private bool _isSynchronizingCreateDraft;
     private DateTime _actualReturnDate = DateTime.Today;
     private string _endMileageInput = string.Empty;
     private string _statusMessage = string.Empty;
@@ -48,13 +50,14 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
     private string _paymentAmountInput = string.Empty;
     private PaymentMethod _paymentMethod = PaymentMethod.Cash;
     private PaymentDirection _paymentDirection = PaymentDirection.Incoming;
-    private bool _autoPrintContract;
     private int _guideRequestId;
-    // Живий пошук у комбобоксах перезапускає запит при кожному вводі, тому попередні пошуки треба скасовувати.
+    private int? _preferredSelectedRentalId;
+    private Task _clientSearchTask = Task.CompletedTask;
+    private Task _vehicleSearchTask = Task.CompletedTask;
+    private Task _paymentsLoadTask = Task.CompletedTask;
     private CancellationTokenSource? _clientSearchCancellationTokenSource;
     private CancellationTokenSource? _vehicleSearchCancellationTokenSource;
     private CancellationTokenSource? _paymentsLoadCancellationTokenSource;
-    // Під час програмної зміни вибору оренди не треба повторно вантажити платежі ще до завершення refresh.
     private bool _suppressSelectedRentalPaymentsLoad;
 
     public RentalsPageViewModel(
@@ -76,8 +79,14 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
         _refreshCoordinator = refreshCoordinator;
         _currentEmployee = currentEmployee;
 
+        Locations = [.. DemoSeedReferenceData.SupportedLocations];
+        CreateDraft = new RentalCreateDraft(DefaultLocation);
+        CreateDraft.PropertyChanged += CreateDraft_OnPropertyChanged;
+
         RefreshCommand = new AsyncRelayCommand(RefreshAsync, () => !IsLoading);
-        CreateRentalCommand = new AsyncRelayCommand(CreateRentalAsync, CanCreateRental);
+        OpenCreateRentalDialogCommand = new AsyncRelayCommand(OpenCreateRentalDialogAsync, CanOpenCreateRentalDialog);
+        CloseCreateRentalDialogCommand = new RelayCommand(CloseCreateRentalDialog);
+        SubmitCreateRentalCommand = new AsyncRelayCommand(SubmitCreateRentalAsync, CanSubmitCreateRental);
         CloseRentalCommand = new AsyncRelayCommand(CloseRentalAsync, () => !IsLoading);
         CancelRentalCommand = new AsyncRelayCommand(CancelRentalAsync, () => !IsLoading);
         AddPaymentCommand = new AsyncRelayCommand(AddPaymentAsync, () => !IsLoading);
@@ -94,11 +103,19 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
 
     public ObservableCollection<GanttRow> GanttRows { get; } = [];
 
+    public ObservableCollection<string> Locations { get; }
+
     public ObservableCollection<string> TimeOptions { get; } = [.. DemoSeedReferenceData.TimeOptions];
+
+    public RentalCreateDraft CreateDraft { get; }
 
     public IAsyncRelayCommand RefreshCommand { get; }
 
-    public IAsyncRelayCommand CreateRentalCommand { get; }
+    public IAsyncRelayCommand OpenCreateRentalDialogCommand { get; }
+
+    public IRelayCommand CloseCreateRentalDialogCommand { get; }
+
+    public IAsyncRelayCommand SubmitCreateRentalCommand { get; }
 
     public IAsyncRelayCommand CloseRentalCommand { get; }
 
@@ -116,7 +133,8 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
             if (SetProperty(ref _isLoading, value))
             {
                 RefreshCommand.NotifyCanExecuteChanged();
-                CreateRentalCommand.NotifyCanExecuteChanged();
+                OpenCreateRentalDialogCommand.NotifyCanExecuteChanged();
+                SubmitCreateRentalCommand.NotifyCanExecuteChanged();
                 CloseRentalCommand.NotifyCanExecuteChanged();
                 CancelRentalCommand.NotifyCanExecuteChanged();
                 AddPaymentCommand.NotifyCanExecuteChanged();
@@ -124,98 +142,38 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
         }
     }
 
-    public ClientOption? SelectedClient
+    public bool IsCreateRentalDialogOpen
     {
-        get => _selectedClient;
-        set => SetProperty(ref _selectedClient, value);
+        get => _isCreateRentalDialogOpen;
+        private set => SetProperty(ref _isCreateRentalDialogOpen, value);
     }
 
-    public VehicleOption? SelectedVehicle
+    public bool IsCreateRentalBusy
     {
-        get => _selectedVehicle;
-        set => SetProperty(ref _selectedVehicle, value);
-    }
-
-    public string ClientSearchText
-    {
-        get => _clientSearchText;
-        set
+        get => _isCreateRentalBusy;
+        private set
         {
-            if (SetProperty(ref _clientSearchText, value))
+            if (SetProperty(ref _isCreateRentalBusy, value))
             {
-                _ = QueueClientSearchAsync();
+                OpenCreateRentalDialogCommand.NotifyCanExecuteChanged();
+                SubmitCreateRentalCommand.NotifyCanExecuteChanged();
+                OnPropertyChanged(nameof(IsCreateRentalInteractive));
+                OnPropertyChanged(nameof(CreateRentalSubmitButtonText));
             }
         }
     }
 
-    public string VehicleSearchText
-    {
-        get => _vehicleSearchText;
-        set
-        {
-            if (SetProperty(ref _vehicleSearchText, value))
-            {
-                _ = QueueVehicleSearchAsync();
-            }
-        }
-    }
+    public bool IsCreateRentalInteractive => !IsCreateRentalBusy;
 
-    public DateTime StartDate
-    {
-        get => _startDate;
-        set
-        {
-            if (SetProperty(ref _startDate, value))
-            {
-                if (EndDate.Date < value.Date)
-                {
-                    EndDate = value.Date;
-                }
-
-                NotifyCreateRentalValidationChanged();
-            }
-        }
-    }
-
-    public string StartTime
-    {
-        get => _startTime;
-        set
-        {
-            if (SetProperty(ref _startTime, value))
-            {
-                NotifyCreateRentalValidationChanged();
-            }
-        }
-    }
-
-    public DateTime EndDate
-    {
-        get => _endDate;
-        set
-        {
-            if (SetProperty(ref _endDate, value))
-            {
-                NotifyCreateRentalValidationChanged();
-            }
-        }
-    }
-
-    public string EndTime
-    {
-        get => _endTime;
-        set
-        {
-            if (SetProperty(ref _endTime, value))
-            {
-                NotifyCreateRentalValidationChanged();
-            }
-        }
-    }
+    public string CreateRentalSubmitButtonText => IsCreateRentalBusy
+        ? CreateRentalSubmitBusyText
+        : CreateRentalSubmitText;
 
     public DateTime MinCreateStartDate => DateTime.Today;
 
-    public DateTime MinCreateEndDate => StartDate.Date > DateTime.Today ? StartDate.Date : DateTime.Today;
+    public DateTime MinCreateEndDate => CreateDraft.StartDate.Date > DateTime.Today
+        ? CreateDraft.StartDate.Date
+        : DateTime.Today;
 
     public string CreateStartDateValidationMessage => ResolveCreateStartDateValidationMessage() ?? string.Empty;
 
@@ -224,6 +182,20 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
     public string CreateEndDateValidationMessage => ResolveCreateEndDateValidationMessage() ?? string.Empty;
 
     public bool HasCreateEndDateValidationMessage => !string.IsNullOrWhiteSpace(CreateEndDateValidationMessage);
+
+    public string CreateClientValidationMessage => ResolveCreateClientValidationMessage() ?? string.Empty;
+
+    public bool HasCreateClientValidationMessage => !string.IsNullOrWhiteSpace(CreateClientValidationMessage);
+
+    public string CreateVehicleValidationMessage => ResolveCreateVehicleValidationMessage() ?? string.Empty;
+
+    public bool HasCreateVehicleValidationMessage => !string.IsNullOrWhiteSpace(CreateVehicleValidationMessage);
+
+    public string CreatePaymentValidationMessage => ResolveCreatePaymentValidationMessage(suppressEmptyAmount: true) ?? string.Empty;
+
+    public bool HasCreatePaymentValidationMessage => !string.IsNullOrWhiteSpace(CreatePaymentValidationMessage);
+
+    public string CreateRentalEstimatedAmountSummary => BuildCreateRentalEstimatedAmountSummary();
 
     public DateTime ActualReturnDate
     {
@@ -240,8 +212,16 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
     public string StatusMessage
     {
         get => _statusMessage;
-        set => SetProperty(ref _statusMessage, value);
+        set
+        {
+            if (SetProperty(ref _statusMessage, value))
+            {
+                OnPropertyChanged(nameof(HasStatusMessage));
+            }
+        }
     }
+
+    public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusMessage);
 
     public RentalRow? SelectedRental
     {
@@ -250,10 +230,16 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
         {
             if (SetProperty(ref _selectedRental, value))
             {
+                OnPropertyChanged(nameof(HasSelectedRental));
+                OnPropertyChanged(nameof(HasNoSelectedRental));
                 QueuePaymentsLoad();
             }
         }
     }
+
+    public bool HasSelectedRental => SelectedRental is not null;
+
+    public bool HasNoSelectedRental => SelectedRental is null;
 
     public string CancelReason
     {
@@ -279,12 +265,6 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
         set => SetProperty(ref _paymentDirection, value);
     }
 
-    public bool AutoPrintContract
-    {
-        get => _autoPrintContract;
-        set => SetProperty(ref _autoPrintContract, value);
-    }
-
     public int GuideRequestId
     {
         get => _guideRequestId;
@@ -304,57 +284,67 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
             return;
         }
 
+        await AwaitPendingCreateDialogSearchesAsync();
         IsLoading = true;
         try
         {
-            var clients = _dbContext.Clients
-                .AsNoTracking()
-                .IgnoreQueryFilters();
-            var vehicles = _dbContext.Vehicles
-                .AsNoTracking()
-                .IgnoreQueryFilters();
+            var snapshot = await WithDbContextGateAsync(async cancellationToken =>
+            {
+                var clients = _dbContext.Clients
+                    .AsNoTracking()
+                    .IgnoreQueryFilters();
+                var vehicles = _dbContext.Vehicles
+                    .AsNoTracking()
+                    .IgnoreQueryFilters();
 
-            var vehiclesForGantt = await _dbContext.Vehicles
-                .AsNoTracking()
-                .OrderBy(vehicle => vehicle.Make)
-                .ThenBy(vehicle => vehicle.Model)
-                .ToListAsync();
+                var vehiclesForGantt = await _dbContext.Vehicles
+                    .AsNoTracking()
+                    .Include(vehicle => vehicle.MakeLookup)
+                    .Include(vehicle => vehicle.ModelLookup)
+                    .OrderBy(vehicle => vehicle.MakeLookup!.Name)
+                    .ThenBy(vehicle => vehicle.ModelLookup!.Name)
+                    .ToListAsync(cancellationToken);
 
-            var rentals = await _dbContext.Rentals
-                .AsNoTracking()
-                .OrderByDescending(rental => rental.StartDate)
-                .Take(500)
-                .Select(rental => new RentalListSnapshot(
-                    rental.Id,
-                    rental.ContractNumber,
-                    clients
-                        .Where(client => client.Id == rental.ClientId)
-                        .Select(client => client.FullName)
-                        .FirstOrDefault() ?? string.Empty,
-                    rental.VehicleId,
-                    vehicles
-                        .Where(vehicle => vehicle.Id == rental.VehicleId)
-                        .Select(vehicle => vehicle.Make + " " + vehicle.Model)
-                        .FirstOrDefault() ?? string.Empty,
-                    rental.StartDate,
-                    rental.EndDate,
-                    rental.TotalAmount,
-                    rental.Payments.Sum(payment => (decimal?)(
-                        payment.Direction == PaymentDirection.Incoming
-                            ? payment.Amount
-                            : payment.Direction == PaymentDirection.Refund
-                                ? -payment.Amount
-                                : 0m)) ?? 0m,
-                    rental.Status))
-                .ToListAsync();
+                var rentals = await _dbContext.Rentals
+                    .AsNoTracking()
+                    .OrderByDescending(rental => rental.StartDate)
+                    .Take(500)
+                    .Select(rental => new RentalListSnapshot(
+                        rental.Id,
+                        rental.ContractNumber,
+                        clients
+                            .Where(client => client.Id == rental.ClientId)
+                            .Select(client => client.FullName)
+                            .FirstOrDefault() ?? string.Empty,
+                        rental.VehicleId,
+                        vehicles
+                            .Where(vehicle => vehicle.Id == rental.VehicleId)
+                            .Select(vehicle => vehicle.MakeLookup!.Name + " " + vehicle.ModelLookup!.Name)
+                            .FirstOrDefault() ?? string.Empty,
+                        rental.StartDate,
+                        rental.EndDate,
+                        rental.PickupLocation,
+                        rental.ReturnLocation,
+                        rental.TotalAmount,
+                        rental.Payments.Sum(payment => (decimal?)(
+                            payment.DirectionId == PaymentDirection.Incoming
+                                ? payment.Amount
+                                : payment.DirectionId == PaymentDirection.Refund
+                                    ? -payment.Amount
+                                    : 0m)) ?? 0m,
+                        rental.StatusId))
+                    .ToListAsync(cancellationToken);
 
-            await ReloadClientsAsync(SelectedClient?.Id);
+                return (vehiclesForGantt, rentals);
+            });
 
-            await ReloadVehiclesAsync(SelectedVehicle?.Id);
+            await ReloadClientsAsync(CreateDraft.SelectedClient?.Id);
+            await ReloadVehiclesAsync(CreateDraft.SelectedVehicle?.Id);
 
-            var selectedRentalId = SelectedRental?.Id;
+            var selectedRentalId = _preferredSelectedRentalId ?? SelectedRental?.Id;
+            _preferredSelectedRentalId = null;
             Rentals.Clear();
-            foreach (var rental in rentals)
+            foreach (var rental in snapshot.rentals)
             {
                 Rentals.Add(new RentalRow(
                     rental.Id,
@@ -363,13 +353,15 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
                     rental.VehicleName,
                     rental.StartDate,
                     rental.EndDate,
+                    rental.PickupLocation,
+                    rental.ReturnLocation,
                     rental.TotalAmount,
                     rental.PaidAmount,
                     rental.TotalAmount - rental.PaidAmount,
-                    rental.Status));
+                    rental.StatusId));
             }
 
-            var rentalsByVehicleId = rentals
+            var rentalsByVehicleId = snapshot.rentals
                 .GroupBy(item => item.VehicleId)
                 .ToDictionary(
                     group => group.Key,
@@ -377,7 +369,7 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
                         .OrderBy(item => item.StartDate)
                         .ToList());
 
-            BuildGantt(vehiclesForGantt, rentalsByVehicleId);
+            BuildGantt(snapshot.vehiclesForGantt, rentalsByVehicleId);
 
             _suppressSelectedRentalPaymentsLoad = true;
             SelectedRental = selectedRentalId.HasValue
@@ -395,97 +387,276 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
         }
     }
 
-    private async Task CreateRentalAsync()
+    public async Task PrepareForClientAsync(int preferredClientId)
     {
-        StatusMessage = string.Empty;
-
-        if (!CanManageRentals)
+        if (preferredClientId <= 0)
         {
-            StatusMessage = "Недостатньо прав для оформлення оренди.";
+            await EnsureDataAsync();
             return;
         }
 
-        if (SelectedClient is null || SelectedVehicle is null)
+        await AwaitPendingCreateDialogSearchesAsync();
+        ResetCreateDraft();
+        await EnsureDataAsync();
+        await ReloadClientsAsync(preferredClientId);
+        await ReloadVehiclesAsync(CreateDraft.SelectedVehicle?.Id);
+
+        if (CreateDraft.SelectedClient is not null)
         {
-            StatusMessage = "Оберіть клієнта та авто.";
+            IsCreateRentalDialogOpen = true;
+            StatusMessage = $"Клієнта {CreateDraft.SelectedClient.Display} підготовлено для оформлення оренди.";
+        }
+    }
+
+    public void CloseCreateRentalDialog()
+    {
+        CancelPendingCreateDialogSearches();
+        IsCreateRentalDialogOpen = false;
+        CreateDraft.FormMessage = string.Empty;
+    }
+
+    private async Task OpenCreateRentalDialogAsync()
+    {
+        if (!CanManageRentals)
+        {
             return;
+        }
+
+        await AwaitPendingCreateDialogSearchesAsync();
+        ResetCreateDraft();
+        await EnsureDataAsync();
+        await ReloadClientsAsync(CreateDraft.SelectedClient?.Id);
+        await ReloadVehiclesAsync(CreateDraft.SelectedVehicle?.Id);
+        IsCreateRentalDialogOpen = true;
+    }
+
+    private bool CanOpenCreateRentalDialog()
+    {
+        return !IsLoading && !IsCreateRentalBusy && CanManageRentals;
+    }
+
+    private async Task SubmitCreateRentalAsync()
+    {
+        CreateDraft.FormMessage = string.Empty;
+
+        if (!CanManageRentals)
+        {
+            CreateDraft.FormMessage = "Недостатньо прав для оформлення оренди.";
+            return;
+        }
+
+        await AwaitPendingCreateDialogSearchesAsync();
+
+        var validationError = ResolveCreateDialogValidationMessage();
+        if (!string.IsNullOrWhiteSpace(validationError))
+        {
+            CreateDraft.FormMessage = validationError;
+            return;
+        }
+
+        IsCreateRentalBusy = true;
+        try
+        {
+            var startDateTime = BuildCreateStartDateTime();
+            var endDateTime = BuildCreateEndDateTime();
+            var returnLocation = string.IsNullOrWhiteSpace(CreateDraft.ReturnLocation)
+                ? CreateDraft.PickupLocation.Trim()
+                : CreateDraft.ReturnLocation.Trim();
+            var initialPaymentAmount = ParseCreateInitialPaymentAmount();
+
+            var autoPrintContract = CreateDraft.AutoPrintContract;
+            CreateRentalResult result;
+            if (CreateDraft.CreateInitialPayment)
+            {
+                result = await WithDbContextGateAsync(
+                    cancellationToken => _rentalService.CreateRentalWithPaymentAsync(
+                        new CreateRentalWithPaymentRequest(
+                            CreateDraft.SelectedClient!.Id,
+                            CreateDraft.SelectedVehicle!.Id,
+                            _currentEmployee.Id,
+                            startDateTime,
+                            endDateTime,
+                            CreateDraft.PickupLocation.Trim(),
+                            returnLocation,
+                            initialPaymentAmount,
+                            CreateDraft.PaymentMethod,
+                            CreateDraft.PaymentDirection,
+                            CreateDraft.PaymentNotes.Trim()),
+                        cancellationToken));
+            }
+            else
+            {
+                result = await WithDbContextGateAsync(
+                    cancellationToken => _rentalService.CreateRentalAsync(
+                        new CreateRentalRequest(
+                            CreateDraft.SelectedClient!.Id,
+                            CreateDraft.SelectedVehicle!.Id,
+                            _currentEmployee.Id,
+                            startDateTime,
+                            endDateTime,
+                            CreateDraft.PickupLocation.Trim(),
+                            returnLocation),
+                        cancellationToken));
+            }
+
+            if (!result.Success)
+            {
+                CreateDraft.FormMessage = result.Message;
+                return;
+            }
+
+            var successMessage = await BuildCreateSuccessMessageAsync(result, autoPrintContract);
+            ResetCreateDraft();
+            CloseCreateRentalDialog();
+            EndMileageInput = string.Empty;
+            _preferredSelectedRentalId = result.RentalId;
+            _refreshCoordinator.Invalidate(PageRefreshArea.Fleet | PageRefreshArea.Prokat | PageRefreshArea.Reports | PageRefreshArea.UserRentals);
+            await RefreshAsync();
+            StatusMessage = successMessage;
+        }
+        finally
+        {
+            IsCreateRentalBusy = false;
+        }
+    }
+
+    private bool CanSubmitCreateRental()
+    {
+        return !IsLoading &&
+               !IsCreateRentalBusy &&
+               CanManageRentals &&
+               string.IsNullOrWhiteSpace(ResolveCreateStartDateValidationMessage()) &&
+               string.IsNullOrWhiteSpace(ResolveCreateEndDateValidationMessage());
+    }
+
+    private string? ResolveCreateDialogValidationMessage()
+    {
+        if (CreateDraft.SelectedClient is null)
+        {
+            return "Оберіть клієнта.";
+        }
+
+        var clientValidationError = ResolveCreateClientValidationMessage();
+        if (!string.IsNullOrWhiteSpace(clientValidationError))
+        {
+            return clientValidationError;
+        }
+
+        if (CreateDraft.SelectedVehicle is null)
+        {
+            return "Оберіть авто.";
+        }
+
+        var vehicleValidationError = ResolveCreateVehicleValidationMessage();
+        if (!string.IsNullOrWhiteSpace(vehicleValidationError))
+        {
+            return vehicleValidationError;
+        }
+
+        if (string.IsNullOrWhiteSpace(CreateDraft.PickupLocation))
+        {
+            return "Вкажіть локацію отримання.";
+        }
+
+        if (string.IsNullOrWhiteSpace(CreateDraft.ReturnLocation))
+        {
+            return "Вкажіть локацію повернення.";
         }
 
         var startDateValidationError = ResolveCreateStartDateValidationMessage();
         if (!string.IsNullOrWhiteSpace(startDateValidationError))
         {
-            StatusMessage = startDateValidationError;
-            return;
+            return startDateValidationError;
         }
 
         var endDateValidationError = ResolveCreateEndDateValidationMessage();
         if (!string.IsNullOrWhiteSpace(endDateValidationError))
         {
-            StatusMessage = endDateValidationError;
-            return;
+            return endDateValidationError;
         }
 
-        var startDateTime = BuildCreateStartDateTime();
-        var endDateTime = BuildCreateEndDateTime();
-
-        var result = await _rentalService.CreateRentalAsync(
-            new CreateRentalRequest(
-                SelectedClient.Id,
-                SelectedVehicle.Id,
-                _currentEmployee.Id,
-                startDateTime,
-                endDateTime));
-
-        if (!result.Success)
+        var paymentValidationError = ResolveCreatePaymentValidationMessage(suppressEmptyAmount: false);
+        if (!string.IsNullOrWhiteSpace(paymentValidationError))
         {
-            StatusMessage = result.Message;
-            return;
+            return paymentValidationError;
         }
 
-        var rental = await _dbContext.Rentals
-            .AsNoTracking()
-            .Include(item => item.Client)
-            .Include(item => item.Vehicle)
-            .FirstOrDefaultAsync(item => item.Id == result.RentalId);
-
-        if (rental is not null && rental.Client is not null && rental.Vehicle is not null)
-        {
-            var files = await _documentGenerator.GenerateRentalContractAsync(
-                new ContractData(
-                    rental.Id,
-                    rental.ContractNumber,
-                    rental.Client.FullName,
-                    $"{rental.Vehicle.Make} {rental.Vehicle.Model} [{rental.Vehicle.LicensePlate}]",
-                    rental.StartDate,
-                    rental.EndDate,
-                    rental.TotalAmount));
-
-            StatusMessage =
-                $"Оренду створено ({result.ContractNumber}). Файли: " +
-                $"{Path.GetFileName(files.TextPath)}, {Path.GetFileName(files.DocxPath)}, {Path.GetFileName(files.PdfPath)}";
-
-            if (AutoPrintContract)
-            {
-                _printService.TryPrint(files.PdfPath, out var printMessage);
-                StatusMessage += $" Друк: {printMessage}";
-            }
-        }
-        else
-        {
-            StatusMessage = result.Message;
-        }
-
-        EndMileageInput = string.Empty;
-        ActualReturnDate = EndDate;
-        _refreshCoordinator.Invalidate(PageRefreshArea.Fleet | PageRefreshArea.Prokat | PageRefreshArea.Reports);
-        await RefreshAsync();
+        return null;
     }
 
-    private bool CanCreateRental()
+    private string? ResolveCreateClientValidationMessage()
     {
-        return !IsLoading &&
-               string.IsNullOrWhiteSpace(ResolveCreateStartDateValidationMessage()) &&
-               string.IsNullOrWhiteSpace(ResolveCreateEndDateValidationMessage());
+        if (CreateDraft.SelectedClient is null)
+        {
+            return null;
+        }
+
+        if (CreateDraft.SelectedClient.IsBlacklisted)
+        {
+            return string.IsNullOrWhiteSpace(CreateDraft.SelectedClient.BlacklistReason)
+                ? "Клієнт у чорному списку."
+                : $"Клієнт у чорному списку: {CreateDraft.SelectedClient.BlacklistReason}.";
+        }
+
+        if (string.IsNullOrWhiteSpace(CreateDraft.SelectedClient.DriverLicense))
+        {
+            return "У клієнта не вказано посвідчення водія.";
+        }
+
+        if (!CreateDraft.SelectedClient.DriverLicenseExpirationDate.HasValue)
+        {
+            return "У клієнта не вказано строк дії посвідчення водія.";
+        }
+
+        if (CreateDraft.SelectedClient.DriverLicenseExpirationDate.Value.Date < BuildCreateStartDateTime().Date)
+        {
+            return $"Посвідчення водія прострочене на дату початку оренди (до {CreateDraft.SelectedClient.DriverLicenseExpirationDate.Value:dd.MM.yyyy}).";
+        }
+
+        return null;
+    }
+
+    private string? ResolveCreateVehicleValidationMessage()
+    {
+        if (CreateDraft.SelectedVehicle is null || CreateDraft.SelectedVehicle.IsAvailableForSelectedPeriod)
+        {
+            return null;
+        }
+
+        return CreateDraft.SelectedVehicle.AvailabilityMessage;
+    }
+
+    private string? ResolveCreatePaymentValidationMessage(bool suppressEmptyAmount)
+    {
+        if (!CreateDraft.CreateInitialPayment)
+        {
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(CreateDraft.InitialPaymentAmountInput))
+        {
+            return suppressEmptyAmount
+                ? null
+                : "Вкажіть суму початкового платежу.";
+        }
+
+        if (!TryParseCreateInitialPaymentAmount(out var amount))
+        {
+            return "Вкажіть коректну суму початкового платежу.";
+        }
+
+        if (amount <= 0m)
+        {
+            return "Сума початкового платежу має бути більшою за нуль.";
+        }
+
+        var estimatedTotalAmount = CalculateCreateRentalEstimatedTotalAmount();
+        if (estimatedTotalAmount > 0m && amount > estimatedTotalAmount)
+        {
+            return $"Початковий платіж не може перевищувати вартість оренди ({estimatedTotalAmount:N2} грн).";
+        }
+
+        return null;
     }
 
     private string? ResolveCreateStartDateValidationMessage()
@@ -497,7 +668,7 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
 
     private string? ResolveCreateEndDateValidationMessage()
     {
-        if (EndDate.Date < StartDate.Date)
+        if (CreateDraft.EndDate.Date < CreateDraft.StartDate.Date)
         {
             return "Дата повернення не може бути раніше дати подачі.";
         }
@@ -514,18 +685,113 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
         OnPropertyChanged(nameof(HasCreateStartDateValidationMessage));
         OnPropertyChanged(nameof(CreateEndDateValidationMessage));
         OnPropertyChanged(nameof(HasCreateEndDateValidationMessage));
-        CreateRentalCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(CreateClientValidationMessage));
+        OnPropertyChanged(nameof(HasCreateClientValidationMessage));
+        OnPropertyChanged(nameof(CreateVehicleValidationMessage));
+        OnPropertyChanged(nameof(HasCreateVehicleValidationMessage));
+        OnPropertyChanged(nameof(CreatePaymentValidationMessage));
+        OnPropertyChanged(nameof(HasCreatePaymentValidationMessage));
+        OnPropertyChanged(nameof(CreateRentalEstimatedAmountSummary));
+        SubmitCreateRentalCommand.NotifyCanExecuteChanged();
     }
 
     private DateTime BuildCreateStartDateTime()
     {
-        return CombineDateAndTime(StartDate, StartTime, new TimeSpan(10, 0, 0));
+        return CombineDateAndTime(CreateDraft.StartDate, CreateDraft.StartTime, new TimeSpan(10, 0, 0));
     }
 
     private DateTime BuildCreateEndDateTime()
     {
-        var fallback = ParseTime(StartTime, new TimeSpan(10, 0, 0));
-        return CombineDateAndTime(EndDate, EndTime, fallback);
+        var fallback = ParseTime(CreateDraft.StartTime, new TimeSpan(10, 0, 0));
+        return CombineDateAndTime(CreateDraft.EndDate, CreateDraft.EndTime, fallback);
+    }
+
+    private decimal CalculateCreateRentalEstimatedTotalAmount()
+    {
+        if (CreateDraft.SelectedVehicle is null)
+        {
+            return 0m;
+        }
+
+        var rentalHours = (decimal)(BuildCreateEndDateTime() - BuildCreateStartDateTime()).TotalHours;
+        if (rentalHours <= 0m)
+        {
+            return 0m;
+        }
+
+        return decimal.Round(
+            CreateDraft.SelectedVehicle.DailyRate * (rentalHours / 24m),
+            2,
+            MidpointRounding.AwayFromZero);
+    }
+
+    private string BuildCreateRentalEstimatedAmountSummary()
+    {
+        var estimatedTotalAmount = CalculateCreateRentalEstimatedTotalAmount();
+        return estimatedTotalAmount <= 0m
+            ? "Орієнтовна вартість з’явиться після вибору авто та коректного періоду."
+            : $"Орієнтовна вартість оренди: {estimatedTotalAmount:N2} грн.";
+    }
+
+    private bool TryParseCreateInitialPaymentAmount(out decimal amount)
+    {
+        if (decimal.TryParse(CreateDraft.InitialPaymentAmountInput, NumberStyles.Number, CultureInfo.CurrentCulture, out amount))
+        {
+            return true;
+        }
+
+        return decimal.TryParse(CreateDraft.InitialPaymentAmountInput, NumberStyles.Number, CultureInfo.InvariantCulture, out amount);
+    }
+
+    private decimal ParseCreateInitialPaymentAmount()
+    {
+        return TryParseCreateInitialPaymentAmount(out var amount)
+            ? decimal.Round(amount, 2, MidpointRounding.AwayFromZero)
+            : 0m;
+    }
+
+    private async Task<string> BuildCreateSuccessMessageAsync(CreateRentalResult result, bool autoPrintContract)
+    {
+        var rental = await WithDbContextGateAsync(cancellationToken =>
+            _dbContext.Rentals
+                .AsNoTracking()
+                .Include(item => item.Client)
+                .Include(item => item.Vehicle)
+                    .ThenInclude(item => item!.MakeLookup)
+                .Include(item => item.Vehicle)
+                    .ThenInclude(item => item!.ModelLookup)
+                .FirstOrDefaultAsync(item => item.Id == result.RentalId, cancellationToken));
+
+        if (rental is null || rental.Client is null || rental.Vehicle is null)
+        {
+            return result.Message;
+        }
+
+        try
+        {
+            var files = await _documentGenerator.GenerateRentalContractAsync(
+                new ContractData(
+                    rental.Id,
+                    rental.ContractNumber,
+                    rental.Client.FullName,
+                    $"{rental.Vehicle.MakeName} {rental.Vehicle.ModelName} [{rental.Vehicle.LicensePlate}]",
+                    rental.StartDate,
+                    rental.EndDate,
+                    rental.TotalAmount));
+
+            var message = $"Оренду створено ({result.ContractNumber}). PDF: {Path.GetFileName(files.PdfPath)}.";
+            if (autoPrintContract)
+            {
+                _printService.TryPrint(files.PdfPath, out var printMessage);
+                message += $" Друк: {printMessage}";
+            }
+
+            return message;
+        }
+        catch (Exception exception)
+        {
+            return $"Оренду створено ({result.ContractNumber}), але не вдалося підготувати договір: {exception.Message}";
+        }
     }
 
     private async Task CloseRentalAsync()
@@ -544,13 +810,13 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
             return;
         }
 
-        if (SelectedRental.Status == RentalStatus.Closed)
+        if (SelectedRental.StatusId == RentalStatus.Closed)
         {
             StatusMessage = "Оренду вже закрито.";
             return;
         }
 
-        if (SelectedRental.Status == RentalStatus.Canceled)
+        if (SelectedRental.StatusId == RentalStatus.Canceled)
         {
             StatusMessage = "Оренду скасовано.";
             return;
@@ -562,8 +828,10 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
             return;
         }
 
-        var result = await _rentalService.CloseRentalAsync(
-            new CloseRentalRequest(SelectedRental.Id, ActualReturnDate, endMileage));
+        var result = await WithDbContextGateAsync(
+            cancellationToken => _rentalService.CloseRentalAsync(
+                new CloseRentalRequest(SelectedRental.Id, ActualReturnDate, endMileage),
+                cancellationToken));
         StatusMessage = result.Success
             ? $"{result.Message} Підсумок: {result.TotalAmount:C}."
             : result.Message;
@@ -592,8 +860,10 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
             return;
         }
 
-        var result = await _rentalService.CancelRentalAsync(
-            new CancelRentalRequest(SelectedRental.Id, CancelReason));
+        var result = await WithDbContextGateAsync(
+            cancellationToken => _rentalService.CancelRentalAsync(
+                new CancelRentalRequest(SelectedRental.Id, CancelReason),
+                cancellationToken));
         StatusMessage = result.Message;
         if (result.Success)
         {
@@ -626,14 +896,16 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
             return;
         }
 
-        var result = await _paymentService.AddPaymentAsync(
-            new PaymentRequest(
-                SelectedRental.Id,
-                _currentEmployee.Id,
-                amount,
-                PaymentMethod,
-                PaymentDirection,
-                string.Empty));
+        var result = await WithDbContextGateAsync(
+            cancellationToken => _paymentService.AddPaymentAsync(
+                new PaymentRequest(
+                    SelectedRental.Id,
+                    _currentEmployee.Id,
+                    amount,
+                    PaymentMethod,
+                    PaymentDirection,
+                    string.Empty),
+                cancellationToken));
         StatusMessage = result.Message;
         if (result.Success)
         {
@@ -667,7 +939,7 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
 
         var cancellationTokenSource = new CancellationTokenSource();
         _paymentsLoadCancellationTokenSource = cancellationTokenSource;
-        _ = LoadPaymentsAsync(SelectedRental.Id, cancellationTokenSource.Token);
+        _paymentsLoadTask = LoadPaymentsAsync(SelectedRental.Id, cancellationTokenSource.Token);
     }
 
     private async Task LoadPaymentsAsync(int? rentalId, CancellationToken cancellationToken = default)
@@ -680,7 +952,9 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
 
         try
         {
-            var payments = await _paymentService.GetRentalPaymentsAsync(rentalId.Value, cancellationToken);
+            var payments = await WithDbContextGateAsync(
+                token => _paymentService.GetRentalPaymentsAsync(rentalId.Value, token),
+                cancellationToken);
             if (cancellationToken.IsCancellationRequested || SelectedRental?.Id != rentalId.Value)
             {
                 return;
@@ -691,8 +965,8 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
                 Payments.Add(new PaymentRow(
                     payment.Id,
                     payment.CreatedAtUtc,
-                    payment.Method,
-                    payment.Direction,
+                    payment.MethodId,
+                    payment.DirectionId,
                     payment.Amount,
                     payment.Notes));
             }
@@ -718,11 +992,23 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
         try
         {
             await Task.Delay(220, cancellationTokenSource.Token);
-            await ReloadClientsAsync(SelectedClient?.Id, cancellationTokenSource.Token);
+            if (!IsCreateRentalDialogOpen || IsCreateRentalBusy)
+            {
+                return;
+            }
+
+            await ReloadClientsAsync(CreateDraft.SelectedClient?.Id, cancellationTokenSource.Token);
         }
         catch (OperationCanceledException)
         {
             // Ignore outdated search requests.
+        }
+        catch (Exception exception)
+        {
+            if (!cancellationTokenSource.IsCancellationRequested)
+            {
+                CreateDraft.FormMessage = $"Не вдалося оновити список клієнтів: {exception.Message}";
+            }
         }
     }
 
@@ -737,70 +1023,125 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
         try
         {
             await Task.Delay(220, cancellationTokenSource.Token);
-            await ReloadVehiclesAsync(SelectedVehicle?.Id, cancellationTokenSource.Token);
+            if (!IsCreateRentalDialogOpen || IsCreateRentalBusy)
+            {
+                return;
+            }
+
+            await ReloadVehiclesAsync(CreateDraft.SelectedVehicle?.Id, cancellationTokenSource.Token);
         }
         catch (OperationCanceledException)
         {
             // Ignore outdated search requests.
         }
+        catch (Exception exception)
+        {
+            if (!cancellationTokenSource.IsCancellationRequested)
+            {
+                CreateDraft.FormMessage = $"Не вдалося оновити список авто: {exception.Message}";
+            }
+        }
     }
 
     private async Task ReloadClientsAsync(int? preferredClientId, CancellationToken cancellationToken = default)
     {
-        var searchText = ClientSearchText.Trim();
-        var passportDocuments = _dbContext.ClientDocuments
-            .AsNoTracking()
-            .Where(item => item.DocumentTypeCode == ClientDocumentTypes.Passport);
-        var driverLicenseDocuments = _dbContext.ClientDocuments
-            .AsNoTracking()
-            .Where(item => item.DocumentTypeCode == ClientDocumentTypes.DriverLicense);
+        var searchText = CreateDraft.ClientSearchText.Trim();
+        var clientData = await WithDbContextGateAsync(async token =>
+        {
+            var passportDocuments = _dbContext.ClientDocuments
+                .AsNoTracking()
+                .Where(item => item.DocumentTypeCode == ClientDocumentTypes.Passport);
+            var driverLicenseDocuments = _dbContext.ClientDocuments
+                .AsNoTracking()
+                .Where(item => item.DocumentTypeCode == ClientDocumentTypes.DriverLicense);
 
-        var query = _dbContext.Clients
-            .AsNoTracking()
-            .Select(client => new
+            var query = _dbContext.Clients
+                .AsNoTracking()
+                .Select(client => new
+                {
+                    client.Id,
+                    client.FullName,
+                    client.Phone,
+                    client.IsBlacklisted,
+                    BlacklistReason = client.BlacklistReason ?? string.Empty,
+                    PassportData = passportDocuments
+                        .Where(document => document.ClientId == client.Id)
+                        .Select(document => document.DocumentNumber)
+                        .FirstOrDefault() ?? string.Empty,
+                    DriverLicense = driverLicenseDocuments
+                        .Where(document => document.ClientId == client.Id)
+                        .Select(document => document.DocumentNumber)
+                        .FirstOrDefault() ?? string.Empty,
+                    DriverLicenseExpirationDate = driverLicenseDocuments
+                        .Where(document => document.ClientId == client.Id)
+                        .Select(document => document.ExpirationDate)
+                        .FirstOrDefault()
+                });
+
+            if (!string.IsNullOrWhiteSpace(searchText))
             {
+                query = query.Where(client =>
+                    client.FullName.Contains(searchText) ||
+                    client.DriverLicense.Contains(searchText) ||
+                    client.Phone.Contains(searchText) ||
+                    client.PassportData.Contains(searchText));
+            }
+
+            var items = await query
+                .OrderBy(client => client.FullName)
+                .ThenBy(client => client.DriverLicense)
+                .Take(ClientSearchLimit)
+                .ToListAsync(token);
+
+            if (preferredClientId.HasValue && items.All(item => item.Id != preferredClientId.Value))
+            {
+                var selectedClient = await _dbContext.Clients
+                    .AsNoTracking()
+                    .Select(client => new
+                    {
+                        client.Id,
+                        client.FullName,
+                        client.Phone,
+                        client.IsBlacklisted,
+                        BlacklistReason = client.BlacklistReason ?? string.Empty,
+                        PassportData = passportDocuments
+                            .Where(document => document.ClientId == client.Id)
+                            .Select(document => document.DocumentNumber)
+                            .FirstOrDefault() ?? string.Empty,
+                        DriverLicense = driverLicenseDocuments
+                            .Where(document => document.ClientId == client.Id)
+                            .Select(document => document.DocumentNumber)
+                            .FirstOrDefault() ?? string.Empty,
+                        DriverLicenseExpirationDate = driverLicenseDocuments
+                            .Where(document => document.ClientId == client.Id)
+                            .Select(document => document.ExpirationDate)
+                            .FirstOrDefault()
+                    })
+                    .Where(client => client.Id == preferredClientId.Value)
+                    .FirstOrDefaultAsync(token);
+
+                if (selectedClient is not null)
+                {
+                    items.Insert(0, selectedClient);
+                }
+            }
+
+            return items;
+        }, cancellationToken);
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var clientOptions = clientData
+            .Select(client => new ClientOption(
                 client.Id,
+                BuildClientOptionDisplay(client.FullName, client.DriverLicense),
                 client.FullName,
                 client.Phone,
-                PassportData = passportDocuments
-                    .Where(document => document.ClientId == client.Id)
-                    .Select(document => document.DocumentNumber)
-                    .FirstOrDefault() ?? string.Empty,
-                DriverLicense = driverLicenseDocuments
-                    .Where(document => document.ClientId == client.Id)
-                    .Select(document => document.DocumentNumber)
-                    .FirstOrDefault() ?? string.Empty
-            });
-
-        if (!string.IsNullOrWhiteSpace(searchText))
-        {
-            query = query.Where(client =>
-                client.FullName.Contains(searchText) ||
-                client.DriverLicense.Contains(searchText) ||
-                client.Phone.Contains(searchText) ||
-                client.PassportData.Contains(searchText));
-        }
-
-        var clientOptions = await query
-            .OrderBy(client => client.FullName)
-            .ThenBy(client => client.DriverLicense)
-            .Select(client => new ClientOption(client.Id, $"{client.FullName} ({client.DriverLicense})"))
-            .Take(ClientSearchLimit)
-            .ToListAsync(cancellationToken);
-
-        if (preferredClientId.HasValue && clientOptions.All(item => item.Id != preferredClientId.Value))
-        {
-            var selectedClient = await _dbContext.Clients
-                .AsNoTracking()
-                .Where(client => client.Id == preferredClientId.Value)
-                .Select(client => new ClientOption(client.Id, $"{client.FullName} ({client.DriverLicense})"))
-                .FirstOrDefaultAsync(cancellationToken);
-
-            if (selectedClient is not null)
-            {
-                clientOptions.Insert(0, selectedClient);
-            }
-        }
+                client.DriverLicense,
+                client.DriverLicenseExpirationDate,
+                client.IsBlacklisted,
+                client.BlacklistReason))
+            .ToList();
 
         Clients.Clear();
         foreach (var clientOption in clientOptions)
@@ -810,52 +1151,102 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
 
         if (preferredClientId.HasValue)
         {
-            SelectedClient = Clients.FirstOrDefault(item => item.Id == preferredClientId.Value);
+            CreateDraft.SelectedClient = Clients.FirstOrDefault(item => item.Id == preferredClientId.Value);
         }
     }
 
     private async Task ReloadVehiclesAsync(int? preferredVehicleId, CancellationToken cancellationToken = default)
     {
-        var searchText = VehicleSearchText.Trim();
-        var activeRentalVehicleIds = _dbContext.Rentals
-            .AsNoTracking()
-            .Where(rental => rental.Status == RentalStatus.Active)
-            .Select(rental => rental.VehicleId);
-        var query = _dbContext.Vehicles.AsNoTracking();
+        var searchText = CreateDraft.VehicleSearchText.Trim();
+        var selectedPeriodStart = NormalizeBusinessTimestamp(BuildCreateStartDateTime());
+        var selectedPeriodEnd = NormalizeBusinessTimestamp(BuildCreateEndDateTime());
+        var hasValidSelectedPeriod = selectedPeriodEnd > selectedPeriodStart;
 
-        if (!string.IsNullOrWhiteSpace(searchText))
+        var vehicleData = await WithDbContextGateAsync(async token =>
         {
-            query = query.Where(vehicle =>
-                vehicle.Make.Contains(searchText) ||
-                vehicle.Model.Contains(searchText) ||
-                vehicle.LicensePlate.Contains(searchText));
-        }
-
-        var vehicleOptions = await query
-            .OrderBy(vehicle => vehicle.Make)
-            .ThenBy(vehicle => vehicle.Model)
-            .ThenBy(vehicle => vehicle.LicensePlate)
-            .Select(vehicle => new VehicleOption(
-                vehicle.Id,
-                $"{vehicle.Make} {vehicle.Model} [{vehicle.LicensePlate}] - {(vehicle.VehicleStatusCode == VehicleStatuses.Ready && !activeRentalVehicleIds.Contains(vehicle.Id) ? VehicleAvailableLabel : VehicleUnavailableLabel)}"))
-            .Take(VehicleSearchLimit)
-            .ToListAsync(cancellationToken);
-
-        if (preferredVehicleId.HasValue && vehicleOptions.All(item => item.Id != preferredVehicleId.Value))
-        {
-            var selectedVehicle = await _dbContext.Vehicles
+            var conflictingVehicleIds = _dbContext.Rentals
                 .AsNoTracking()
-                .Where(vehicle => vehicle.Id == preferredVehicleId.Value)
-                .Select(vehicle => new VehicleOption(
-                    vehicle.Id,
-                    $"{vehicle.Make} {vehicle.Model} [{vehicle.LicensePlate}] - {(vehicle.VehicleStatusCode == VehicleStatuses.Ready && !activeRentalVehicleIds.Contains(vehicle.Id) ? VehicleAvailableLabel : VehicleUnavailableLabel)}"))
-                .FirstOrDefaultAsync(cancellationToken);
+                .Where(rental =>
+                    rental.StatusId != RentalStatus.Closed &&
+                    rental.StatusId != RentalStatus.Canceled &&
+                    (!hasValidSelectedPeriod ||
+                     (rental.StartDate < selectedPeriodEnd && selectedPeriodStart < rental.EndDate)))
+                .Select(rental => rental.VehicleId);
+            var query = _dbContext.Vehicles
+                .AsNoTracking()
+                .Where(vehicle => vehicle.VehicleStatusCode == VehicleStatuses.Ready);
 
-            if (selectedVehicle is not null)
+            if (!string.IsNullOrWhiteSpace(searchText))
             {
-                vehicleOptions.Insert(0, selectedVehicle);
+                query = query.Where(vehicle =>
+                    vehicle.MakeLookup!.Name.Contains(searchText) ||
+                    vehicle.ModelLookup!.Name.Contains(searchText) ||
+                    vehicle.LicensePlate.Contains(searchText));
             }
-        }
+
+            if (hasValidSelectedPeriod)
+            {
+                query = query.Where(vehicle => !conflictingVehicleIds.Contains(vehicle.Id));
+            }
+
+            var items = await query
+                .OrderBy(vehicle => vehicle.MakeLookup!.Name)
+                .ThenBy(vehicle => vehicle.ModelLookup!.Name)
+                .ThenBy(vehicle => vehicle.LicensePlate)
+                .Select(vehicle => new
+                {
+                    vehicle.Id,
+                    BaseDisplay = vehicle.MakeLookup!.Name + " " + vehicle.ModelLookup!.Name + " [" + vehicle.LicensePlate + "]",
+                    vehicle.DailyRate,
+                    IsReady = vehicle.VehicleStatusCode == VehicleStatuses.Ready,
+                    HasConflict = hasValidSelectedPeriod && conflictingVehicleIds.Contains(vehicle.Id)
+                })
+                .Take(VehicleSearchLimit)
+                .ToListAsync(token);
+
+            if (preferredVehicleId.HasValue && items.All(item => item.Id != preferredVehicleId.Value))
+            {
+                var selectedVehicle = await _dbContext.Vehicles
+                    .AsNoTracking()
+                    .Where(vehicle => vehicle.Id == preferredVehicleId.Value)
+                    .Select(vehicle => new
+                    {
+                        vehicle.Id,
+                        BaseDisplay = vehicle.MakeLookup!.Name + " " + vehicle.ModelLookup!.Name + " [" + vehicle.LicensePlate + "]",
+                        vehicle.DailyRate,
+                        IsReady = vehicle.VehicleStatusCode == VehicleStatuses.Ready,
+                        HasConflict = hasValidSelectedPeriod &&
+                                      _dbContext.Rentals
+                                          .AsNoTracking()
+                                          .Any(rental =>
+                                              rental.VehicleId == vehicle.Id &&
+                                              rental.StatusId != RentalStatus.Closed &&
+                                              rental.StatusId != RentalStatus.Canceled &&
+                                              rental.StartDate < selectedPeriodEnd &&
+                                              selectedPeriodStart < rental.EndDate)
+                    })
+                    .FirstOrDefaultAsync(token);
+
+                if (selectedVehicle is not null)
+                {
+                    items.Insert(0, selectedVehicle);
+                }
+            }
+
+            return items;
+        }, cancellationToken);
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var vehicleOptions = vehicleData
+            .Select(vehicle => BuildVehicleOption(
+                vehicle.Id,
+                vehicle.BaseDisplay,
+                vehicle.DailyRate,
+                vehicle.IsReady,
+                vehicle.HasConflict,
+                hasValidSelectedPeriod))
+            .ToList();
 
         Vehicles.Clear();
         foreach (var vehicleOption in vehicleOptions)
@@ -865,7 +1256,56 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
 
         if (preferredVehicleId.HasValue)
         {
-            SelectedVehicle = Vehicles.FirstOrDefault(item => item.Id == preferredVehicleId.Value);
+            CreateDraft.SelectedVehicle = Vehicles.FirstOrDefault(item => item.Id == preferredVehicleId.Value);
+        }
+    }
+
+    private void CreateDraft_OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (_isSynchronizingCreateDraft)
+        {
+            return;
+        }
+
+        if (e.PropertyName != nameof(RentalCreateDraft.FormMessage) &&
+            e.PropertyName != nameof(RentalCreateDraft.HasFormMessage) &&
+            CreateDraft.HasFormMessage)
+        {
+            CreateDraft.FormMessage = string.Empty;
+        }
+
+        switch (e.PropertyName)
+        {
+            case nameof(RentalCreateDraft.ClientSearchText):
+                if (IsCreateRentalDialogOpen && !IsCreateRentalBusy)
+                {
+                    _clientSearchTask = QueueClientSearchAsync();
+                }
+                break;
+            case nameof(RentalCreateDraft.VehicleSearchText):
+                if (IsCreateRentalDialogOpen && !IsCreateRentalBusy)
+                {
+                    _vehicleSearchTask = QueueVehicleSearchAsync();
+                }
+                break;
+            case nameof(RentalCreateDraft.SelectedClient):
+            case nameof(RentalCreateDraft.SelectedVehicle):
+            case nameof(RentalCreateDraft.CreateInitialPayment):
+            case nameof(RentalCreateDraft.InitialPaymentAmountInput):
+                NotifyCreateRentalValidationChanged();
+                break;
+            case nameof(RentalCreateDraft.StartDate):
+            case nameof(RentalCreateDraft.StartTime):
+            case nameof(RentalCreateDraft.EndDate):
+            case nameof(RentalCreateDraft.EndTime):
+            case nameof(RentalCreateDraft.PickupLocation):
+            case nameof(RentalCreateDraft.ReturnLocation):
+                NotifyCreateRentalValidationChanged();
+                if (IsCreateRentalDialogOpen && !IsCreateRentalBusy)
+                {
+                    _vehicleSearchTask = QueueVehicleSearchAsync();
+                }
+                break;
         }
     }
 
@@ -888,9 +1328,9 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
                 var active = rowRentals.FirstOrDefault(item =>
                     item.StartDate <= date &&
                     date <= item.EndDate &&
-                    item.Status != RentalStatus.Canceled);
+                    item.StatusId != RentalStatus.Canceled);
 
-                var statusText = active?.Status switch
+                var statusText = active?.StatusId switch
                 {
                     RentalStatus.Active => "Активна",
                     RentalStatus.Booked => "Бронь",
@@ -898,7 +1338,7 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
                     _ => "Вільно"
                 };
 
-                var fallbackSymbol = active?.Status switch
+                var fallbackSymbol = active?.StatusId switch
                 {
                     RentalStatus.Active => 'A',
                     RentalStatus.Booked => 'B',
@@ -910,7 +1350,7 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
             }
 
             GanttRows.Add(new GanttRow(
-                $"{vehicle.Make} {vehicle.Model} [{vehicle.LicensePlate}]",
+                $"{vehicle.MakeName} {vehicle.ModelName} [{vehicle.LicensePlate}]",
                 cells));
         }
     }
@@ -920,11 +1360,35 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
         GuideRequestId++;
     }
 
+    private string DefaultLocation => Locations.FirstOrDefault() ?? string.Empty;
+
+    private void ResetCreateDraft()
+    {
+        SynchronizeCreateDraft(() => CreateDraft.Reset(DefaultLocation));
+        NotifyCreateRentalValidationChanged();
+    }
+
+    private void SynchronizeCreateDraft(Action action)
+    {
+        _isSynchronizingCreateDraft = true;
+        try
+        {
+            action();
+        }
+        finally
+        {
+            _isSynchronizingCreateDraft = false;
+        }
+    }
+
     public void ReleaseTransientState()
     {
         CancelAndDisposeToken(ref _clientSearchCancellationTokenSource);
         CancelAndDisposeToken(ref _vehicleSearchCancellationTokenSource);
         CancelAndDisposeToken(ref _paymentsLoadCancellationTokenSource);
+        _clientSearchTask = Task.CompletedTask;
+        _vehicleSearchTask = Task.CompletedTask;
+        _paymentsLoadTask = Task.CompletedTask;
 
         _suppressSelectedRentalPaymentsLoad = true;
         SelectedRental = null;
@@ -933,11 +1397,75 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
         Payments.Clear();
         PaymentAmountInput = string.Empty;
         StatusMessage = string.Empty;
+        IsCreateRentalDialogOpen = false;
+        ResetCreateDraft();
     }
 
-    public sealed record ClientOption(int Id, string Display);
+    private static string BuildClientOptionDisplay(string fullName, string driverLicense)
+    {
+        var driverLicenseDisplay = string.IsNullOrWhiteSpace(driverLicense)
+            ? MissingDriverLicenseLabel
+            : driverLicense;
 
-    public sealed record VehicleOption(int Id, string Display);
+        return $"{fullName} ({driverLicenseDisplay})";
+    }
+
+    private static VehicleOption BuildVehicleOption(
+        int id,
+        string baseDisplay,
+        decimal dailyRate,
+        bool isReady,
+        bool hasConflict,
+        bool hasValidSelectedPeriod)
+    {
+        if (!isReady)
+        {
+            return new VehicleOption(
+                id,
+                $"{baseDisplay} - {VehicleUnavailableLabel}",
+                dailyRate,
+                false,
+                "Обране авто тимчасово недоступне для бронювання.");
+        }
+
+        if (hasValidSelectedPeriod && hasConflict)
+        {
+            return new VehicleOption(
+                id,
+                $"{baseDisplay} - {VehicleConflictLabel}",
+                dailyRate,
+                false,
+                "Обране авто недоступне на обрані дати.");
+        }
+
+        var availabilityLabel = hasValidSelectedPeriod
+            ? VehicleAvailableForPeriodLabel
+            : VehiclePeriodRequiredLabel;
+
+        return new VehicleOption(
+            id,
+            $"{baseDisplay} - {availabilityLabel}",
+            dailyRate,
+            hasValidSelectedPeriod,
+            string.Empty);
+    }
+
+    public sealed record ClientOption(
+        int Id,
+        string Display,
+        string FullName,
+        string Phone,
+        string DriverLicense,
+        DateTime? DriverLicenseExpirationDate,
+        bool IsBlacklisted,
+        string BlacklistReason);
+
+    public sealed record VehicleOption(
+        int Id,
+        string Display,
+        decimal DailyRate,
+        bool IsAvailableForSelectedPeriod,
+        string AvailabilityMessage);
 
     public sealed record RentalRow(
         int Id,
@@ -946,12 +1474,16 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
         string VehicleName,
         DateTime StartDate,
         DateTime EndDate,
+        string PickupLocation,
+        string ReturnLocation,
         decimal TotalAmount,
         decimal PaidAmount,
         decimal Balance,
-        RentalStatus Status)
+        RentalStatus StatusId)
     {
-        public string StatusDisplay => Status.ToDisplay();
+        public string StatusDisplay => StatusId.ToDisplay();
+
+        public string RouteDisplay => $"{PickupLocation} -> {ReturnLocation}";
     }
 
     public sealed record PaymentRow(
@@ -987,15 +1519,61 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
         string VehicleName,
         DateTime StartDate,
         DateTime EndDate,
+        string PickupLocation,
+        string ReturnLocation,
         decimal TotalAmount,
         decimal PaidAmount,
-        RentalStatus Status);
+        RentalStatus StatusId);
+
+    private async Task<T> WithDbContextGateAsync<T>(Func<CancellationToken, Task<T>> operation, CancellationToken cancellationToken = default)
+    {
+        await _dbContextOperationGate.WaitAsync(cancellationToken);
+        try
+        {
+            return await operation(cancellationToken);
+        }
+        finally
+        {
+            _dbContextOperationGate.Release();
+        }
+    }
+
+    private async Task AwaitPendingCreateDialogSearchesAsync()
+    {
+        CancelPendingCreateDialogSearches();
+
+        try
+        {
+            await Task.WhenAll(_clientSearchTask, _vehicleSearchTask);
+        }
+        catch (OperationCanceledException)
+        {
+            // Ignore outdated lookups that were explicitly canceled.
+        }
+    }
+
+    private void CancelPendingCreateDialogSearches()
+    {
+        CancelAndDisposeToken(ref _clientSearchCancellationTokenSource);
+        CancelAndDisposeToken(ref _vehicleSearchCancellationTokenSource);
+    }
 
     private static void CancelAndDisposeToken(ref CancellationTokenSource? cancellationTokenSource)
     {
         cancellationTokenSource?.Cancel();
         cancellationTokenSource?.Dispose();
         cancellationTokenSource = null;
+    }
+
+    private static DateTime NormalizeBusinessTimestamp(DateTime value)
+    {
+        return value.Kind switch
+        {
+            DateTimeKind.Unspecified => value,
+            DateTimeKind.Utc => DateTime.SpecifyKind(value, DateTimeKind.Unspecified),
+            DateTimeKind.Local => DateTime.SpecifyKind(value.ToUniversalTime(), DateTimeKind.Unspecified),
+            _ => value
+        };
     }
 
     private static DateTime CombineDateAndTime(DateTime date, string timeInput, TimeSpan fallbackTime)
@@ -1019,5 +1597,6 @@ public sealed class RentalsPageViewModel : PageDataViewModelBase, ITransientStat
         return fallbackTime;
     }
 }
+
 
 

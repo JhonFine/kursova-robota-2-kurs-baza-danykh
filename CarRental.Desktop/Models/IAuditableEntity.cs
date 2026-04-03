@@ -1,4 +1,4 @@
-namespace CarRental.Desktop.Models;
+﻿namespace CarRental.Desktop.Models;
 
 public interface IAuditableEntity
 {
@@ -6,3 +6,4 @@ public interface IAuditableEntity
 
     DateTime UpdatedAtUtc { get; set; }
 }
+

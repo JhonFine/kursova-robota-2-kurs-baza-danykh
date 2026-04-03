@@ -1,4 +1,4 @@
-using CarRental.Desktop.Data;
+﻿using CarRental.Desktop.Data;
 using CarRental.Desktop.Localization;
 using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
@@ -8,8 +8,8 @@ using System.Text;
 
 namespace CarRental.Desktop.Services.Analytics;
 
-// Експорт будується з одного запиту-джерела для CSV і Excel,
-// щоб різні формати не роз'їжджались по складу колонок і правилах фільтрації.
+// Р•РєСЃРїРѕСЂС‚ Р±СѓРґСѓС”С‚СЊСЃСЏ Р· РѕРґРЅРѕРіРѕ Р·Р°РїРёС‚Сѓ-РґР¶РµСЂРµР»Р° РґР»СЏ CSV С– Excel,
+// С‰РѕР± СЂС–Р·РЅС– С„РѕСЂРјР°С‚Рё РЅРµ СЂРѕР·'С—Р¶РґР¶Р°Р»РёСЃСЊ РїРѕ СЃРєР»Р°РґСѓ РєРѕР»РѕРЅРѕРє С– РїСЂР°РІРёР»Р°С… С„С–Р»СЊС‚СЂР°С†С–С—.
 public sealed class AnalyticsExportService(RentalDbContext dbContext, string exportDirectory) : IAnalyticsExportService
 {
     public async Task<string> ExportRentalsCsvAsync(ExportRequest request, CancellationToken cancellationToken = default)
@@ -29,7 +29,7 @@ public sealed class AnalyticsExportService(RentalDbContext dbContext, string exp
                 Escape(row.Client),
                 Escape(row.Vehicle),
                 Escape(row.Manager),
-                row.Status,
+                Escape(row.Status),
                 row.TotalAmount.ToString(CultureInfo.InvariantCulture)));
         }
 
@@ -82,7 +82,7 @@ public sealed class AnalyticsExportService(RentalDbContext dbContext, string exp
     {
         var from = request.FromDate.Date;
         var to = request.ToDate.Date;
-        // Для аналітики беремо IgnoreQueryFilters, щоб soft-deleted клієнти/авто не ламали історичні рядки звіту.
+        // Р”Р»СЏ Р°РЅР°Р»С–С‚РёРєРё Р±РµСЂРµРјРѕ IgnoreQueryFilters, С‰РѕР± soft-deleted РєР»С–С”РЅС‚Рё/Р°РІС‚Рѕ РЅРµ Р»Р°РјР°Р»Рё С–СЃС‚РѕСЂРёС‡РЅС– СЂСЏРґРєРё Р·РІС–С‚Сѓ.
         var clients = dbContext.Clients
             .AsNoTracking()
             .IgnoreQueryFilters();
@@ -101,7 +101,7 @@ public sealed class AnalyticsExportService(RentalDbContext dbContext, string exp
 
         if (request.EmployeeId.HasValue)
         {
-            query = query.Where(item => item.EmployeeId == request.EmployeeId.Value);
+            query = query.Where(item => item.CreatedByEmployeeId == request.EmployeeId.Value);
         }
 
         return await query
@@ -116,10 +116,10 @@ public sealed class AnalyticsExportService(RentalDbContext dbContext, string exp
                     .FirstOrDefault() ?? string.Empty,
                 vehicles
                     .Where(vehicle => vehicle.Id == item.VehicleId)
-                    .Select(vehicle => vehicle.Make + " " + vehicle.Model)
+                    .Select(vehicle => vehicle.MakeLookup!.Name + " " + vehicle.ModelLookup!.Name)
                     .FirstOrDefault() ?? string.Empty,
-                item.Employee != null ? item.Employee.FullName : string.Empty,
-                item.Status.ToDisplay(),
+                item.CreatedByEmployee != null ? item.CreatedByEmployee.FullName : string.Empty,
+                item.StatusId.ToDisplay(),
                 item.TotalAmount))
             .ToListAsync(cancellationToken);
     }
@@ -144,3 +144,4 @@ public sealed class AnalyticsExportService(RentalDbContext dbContext, string exp
         string Status,
         decimal TotalAmount);
 }
+

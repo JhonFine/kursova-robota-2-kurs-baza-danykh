@@ -1,4 +1,4 @@
-namespace CarRental.Desktop.Models;
+﻿namespace CarRental.Desktop.Models;
 
 public sealed class DamageStatusLookup
 {
@@ -8,3 +8,4 @@ public sealed class DamageStatusLookup
 
     public ICollection<Damage> Damages { get; set; } = new List<Damage>();
 }
+

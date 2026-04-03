@@ -19,7 +19,8 @@ public sealed class PaymentService(RentalDbContext dbContext) : IPaymentService
             return new PaymentResult(false, "Оренду не знайдено.");
         }
 
-        if (!await dbContext.Employees.AnyAsync(item => item.Id == request.EmployeeId, cancellationToken))
+        if (request.RecordedByEmployeeId.HasValue &&
+            !await dbContext.Employees.AnyAsync(item => item.Id == request.RecordedByEmployeeId.Value, cancellationToken))
         {
             return new PaymentResult(false, "Працівника не знайдено.");
         }
@@ -27,11 +28,11 @@ public sealed class PaymentService(RentalDbContext dbContext) : IPaymentService
         var payment = new Payment
         {
             RentalId = request.RentalId,
-            EmployeeId = request.EmployeeId,
+            RecordedByEmployeeId = request.RecordedByEmployeeId,
             Amount = request.Amount,
-            Method = request.Method,
-            Direction = request.Direction,
-            Status = request.Status,
+            MethodId = request.MethodId,
+            DirectionId = request.DirectionId,
+            StatusId = request.StatusId,
             ExternalTransactionId = string.IsNullOrWhiteSpace(request.ExternalTransactionId) ? null : request.ExternalTransactionId.Trim(),
             Notes = request.Notes.Trim(),
             CreatedAtUtc = DateTime.UtcNow
@@ -46,7 +47,7 @@ public sealed class PaymentService(RentalDbContext dbContext) : IPaymentService
     {
         return await dbContext.Payments
             .AsNoTracking()
-            .Include(item => item.Employee)
+            .Include(item => item.RecordedByEmployee)
             .ThenInclude(item => item!.Account)
             .Where(item => item.RentalId == rentalId)
             .OrderByDescending(item => item.CreatedAtUtc)
@@ -64,12 +65,14 @@ public sealed class PaymentService(RentalDbContext dbContext) : IPaymentService
         var paid = await dbContext.Payments
             .AsNoTracking()
             .Where(item => item.RentalId == rentalId)
-            .Where(item => item.Status == PaymentStatus.Completed)
+            .Where(item => item.StatusId == PaymentStatus.Completed)
             .SumAsync(
-                item => (decimal?)(item.Direction == PaymentDirection.Incoming ? item.Amount : -item.Amount),
+                item => (decimal?)(item.DirectionId == PaymentDirection.Incoming ? item.Amount : -item.Amount),
                 cancellationToken) ?? 0m;
 
         return rentalAmount - paid;
     }
 }
+
+
 

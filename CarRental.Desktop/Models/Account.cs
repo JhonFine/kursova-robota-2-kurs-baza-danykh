@@ -1,4 +1,4 @@
-namespace CarRental.Desktop.Models;
+﻿namespace CarRental.Desktop.Models;
 
 public sealed class Account : IAuditableEntity
 {
@@ -26,3 +26,4 @@ public sealed class Account : IAuditableEntity
 
     public Client? Client { get; set; }
 }
+

@@ -1,4 +1,4 @@
-using CarRental.Desktop.Data;
+﻿using CarRental.Desktop.Data;
 using CarRental.Desktop.Infrastructure;
 using CarRental.Desktop.Models;
 using CarRental.Desktop.Services.Analytics;
@@ -9,8 +9,8 @@ using System.IO;
 
 namespace CarRental.Desktop.ViewModels;
 
-// Звітна сторінка навмисно будує легкий агрегований snapshot,
-// а деталізований експорт віддає окремому сервісу, щоб UI не дублював CSV/XLSX логіку.
+// Р—РІС–С‚РЅР° СЃС‚РѕСЂС–РЅРєР° РЅР°РІРјРёСЃРЅРѕ Р±СѓРґСѓС” Р»РµРіРєРёР№ Р°РіСЂРµРіРѕРІР°РЅРёР№ snapshot,
+// Р° РґРµС‚Р°Р»С–Р·РѕРІР°РЅРёР№ РµРєСЃРїРѕСЂС‚ РІС–РґРґР°С” РѕРєСЂРµРјРѕРјСѓ СЃРµСЂРІС–СЃСѓ, С‰РѕР± UI РЅРµ РґСѓР±Р»СЋРІР°РІ CSV/XLSX Р»РѕРіС–РєСѓ.
 public sealed class ReportsPageViewModel : PageDataViewModelBase, ITransientStateOwner
 {
     private readonly RentalDbContext _dbContext;
@@ -130,7 +130,7 @@ public sealed class ReportsPageViewModel : PageDataViewModelBase, ITransientStat
             return;
         }
 
-        // Один refresh формує і KPI-картки, і довідники фільтрів, щоб експорт працював з тим самим зрізом даних.
+        // РћРґРёРЅ refresh С„РѕСЂРјСѓС” С– KPI-РєР°СЂС‚РєРё, С– РґРѕРІС–РґРЅРёРєРё С„С–Р»СЊС‚СЂС–РІ, С‰РѕР± РµРєСЃРїРѕСЂС‚ РїСЂР°С†СЋРІР°РІ Р· С‚РёРј СЃР°РјРёРј Р·СЂС–Р·РѕРј РґР°РЅРёС….
         IsLoading = true;
         try
         {
@@ -139,11 +139,11 @@ public sealed class ReportsPageViewModel : PageDataViewModelBase, ITransientStat
             TotalRentals = await _dbContext.Rentals.AsNoTracking().CountAsync();
             ActiveRentals = await _dbContext.Rentals
                 .AsNoTracking()
-                .CountAsync(rental => rental.Status == RentalStatus.Active && rental.StartDate <= today && today <= rental.EndDate);
+                .CountAsync(rental => rental.StatusId == RentalStatus.Active && rental.StartDate <= today && today <= rental.EndDate);
 
             TotalRevenue = await _dbContext.Rentals
                 .AsNoTracking()
-                .Where(rental => rental.Status == RentalStatus.Closed)
+                .Where(rental => rental.StatusId == RentalStatus.Closed)
                 .SumAsync(rental => (decimal?)rental.TotalAmount) ?? 0m;
 
             TotalDamageCost = await _dbContext.Damages
@@ -152,8 +152,10 @@ public sealed class ReportsPageViewModel : PageDataViewModelBase, ITransientStat
 
             var vehicles = await _dbContext.Vehicles
                 .AsNoTracking()
-                .OrderBy(item => item.Make)
-                .ThenBy(item => item.Model)
+                .Include(item => item.MakeLookup)
+                .Include(item => item.ModelLookup)
+                .OrderBy(item => item.MakeLookup!.Name)
+                .ThenBy(item => item.ModelLookup!.Name)
                 .ToListAsync();
             var employees = await StaffVisibilityQuery.VisibleStaff(_dbContext)
                 .OrderBy(item => item.FullName)
@@ -164,7 +166,7 @@ public sealed class ReportsPageViewModel : PageDataViewModelBase, ITransientStat
             VehicleFilters.Add(new VehicleFilterOption(null, "Усі авто"));
             foreach (var vehicle in vehicles)
             {
-                VehicleFilters.Add(new VehicleFilterOption(vehicle.Id, $"{vehicle.Make} {vehicle.Model} [{vehicle.LicensePlate}]"));
+                VehicleFilters.Add(new VehicleFilterOption(vehicle.Id, $"{vehicle.MakeName} {vehicle.ModelName} [{vehicle.LicensePlate}]"));
             }
 
             EmployeeFilters.Clear();
@@ -219,3 +221,4 @@ public sealed class ReportsPageViewModel : PageDataViewModelBase, ITransientStat
 
     public sealed record EmployeeFilterOption(int? Id, string Label);
 }
+

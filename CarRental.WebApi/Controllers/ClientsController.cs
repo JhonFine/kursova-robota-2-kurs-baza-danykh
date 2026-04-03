@@ -84,6 +84,11 @@ public sealed class ClientsController(RentalDbContext dbContext) : ApiController
     // щоб CRM-режим і self-service профіль не роз'їжджалися по правилах збереження.
     public async Task<IActionResult> Create([FromBody] ClientUpsertRequest request, CancellationToken cancellationToken)
     {
+        if (!TryResolveBlacklistActorId(request.IsBlacklisted, out var blacklistedByEmployeeId, out var actorErrorResult))
+        {
+            return actorErrorResult!;
+        }
+
         var validation = await ValidateClientRequestAsync(
             request.FullName,
             request.Phone,
@@ -101,7 +106,8 @@ public sealed class ClientsController(RentalDbContext dbContext) : ApiController
             Phone = validation.NormalizedPhone!,
             IsBlacklisted = request.IsBlacklisted,
             BlacklistReason = request.IsBlacklisted ? request.BlacklistReason?.Trim() : null,
-            BlacklistedAtUtc = request.IsBlacklisted ? DateTime.UtcNow : null
+            BlacklistedAtUtc = request.IsBlacklisted ? DateTime.UtcNow : null,
+            BlacklistedByEmployeeId = request.IsBlacklisted ? blacklistedByEmployeeId : null
         };
 
         ClientProfileRules.UpsertDocuments(entity, validation.Documents);
@@ -145,12 +151,20 @@ public sealed class ClientsController(RentalDbContext dbContext) : ApiController
             return BuildClientValidationResult(validation.ConflictMessage, validation.ErrorMessage);
         }
 
+        if (!TryResolveBlacklistActorId(request.IsBlacklisted, out var blacklistedByEmployeeId, out var actorErrorResult))
+        {
+            return actorErrorResult!;
+        }
+
         entity.FullName = request.FullName.Trim();
         entity.Phone = validation.NormalizedPhone!;
         entity.IsBlacklisted = request.IsBlacklisted;
         entity.BlacklistReason = request.IsBlacklisted ? request.BlacklistReason?.Trim() : null;
         entity.BlacklistedAtUtc = request.IsBlacklisted
             ? entity.BlacklistedAtUtc ?? DateTime.UtcNow
+            : null;
+        entity.BlacklistedByEmployeeId = request.IsBlacklisted
+            ? entity.BlacklistedByEmployeeId ?? blacklistedByEmployeeId
             : null;
         ClientProfileRules.UpsertDocuments(entity, validation.Documents);
 
@@ -179,11 +193,17 @@ public sealed class ClientsController(RentalDbContext dbContext) : ApiController
             return NotFound();
         }
 
+        if (!TryResolveBlacklistActorId(request.IsBlacklisted, out var blacklistedByEmployeeId, out var actorErrorResult))
+        {
+            return actorErrorResult!;
+        }
+
         entity.IsBlacklisted = request.IsBlacklisted;
         entity.BlacklistReason = request.IsBlacklisted ? request.BlacklistReason?.Trim() : null;
         entity.BlacklistedAtUtc = request.IsBlacklisted
             ? entity.BlacklistedAtUtc ?? DateTime.UtcNow
             : null;
+        entity.BlacklistedByEmployeeId = request.IsBlacklisted ? blacklistedByEmployeeId : null;
 
         await dbContext.SaveChangesAsync(cancellationToken);
         return Ok(entity.ToDto());
@@ -432,6 +452,26 @@ public sealed class ClientsController(RentalDbContext dbContext) : ApiController
         }
 
         return new BadRequestObjectResult(new { message = errorMessage ?? "Client validation failed." });
+    }
+
+    private bool TryResolveBlacklistActorId(bool isBlacklisted, out int? employeeId, out IActionResult? errorResult)
+    {
+        employeeId = null;
+        errorResult = null;
+
+        if (!isBlacklisted)
+        {
+            return true;
+        }
+
+        employeeId = GetCurrentEmployeeId();
+        if (employeeId.HasValue)
+        {
+            return true;
+        }
+
+        errorResult = BadRequest(new { message = "Blacklisting requires a staff actor linked to the current account." });
+        return false;
     }
 
     private sealed record ClientRequestValidationResult(

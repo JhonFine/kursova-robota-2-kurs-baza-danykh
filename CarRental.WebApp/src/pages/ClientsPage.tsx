@@ -18,7 +18,7 @@ const emptyForm = {
   passportData: '',
   driverLicense: '',
   phone: '',
-  blacklisted: false,
+  isBlacklisted: false,
 };
 
 const PAGE_SIZE = 25;
@@ -142,7 +142,7 @@ export function ClientsPage() {
       passportData: selected.passportData,
       driverLicense: selected.driverLicense,
       phone: selected.phone,
-      blacklisted: selected.blacklisted,
+      isBlacklisted: selected.isBlacklisted,
     });
   }, [selected]);
 
@@ -182,9 +182,9 @@ export function ClientsPage() {
 
     try {
       setError(null);
-      await Api.setClientBlacklist(selected.id, !selected.blacklisted);
+      await Api.setClientBlacklist(selected.id, !selected.isBlacklisted);
       setMessage(
-        selected.blacklisted
+        selected.isBlacklisted
           ? `Клієнта "${selected.fullName}" повернуто до активного списку.`
           : `Клієнта "${selected.fullName}" додано до чорного списку.`,
       );
@@ -248,7 +248,7 @@ export function ClientsPage() {
             value={
               blacklistFilter === 'blacklisted'
                 ? totalCount
-                : clients.filter((item) => item.blacklisted).length
+                : clients.filter((item) => item.isBlacklisted).length
             }
             accent="red"
           />
@@ -360,8 +360,8 @@ export function ClientsPage() {
                           <td>{item.phone}</td>
                           <td>{item.driverLicense}</td>
                           <td>
-                            <span className={`status-pill ${item.blacklisted ? 'bad' : 'ok'}`}>
-                              {item.blacklisted ? 'У чорному списку' : 'Активний'}
+                            <span className={`status-pill ${item.isBlacklisted ? 'bad' : 'ok'}`}>
+                              {item.isBlacklisted ? 'У чорному списку' : 'Активний'}
                             </span>
                           </td>
                         </tr>
@@ -411,7 +411,7 @@ export function ClientsPage() {
                 <input required value={form.phone} onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))} />
               </label>
               <label className="checkbox-row">
-                <input type="checkbox" checked={form.blacklisted} onChange={(event) => setForm((prev) => ({ ...prev, blacklisted: event.target.checked }))} />
+                <input type="checkbox" checked={form.isBlacklisted} onChange={(event) => setForm((prev) => ({ ...prev, isBlacklisted: event.target.checked }))} />
                 У чорному списку
               </label>
               <button type="submit" className="btn primary">Створити</button>
@@ -423,7 +423,7 @@ export function ClientsPage() {
               <form className="form-grid" onSubmit={(event) => event.preventDefault()}>
                 <div className="panel-intro full-row">
                   <strong>{selected.fullName}</strong>
-                  <p>{selected.phone} • {selected.blacklisted ? 'У чорному списку' : 'Активний профіль'}</p>
+                  <p>{selected.phone} • {selected.isBlacklisted ? 'У чорному списку' : 'Активний профіль'}</p>
                 </div>
 
                 <label>
@@ -443,7 +443,7 @@ export function ClientsPage() {
                   <input value={form.phone} onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))} />
                 </label>
                 <label className="checkbox-row">
-                  <input type="checkbox" checked={form.blacklisted} onChange={(event) => setForm((prev) => ({ ...prev, blacklisted: event.target.checked }))} />
+                  <input type="checkbox" checked={form.isBlacklisted} onChange={(event) => setForm((prev) => ({ ...prev, isBlacklisted: event.target.checked }))} />
                   У чорному списку
                 </label>
                 <div className="inline-form">

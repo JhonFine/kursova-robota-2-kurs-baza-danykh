@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 
 namespace CarRental.Desktop.Views.Windows;
 
@@ -9,3 +9,4 @@ public partial class RentalsManagementWindow : Window
         InitializeComponent();
     }
 }
+

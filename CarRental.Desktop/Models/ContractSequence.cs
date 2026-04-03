@@ -1,4 +1,4 @@
-namespace CarRental.Desktop.Models;
+﻿namespace CarRental.Desktop.Models;
 
 public sealed class ContractSequence
 {
@@ -8,3 +8,4 @@ public sealed class ContractSequence
 
     public int LastNumber { get; set; }
 }
+

@@ -34,32 +34,25 @@ public sealed class DamagesPageViewModelTests
         await using var dbContext = testDatabase.CreateDbContext();
         SeedMinimalData(dbContext);
 
-        dbContext.Vehicles.Add(new Vehicle
-        {
-            Id = 2,
-            Make = "BMW",
-            Model = "M5 F90",
-            FuelType = "Бензин",
-            TransmissionType = "Автомат",
-            PowertrainCapacityValue = 4.4m,
-            PowertrainCapacityUnit = "L",
-            CargoCapacityValue = 530m,
-            CargoCapacityUnit = "L",
-            ConsumptionValue = 11m,
-            ConsumptionUnit = "L_PER_100KM",
-            LicensePlate = "AA0022AA",
-            Mileage = 2500,
-            DailyRate = 120m,
-            IsBookable = true,
-            IsAvailable = true,
-            ServiceIntervalKm = 10000
-        });
+        dbContext.Vehicles.Add(TestLookupSeed.CreateVehicle(
+            dbContext,
+            "BMW",
+            "M5 F90",
+            "AA0022AA",
+            "PETROL",
+            "AUTO",
+            4.4m,
+            530m,
+            11m,
+            2500,
+            120m,
+            id: 2));
         dbContext.Rentals.AddRange(
             new Rental
             {
                 ClientId = 1,
                 VehicleId = 1,
-                EmployeeId = 1,
+                CreatedByEmployeeId = 1,
                 ContractNumber = "CR-2026-000079",
                 StartDate = DateTime.UtcNow.AddDays(-1),
                 EndDate = DateTime.UtcNow.AddDays(2),
@@ -67,15 +60,15 @@ public sealed class DamagesPageViewModelTests
                 ReturnLocation = "Kyiv",
                 StartMileage = 1000,
                 TotalAmount = 300m,
-                Status = RentalStatus.Active,
-                IsClosed = false,
+                StatusId = RentalStatus.Active,
                 CreatedAtUtc = DateTime.UtcNow
             },
             new Rental
             {
                 ClientId = 1,
                 VehicleId = 1,
-                EmployeeId = 1,
+                CreatedByEmployeeId = 1,
+                ClosedByEmployeeId = 1,
                 ContractNumber = "CR-2026-000078",
                 StartDate = DateTime.UtcNow.AddDays(-5),
                 EndDate = DateTime.UtcNow.AddDays(-2),
@@ -83,15 +76,15 @@ public sealed class DamagesPageViewModelTests
                 ReturnLocation = "Kyiv",
                 StartMileage = 900,
                 TotalAmount = 250m,
-                Status = RentalStatus.Closed,
-                IsClosed = true,
+                StatusId = RentalStatus.Closed,
+                ClosedAtUtc = DateTime.UtcNow.AddDays(-2),
                 CreatedAtUtc = DateTime.UtcNow.AddDays(-5)
             },
             new Rental
             {
                 ClientId = 1,
                 VehicleId = 2,
-                EmployeeId = 1,
+                CreatedByEmployeeId = 1,
                 ContractNumber = "CR-2026-000077",
                 StartDate = DateTime.UtcNow.AddDays(-2),
                 EndDate = DateTime.UtcNow.AddDays(1),
@@ -99,8 +92,7 @@ public sealed class DamagesPageViewModelTests
                 ReturnLocation = "Lviv",
                 StartMileage = 2400,
                 TotalAmount = 700m,
-                Status = RentalStatus.Active,
-                IsClosed = false,
+                StatusId = RentalStatus.Active,
                 CreatedAtUtc = DateTime.UtcNow.AddDays(-2)
             });
         await dbContext.SaveChangesAsync();
@@ -157,14 +149,21 @@ public sealed class DamagesPageViewModelTests
     {
         TestLookupSeed.SeedVehicleLookups(dbContext);
 
+        var account = new Account
+        {
+            Id = 1,
+            Login = "admin",
+            PasswordHash = "x",
+            IsActive = true
+        };
+
+        dbContext.Accounts.Add(account);
         dbContext.Employees.Add(new Employee
         {
             Id = 1,
             FullName = "Admin",
-            Login = "admin",
-            PasswordHash = "x",
-            Role = UserRole.Admin,
-            IsActive = true
+            RoleId = UserRole.Admin,
+            Account = account
         });
         dbContext.Clients.Add(new Client
         {
@@ -175,28 +174,21 @@ public sealed class DamagesPageViewModelTests
             PassportExpirationDate = DateTime.UtcNow.AddYears(5),
             DriverLicenseExpirationDate = DateTime.UtcNow.AddYears(5),
             Phone = "123",
-            Blacklisted = false
+            IsBlacklisted = false
         });
-        dbContext.Vehicles.Add(new Vehicle
-        {
-            Id = 1,
-            Make = "Audi",
-            Model = "A4",
-            FuelType = "Бензин",
-            TransmissionType = "Автомат",
-            PowertrainCapacityValue = 2m,
-            PowertrainCapacityUnit = "L",
-            CargoCapacityValue = 480m,
-            CargoCapacityUnit = "L",
-            ConsumptionValue = 7m,
-            ConsumptionUnit = "L_PER_100KM",
-            LicensePlate = "AA0011AA",
-            Mileage = 1000,
-            DailyRate = 70m,
-            IsBookable = true,
-            IsAvailable = true,
-            ServiceIntervalKm = 10000
-        });
+        dbContext.Vehicles.Add(TestLookupSeed.CreateVehicle(
+            dbContext,
+            "Audi",
+            "A4",
+            "AA0011AA",
+            "PETROL",
+            "AUTO",
+            2m,
+            480m,
+            7m,
+            1000,
+            70m,
+            id: 1));
         dbContext.SaveChanges();
     }
 

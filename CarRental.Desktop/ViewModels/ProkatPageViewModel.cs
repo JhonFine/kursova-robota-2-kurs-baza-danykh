@@ -553,15 +553,17 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
 
             var vehicles = await _dbContext.Vehicles
                 .AsNoTracking()
-                .OrderBy(vehicle => vehicle.Make)
-                .ThenBy(vehicle => vehicle.Model)
+                .Include(vehicle => vehicle.MakeLookup)
+                .Include(vehicle => vehicle.ModelLookup)
+                .OrderBy(vehicle => vehicle.MakeLookup!.Name)
+                .ThenBy(vehicle => vehicle.ModelLookup!.Name)
                 .ToListAsync();
 
             var overlappingRentals = requestEnd > requestStart
                 ? await _dbContext.Rentals
                     .AsNoTracking()
                     .Where(rental =>
-                        (rental.Status == RentalStatus.Active || rental.Status == RentalStatus.Booked) &&
+                        (rental.StatusId == RentalStatus.Active || rental.StatusId == RentalStatus.Booked) &&
                         rental.StartDate <= requestEnd &&
                         requestStart <= rental.EndDate)
                     .OrderBy(rental => rental.StartDate)
@@ -844,6 +846,8 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
         CreateRentalResult result;
         if (createCardPayment)
         {
+            var rentalHours = CalculateRentalHours(pickupDateTime, returnDateTime);
+            var totalAmount = CalculateProratedAmount(SelectedVehicleVariant?.DailyRate ?? 0m, rentalHours);
             result = await _rentalService.CreateRentalWithPaymentAsync(
                 new CreateRentalWithPaymentRequest(
                     clientId.Value,
@@ -853,6 +857,7 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
                     returnDateTime,
                     PickupLocation,
                     string.IsNullOrWhiteSpace(ReturnLocation) ? PickupLocation : ReturnLocation,
+                    totalAmount,
                     PaymentMethod.Card,
                     PaymentDirection.Incoming,
                     paymentNote));
@@ -1313,47 +1318,40 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
 
     private async Task<int?> EnsureClientProfileAsync()
     {
-        var employee = await _dbContext.Employees
-            .Include(item => item.Account)
-                .ThenInclude(item => item!.Client)
-                .ThenInclude(item => item!.Documents)
-            .FirstOrDefaultAsync(item => item.Id == _currentEmployee.Id);
-        if (employee is null)
+        if (_currentEmployee.AccountId <= 0)
         {
             return null;
         }
 
-        var passportData = $"EMP-{employee.Id:D6}";
-        var driverLicense = $"USR-{employee.Id:D6}";
-
-        Client? client = employee.Account?.Client;
-        if (client is null && employee.PortalClientId.HasValue)
+        var account = await _dbContext.Accounts
+            .Include(item => item.Client)
+                .ThenInclude(item => item!.Documents)
+            .FirstOrDefaultAsync(item => item.Id == _currentEmployee.AccountId);
+        if (account is null)
         {
-            client = await _dbContext.Clients
-                .FirstOrDefaultAsync(item => item.Id == employee.PortalClientId.Value);
+            return null;
         }
 
-        if (client is null && employee.AccountId > 0)
+        var passportData = $"ACC-{account.Id:D6}";
+        var driverLicense = $"USR-{account.Id:D6}";
+
+        Client? client = account.Client;
+        if (client is null)
         {
             client = await _dbContext.Clients
-                .FirstOrDefaultAsync(item => item.AccountId == employee.AccountId);
+                .Include(item => item.Documents)
+                .FirstOrDefaultAsync(item => item.AccountId == account.Id);
         }
-
-        client ??= await _dbContext.Clients
-            .FirstOrDefaultAsync(existing =>
-                _dbContext.ClientDocuments.Any(document =>
-                    document.ClientId == existing.Id &&
-                    ((document.DocumentTypeCode == ClientDocumentTypes.Passport && document.DocumentNumber == passportData) ||
-                     (document.DocumentTypeCode == ClientDocumentTypes.DriverLicense && document.DocumentNumber == driverLicense))));
 
         if (client is null)
         {
             client = new Client
             {
-                FullName = employee.FullName,
+                AccountId = account.Id,
+                FullName = _currentEmployee.FullName,
                 PassportData = passportData,
                 DriverLicense = driverLicense,
-                Phone = ResolveClientPhone(employee.Login)
+                Phone = ResolveClientPhone(account.Login)
             };
 
             _dbContext.Clients.Add(client);
@@ -1361,23 +1359,22 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
         }
 
         var hasChanges = false;
-        var normalizedPhone = ResolveClientPhone(employee.Login, client.Phone);
+        var normalizedPhone = ResolveClientPhone(account.Login, client.Phone);
         if (!string.Equals(client.Phone, normalizedPhone, StringComparison.Ordinal))
         {
             client.Phone = normalizedPhone;
             hasChanges = true;
         }
 
-        if (!string.Equals(client.FullName, employee.FullName, StringComparison.Ordinal))
+        if (!string.Equals(client.FullName, _currentEmployee.FullName, StringComparison.Ordinal))
         {
-            client.FullName = employee.FullName;
+            client.FullName = _currentEmployee.FullName;
             hasChanges = true;
         }
 
-        if (employee.PortalClientId != client.Id)
+        if (client.AccountId != account.Id)
         {
-            employee.PortalClientId = client.Id;
-            _currentEmployee.PortalClientId = client.Id;
+            client.AccountId = account.Id;
             hasChanges = true;
         }
 
@@ -1874,11 +1871,11 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
             return seed.FullName;
         }
 
-        return $"{NormalizeAlphaNumeric(vehicle.Make)}|{NormalizeAlphaNumeric(vehicle.Model)}";
+        return $"{NormalizeAlphaNumeric(vehicle.MakeName)}|{NormalizeAlphaNumeric(vehicle.ModelName)}";
     }
 
     private static VehicleCatalogSeeds.CatalogVehicleSeed? ResolveCatalogSeed(Vehicle vehicle)
-        => VehicleCatalogSeeds.TryFindByVehicle(vehicle.Make, vehicle.Model);
+        => VehicleCatalogSeeds.TryFindByVehicle(vehicle.MakeName, vehicle.ModelName);
 
     private static Vehicle ResolveRepresentativeVehicle(
         IReadOnlyList<Vehicle> vehicles,
@@ -1909,7 +1906,7 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
             return seed.FullName;
         }
 
-        return $"{vehicle.Make} {vehicle.Model}".Trim();
+        return $"{vehicle.MakeName} {vehicle.ModelName}".Trim();
     }
 
     private static string ResolveGroupTextValue(IEnumerable<string> values, string? fallback = null)
@@ -1998,35 +1995,19 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
 
     private static string ResolveClientPhone(string login, string? currentPhone = null)
     {
-        var normalizedCurrent = TryNormalizePhone(currentPhone);
+        var normalizedCurrent = ClientProfileConventions.TryNormalizePhone(currentPhone);
         if (normalizedCurrent is not null)
         {
             return normalizedCurrent;
         }
 
-        var normalizedLogin = TryNormalizePhone(login);
+        var normalizedLogin = ClientProfileConventions.TryNormalizePhone(login);
         if (normalizedLogin is not null)
         {
             return normalizedLogin;
         }
 
         return "Не вказано";
-    }
-
-    private static string? TryNormalizePhone(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return null;
-        }
-
-        var digits = new string(value.Where(char.IsDigit).ToArray());
-        if (digits.Length is < 10 or > 15)
-        {
-            return null;
-        }
-
-        return "+" + digits;
     }
 
     private static TariffBand BuildTariffBand(IReadOnlyList<VehicleVariantRow> variantRows)
@@ -2068,7 +2049,7 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
 
         var latestOpen = damages
             .OrderByDescending(item => item.DateReported)
-            .FirstOrDefault(item => item.Status != DamageStatus.Resolved);
+            .FirstOrDefault(item => item.StatusId != DamageStatus.Resolved);
         if (latestOpen is not null)
         {
             var text = latestOpen.Description.Trim();
@@ -2225,6 +2206,7 @@ public sealed class ProkatPageViewModel : PageDataViewModelBase, ITransientState
         }
     }
 }
+
 
 
 

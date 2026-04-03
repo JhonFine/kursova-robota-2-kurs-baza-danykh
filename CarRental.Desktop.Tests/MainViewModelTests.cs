@@ -29,7 +29,7 @@ public sealed class MainViewModelTests
         var currentEmployee = new Employee
         {
             FullName = "Test Employee",
-            Role = role,
+            RoleId = role,
             IsActive = true
         };
 

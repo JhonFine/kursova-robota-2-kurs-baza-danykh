@@ -1,12 +1,12 @@
-using CarRental.Desktop.Data;
+﻿using CarRental.Desktop.Data;
 using CarRental.Desktop.Models;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
 
 namespace CarRental.Desktop.Services.Damages;
 
-// Damage service фіксує сам акт пошкодження і, за бажанням оператора,
-// одразу прив'язує його до оренди як charge, не змішуючи це з payment flow.
+// Damage service С„С–РєСЃСѓС” СЃР°Рј Р°РєС‚ РїРѕС€РєРѕРґР¶РµРЅРЅСЏ С–, Р·Р° Р±Р°Р¶Р°РЅРЅСЏРј РѕРїРµСЂР°С‚РѕСЂР°,
+// РѕРґСЂР°Р·Сѓ РїСЂРёРІ'СЏР·СѓС” Р№РѕРіРѕ РґРѕ РѕСЂРµРЅРґРё СЏРє charge, РЅРµ Р·РјС–С€СѓСЋС‡Рё С†Рµ Р· payment flow.
 public sealed class DamageService(RentalDbContext dbContext) : IDamageService
 {
     public async Task<DamageResult> AddDamageAsync(DamageRequest request, CancellationToken cancellationToken = default)
@@ -45,28 +45,29 @@ public sealed class DamageService(RentalDbContext dbContext) : IDamageService
             DateReported = DateTime.UtcNow,
             RepairCost = request.RepairCost,
             PhotoPath = request.PhotoPath,
-            ActNumber = GenerateActNumber(),
+            DamageActNumber = GenerateActNumber(),
             ChargedAmount = 0m,
-            Status = DamageStatus.Open
+            StatusId = DamageStatus.Open
         };
 
         if (request.AutoChargeToRental && rental is not null)
         {
-            // Автодонарахування піднімає total договору в момент реєстрації пошкодження, щоб баланс оновився без додаткових кроків.
+            // РђРІС‚РѕРґРѕРЅР°СЂР°С…СѓРІР°РЅРЅСЏ РїС–РґРЅС–РјР°С” total РґРѕРіРѕРІРѕСЂСѓ РІ РјРѕРјРµРЅС‚ СЂРµС”СЃС‚СЂР°С†С–С— РїРѕС€РєРѕРґР¶РµРЅРЅСЏ, С‰РѕР± Р±Р°Р»Р°РЅСЃ РѕРЅРѕРІРёРІСЃСЏ Р±РµР· РґРѕРґР°С‚РєРѕРІРёС… РєСЂРѕРєС–РІ.
             rental.TotalAmount += request.RepairCost;
             damage.ChargedAmount = request.RepairCost;
-            damage.Status = DamageStatus.Charged;
+            damage.StatusId = DamageStatus.Charged;
         }
 
         dbContext.Damages.Add(damage);
         await dbContext.SaveChangesAsync(cancellationToken);
-        return new DamageResult(true, $"Пошкодження зафіксовано, акт №{damage.ActNumber}.");
+        return new DamageResult(true, $"Пошкодження зафіксовано, акт №{damage.DamageActNumber}.");
     }
 
     private static string GenerateActNumber()
     {
-        // Timestamp плюс випадковий suffix дають стабільно унікальний номер навіть при серійному створенні актів.
+        // Timestamp РїР»СЋСЃ РІРёРїР°РґРєРѕРІРёР№ suffix РґР°СЋС‚СЊ СЃС‚Р°Р±С–Р»СЊРЅРѕ СѓРЅС–РєР°Р»СЊРЅРёР№ РЅРѕРјРµСЂ РЅР°РІС–С‚СЊ РїСЂРё СЃРµСЂС–Р№РЅРѕРјСѓ СЃС‚РІРѕСЂРµРЅРЅС– Р°РєС‚С–РІ.
         var randomSuffix = RandomNumberGenerator.GetInt32(100000, 1000000);
         return $"ACT-{DateTime.UtcNow:yyyyMMddHHmmssfff}-{randomSuffix}";
     }
 }
+

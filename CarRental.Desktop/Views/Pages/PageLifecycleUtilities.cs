@@ -1,8 +1,8 @@
-using CarRental.Desktop.ViewModels;
+﻿using CarRental.Desktop.ViewModels;
 
 namespace CarRental.Desktop.Views.Pages;
 
-// Спільна точка для очищення transient state у сторінок, щоб code-behind не дублював однотипні перевірки.
+// РЎРїС–Р»СЊРЅР° С‚РѕС‡РєР° РґР»СЏ РѕС‡РёС‰РµРЅРЅСЏ transient state Сѓ СЃС‚РѕСЂС–РЅРѕРє, С‰РѕР± code-behind РЅРµ РґСѓР±Р»СЋРІР°РІ РѕРґРЅРѕС‚РёРїРЅС– РїРµСЂРµРІС–СЂРєРё.
 internal static class PageLifecycleUtilities
 {
     public static void ReleaseTransientState(object? dataContext)
@@ -13,3 +13,4 @@ internal static class PageLifecycleUtilities
         }
     }
 }
+

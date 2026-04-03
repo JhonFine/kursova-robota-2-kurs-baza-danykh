@@ -49,7 +49,7 @@ public sealed class RentalsController(
 
         if (status.HasValue)
         {
-            query = query.Where(item => item.Status == status.Value);
+            query = query.Where(item => item.StatusId == status.Value);
         }
 
         if (vehicleId.HasValue)
@@ -82,8 +82,8 @@ public sealed class RentalsController(
                     EF.Functions.ILike(clientRecord.FullName, pattern)) ||
                 vehicles.Any(vehicleRecord =>
                     vehicleRecord.Id == item.VehicleId &&
-                    (EF.Functions.ILike(vehicleRecord.Make, pattern) ||
-                     EF.Functions.ILike(vehicleRecord.Model, pattern) ||
+                    (EF.Functions.ILike(vehicleRecord.MakeLookup!.Name, pattern) ||
+                     EF.Functions.ILike(vehicleRecord.ModelLookup!.Name, pattern) ||
                      EF.Functions.ILike(vehicleRecord.LicensePlate, pattern))));
         }
 
@@ -109,13 +109,13 @@ public sealed class RentalsController(
     {
         var rentals = await dbContext.Rentals
             .AsNoTracking()
-            .Where(item => item.Status == RentalStatus.Booked || item.Status == RentalStatus.Active)
+            .Where(item => item.StatusId == RentalStatus.Booked || item.StatusId == RentalStatus.Active)
             .OrderBy(item => item.StartDate)
             .Select(item => new RentalAvailabilitySlotDto(
                 item.VehicleId,
                 item.StartDate,
                 item.EndDate,
-                item.Status))
+                item.StatusId))
             .ToListAsync(cancellationToken);
 
         return Ok(rentals);
@@ -138,10 +138,14 @@ public sealed class RentalsController(
     // бронювання лише на себе і тільки з повністю заповненим клієнтським профілем.
     public async Task<IActionResult> Create([FromBody] CreateRentalRequest request, CancellationToken cancellationToken)
     {
-        var actingEmployeeId = await ResolveActingEmployeeIdAsync(cancellationToken);
-        if (!actingEmployeeId.HasValue)
+        int? actingEmployeeId = null;
+        if (!IsCurrentUserInRole(UserRole.User))
         {
-            return Unauthorized();
+            actingEmployeeId = GetCurrentEmployeeId();
+            if (!actingEmployeeId.HasValue)
+            {
+                return Unauthorized();
+            }
         }
 
         if (IsCurrentUserInRole(UserRole.User))
@@ -165,7 +169,7 @@ public sealed class RentalsController(
                 new RentalOperations.CreateRentalWithPaymentRequest(
                     request.ClientId,
                     request.VehicleId,
-                    actingEmployeeId.Value,
+                    actingEmployeeId,
                     request.StartDate,
                     request.EndDate,
                     request.PickupLocation,
@@ -181,7 +185,7 @@ public sealed class RentalsController(
                 new RentalOperations.CreateRentalRequest(
                     request.ClientId,
                     request.VehicleId,
-                    actingEmployeeId.Value,
+                    actingEmployeeId,
                     request.StartDate,
                     request.EndDate,
                     request.PickupLocation,
@@ -257,19 +261,21 @@ public sealed class RentalsController(
             return Forbid();
         }
 
-        var canceledByEmployeeId = IsCurrentUserInRole(UserRole.User)
-            ? await ResolveActingEmployeeIdAsync(cancellationToken)
-            : GetCurrentEmployeeId();
-        if (!canceledByEmployeeId.HasValue)
+        int? canceledByEmployeeId = null;
+        if (!IsCurrentUserInRole(UserRole.User))
         {
-            return Unauthorized();
+            canceledByEmployeeId = GetCurrentEmployeeId();
+            if (!canceledByEmployeeId.HasValue)
+            {
+                return Unauthorized();
+            }
         }
 
         var result = await rentalService.CancelRentalAsync(
             new RentalOperations.CancelRentalRequest(
                 RentalId: id,
                 Reason: request.Reason,
-                CanceledByEmployeeId: canceledByEmployeeId.Value),
+                CanceledByEmployeeId: canceledByEmployeeId),
             cancellationToken);
 
         if (!result.Success)
@@ -290,10 +296,14 @@ public sealed class RentalsController(
         [FromBody] RescheduleRentalRequest request,
         CancellationToken cancellationToken)
     {
-        var employeeId = await ResolveActingEmployeeIdAsync(cancellationToken);
-        if (!employeeId.HasValue)
+        int? employeeId = null;
+        if (!IsCurrentUserInRole(UserRole.User))
         {
-            return Unauthorized();
+            employeeId = GetCurrentEmployeeId();
+            if (!employeeId.HasValue)
+            {
+                return Unauthorized();
+            }
         }
 
         var accessStatus = await EnsureRentalMutationAccessAsync(id, RentalMutationType.Reschedule, cancellationToken);
@@ -312,7 +322,7 @@ public sealed class RentalsController(
                 id,
                 request.StartDate,
                 request.EndDate,
-                employeeId.Value),
+                employeeId),
             cancellationToken);
 
         if (!result.Success)
@@ -333,12 +343,6 @@ public sealed class RentalsController(
         [FromBody] SettleRentalBalanceRequest request,
         CancellationToken cancellationToken)
     {
-        var employeeId = await ResolveActingEmployeeIdAsync(cancellationToken);
-        if (!employeeId.HasValue)
-        {
-            return Unauthorized();
-        }
-
         var accessStatus = await EnsureRentalMutationAccessAsync(id, RentalMutationType.SettleBalance, cancellationToken);
         if (accessStatus == RentalMutationAccessStatus.NotFound)
         {
@@ -351,7 +355,7 @@ public sealed class RentalsController(
         }
 
         var result = await rentalService.SettleRentalBalanceAsync(
-            new RentalOperations.SettleRentalBalanceRequest(id, employeeId.Value, request.Notes),
+            new RentalOperations.SettleRentalBalanceRequest(id, GetCurrentEmployeeId(), request.Notes),
             cancellationToken);
 
         if (!result.Success)
@@ -413,22 +417,6 @@ public sealed class RentalsController(
     {
         await rentalService.RefreshStatusesAsync(cancellationToken);
         return Ok(new { message = "Rental statuses refreshed." });
-    }
-
-    private async Task<int?> ResolveActingEmployeeIdAsync(CancellationToken cancellationToken)
-    {
-        var employeeId = GetCurrentEmployeeId();
-        if (employeeId.HasValue)
-        {
-            return employeeId;
-        }
-
-        return await dbContext.Employees
-            .AsNoTracking()
-            .OrderBy(item => item.Role == UserRole.Admin ? 0 : 1)
-            .ThenBy(item => item.Id)
-            .Select(item => (int?)item.Id)
-            .FirstOrDefaultAsync(cancellationToken);
     }
 
     private async Task<int?> GetAccessibleClientIdAsync(CancellationToken cancellationToken)

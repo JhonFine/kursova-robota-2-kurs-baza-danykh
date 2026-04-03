@@ -1,4 +1,4 @@
-namespace CarRental.Desktop.Services.Analytics;
+﻿namespace CarRental.Desktop.Services.Analytics;
 
 public interface IAnalyticsExportService
 {
@@ -12,3 +12,4 @@ public sealed record ExportRequest(
     DateTime ToDate,
     int? VehicleId = null,
     int? EmployeeId = null);
+

@@ -1,4 +1,4 @@
-namespace CarRental.Desktop.ViewModels;
+﻿namespace CarRental.Desktop.ViewModels;
 
 public interface IPageDataLifecycle
 {
@@ -10,3 +10,4 @@ public interface IPageDataLifecycle
 
     void InvalidateData();
 }
+

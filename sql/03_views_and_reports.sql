@@ -1,6 +1,6 @@
 -- Views and analytical SQL queries for the redesigned schema
 
--- View акумулює signed платежі, щоб борг/баланс можна було перевикористовувати у звітах без копіювання CASE-логіки.
+-- View Р°РєСѓРјСѓР»СЋС” signed РїР»Р°С‚РµР¶С–, С‰РѕР± Р±РѕСЂРі/Р±Р°Р»Р°РЅСЃ РјРѕР¶РЅР° Р±СѓР»Рѕ РїРµСЂРµРІРёРєРѕСЂРёСЃС‚РѕРІСѓРІР°С‚Рё Сѓ Р·РІС–С‚Р°С… Р±РµР· РєРѕРїС–СЋРІР°РЅРЅСЏ CASE-Р»РѕРіС–РєРё.
 CREATE OR REPLACE VIEW vw_rental_balance AS
 SELECT
     r."Id" AS rental_id,
@@ -9,8 +9,8 @@ SELECT
     COALESCE(
         SUM(
             CASE
-                WHEN p."Status" = 2 AND p."Direction" = 1 THEN p."Amount"
-                WHEN p."Status" = 2 AND p."Direction" = 2 THEN -p."Amount"
+                WHEN p."StatusId" = 2 AND p."DirectionId" = 1 THEN p."Amount"
+                WHEN p."StatusId" = 2 AND p."DirectionId" = 2 THEN -p."Amount"
                 ELSE 0
             END
         ),
@@ -19,8 +19,8 @@ SELECT
     r."TotalAmount" - COALESCE(
         SUM(
             CASE
-                WHEN p."Status" = 2 AND p."Direction" = 1 THEN p."Amount"
-                WHEN p."Status" = 2 AND p."Direction" = 2 THEN -p."Amount"
+                WHEN p."StatusId" = 2 AND p."DirectionId" = 1 THEN p."Amount"
+                WHEN p."StatusId" = 2 AND p."DirectionId" = 2 THEN -p."Amount"
                 ELSE 0
             END
         ),
@@ -33,25 +33,27 @@ GROUP BY r."Id", r."ContractNumber", r."TotalAmount";
 CREATE OR REPLACE VIEW vw_vehicle_utilization AS
 SELECT
     v."Id" AS vehicle_id,
-    v."Make",
-    v."Model",
+    mk."Name" AS make_name,
+    mdl."Name" AS model_name,
     v."LicensePlate",
     v."VehicleStatusCode",
     COUNT(r."Id") AS rentals_count,
     COALESCE(SUM(r."TotalAmount"), 0) AS revenue
 FROM "Vehicles" v
+JOIN "VehicleMakes" mk ON mk."Id" = v."MakeId"
+JOIN "VehicleModels" mdl ON mdl."Id" = v."ModelId"
 LEFT JOIN "Rentals" r ON r."VehicleId" = v."Id"
-GROUP BY v."Id", v."Make", v."Model", v."LicensePlate", v."VehicleStatusCode";
+GROUP BY v."Id", mk."Name", mdl."Name", v."LicensePlate", v."VehicleStatusCode";
 
 CREATE OR REPLACE VIEW vw_rental_inspection_summary AS
 SELECT
     r."Id" AS rental_id,
-    MAX(i."CompletedAtUtc") FILTER (WHERE i."Type" = 1) AS pickup_completed_at_utc,
-    MAX(i."FuelPercent") FILTER (WHERE i."Type" = 1) AS pickup_fuel_percent,
-    MAX(i."Notes") FILTER (WHERE i."Type" = 1) AS pickup_notes,
-    MAX(i."CompletedAtUtc") FILTER (WHERE i."Type" = 2) AS return_completed_at_utc,
-    MAX(i."FuelPercent") FILTER (WHERE i."Type" = 2) AS return_fuel_percent,
-    MAX(i."Notes") FILTER (WHERE i."Type" = 2) AS return_notes
+    MAX(i."CompletedAtUtc") FILTER (WHERE i."TypeId" = 1) AS pickup_completed_at_utc,
+    MAX(i."FuelPercent") FILTER (WHERE i."TypeId" = 1) AS pickup_fuel_percent,
+    MAX(i."Notes") FILTER (WHERE i."TypeId" = 1) AS pickup_notes,
+    MAX(i."CompletedAtUtc") FILTER (WHERE i."TypeId" = 2) AS return_completed_at_utc,
+    MAX(i."FuelPercent") FILTER (WHERE i."TypeId" = 2) AS return_fuel_percent,
+    MAX(i."Notes") FILTER (WHERE i."TypeId" = 2) AS return_notes
 FROM "Rentals" r
 LEFT JOIN "RentalInspections" i ON i."RentalId" = r."Id"
 GROUP BY r."Id";
@@ -67,11 +69,11 @@ SELECT
     r."EndDate",
     ins.pickup_completed_at_utc,
     ins.return_completed_at_utc,
-    r."Status",
+    r."StatusId",
     r."TotalAmount"
 FROM "Rentals" r
 JOIN "Clients" c ON c."Id" = r."ClientId"
-JOIN "Employees" creator ON creator."Id" = r."CreatedByEmployeeId"
+LEFT JOIN "Employees" creator ON creator."Id" = r."CreatedByEmployeeId"
 LEFT JOIN "Employees" closer ON closer."Id" = r."ClosedByEmployeeId"
 LEFT JOIN "Employees" canceler ON canceler."Id" = r."CanceledByEmployeeId"
 LEFT JOIN vw_rental_inspection_summary ins ON ins.rental_id = r."Id"
@@ -82,7 +84,7 @@ SELECT
     date_trunc('month', r."ClosedAtUtc") AS month,
     SUM(r."TotalAmount") AS revenue
 FROM "Rentals" r
-WHERE r."Status" = 3
+WHERE r."StatusId" = 3
 GROUP BY date_trunc('month', r."ClosedAtUtc")
 ORDER BY month;
 
@@ -101,12 +103,14 @@ ORDER BY total_debt DESC;
 -- Q4. overdue maintenance candidates
 SELECT
     v."Id",
-    v."Make",
-    v."Model",
+    mk."Name" AS make_name,
+    mdl."Name" AS model_name,
     v."Mileage",
     m.next_service_mileage,
     (v."Mileage" - m.next_service_mileage) AS overdue_km
 FROM "Vehicles" v
+JOIN "VehicleMakes" mk ON mk."Id" = v."MakeId"
+JOIN "VehicleModels" mdl ON mdl."Id" = v."ModelId"
 JOIN LATERAL (
     SELECT COALESCE(MAX("NextServiceMileage"), v."Mileage" + v."ServiceIntervalKm") AS next_service_mileage
     FROM "MaintenanceRecords"
@@ -126,13 +130,13 @@ GROUP BY v."LicensePlate";
 
 -- Q6. damage summary with reporter and rental linkage
 SELECT
-    d."ActNumber",
+    d."DamageActNumber",
     v."LicensePlate",
     e."FullName" AS reported_by_employee,
     r."ContractNumber",
     d."RepairCost",
     d."ChargedAmount",
-    d."Status"
+    d."StatusId"
 FROM "Damages" d
 JOIN "Vehicles" v ON v."Id" = d."VehicleId"
 JOIN "Employees" e ON e."Id" = d."ReportedByEmployeeId"

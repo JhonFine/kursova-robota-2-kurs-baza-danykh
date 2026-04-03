@@ -14,6 +14,44 @@ namespace CarRental.WebApi.Controllers;
 [Route("api/vehicles")]
 public sealed class VehiclesController(RentalDbContext dbContext) : ApiControllerBase
 {
+    [Authorize(Policy = ApiAuthorization.ManageFleet)]
+    [HttpGet("makes")]
+    [ProducesResponseType<IReadOnlyList<VehicleMakeDto>>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<VehicleMakeDto>>> GetMakes(CancellationToken cancellationToken)
+    {
+        var makes = await dbContext.VehicleMakes
+            .AsNoTracking()
+            .OrderBy(item => item.Name)
+            .Select(item => new VehicleMakeDto(item.Id, item.Name))
+            .ToListAsync(cancellationToken);
+
+        return Ok(makes);
+    }
+
+    [Authorize(Policy = ApiAuthorization.ManageFleet)]
+    [HttpGet("models")]
+    [ProducesResponseType<IReadOnlyList<VehicleModelDto>>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<VehicleModelDto>>> GetModels(
+        [FromQuery] int? makeId,
+        CancellationToken cancellationToken)
+    {
+        var query = dbContext.VehicleModels
+            .AsNoTracking()
+            .AsQueryable();
+
+        if (makeId.HasValue)
+        {
+            query = query.Where(item => item.MakeId == makeId.Value);
+        }
+
+        var models = await query
+            .OrderBy(item => item.Name)
+            .Select(item => new VehicleModelDto(item.Id, item.MakeId, item.Name))
+            .ToListAsync(cancellationToken);
+
+        return Ok(models);
+    }
+
     [Authorize(Policy = ApiAuthorization.ManageRentals)]
     [HttpGet]
     [ProducesResponseType<IReadOnlyList<VehicleDto>>(StatusCodes.Status200OK)]
@@ -32,7 +70,7 @@ public sealed class VehiclesController(RentalDbContext dbContext) : ApiControlle
         var pagination = PaginationExtensions.Normalize(page, pageSize);
         var activeRentalVehicleIdsQuery = dbContext.Rentals
             .AsNoTracking()
-            .Where(item => item.Status == RentalStatus.Active)
+            .Where(item => item.StatusId == RentalStatus.Active)
             .Select(item => item.VehicleId);
         var query = dbContext.Vehicles
             .AsNoTracking()
@@ -43,8 +81,8 @@ public sealed class VehiclesController(RentalDbContext dbContext) : ApiControlle
         {
             var pattern = $"%{search.Trim()}%";
             query = query.Where(item =>
-                EF.Functions.ILike(item.Make, pattern) ||
-                EF.Functions.ILike(item.Model, pattern) ||
+                EF.Functions.ILike(item.MakeLookup!.Name, pattern) ||
+                EF.Functions.ILike(item.ModelLookup!.Name, pattern) ||
                 EF.Functions.ILike(item.LicensePlate, pattern));
         }
 
@@ -86,7 +124,7 @@ public sealed class VehiclesController(RentalDbContext dbContext) : ApiControlle
     {
         var activeRentalVehicleIds = (await dbContext.Rentals
             .AsNoTracking()
-            .Where(item => item.Status == RentalStatus.Active)
+            .Where(item => item.StatusId == RentalStatus.Active)
             .Select(item => item.VehicleId)
             .ToListAsync(cancellationToken)).ToHashSet();
 
@@ -148,8 +186,8 @@ public sealed class VehiclesController(RentalDbContext dbContext) : ApiControlle
 
         var entity = new Vehicle
         {
-            Make = request.Make.Trim(),
-            Model = request.Model.Trim(),
+            MakeId = request.MakeId,
+            ModelId = request.ModelId,
             PowertrainCapacityValue = request.PowertrainCapacityValue,
             PowertrainCapacityUnit = validation.PowertrainUnit,
             FuelTypeCode = validation.FuelTypeCode!,
@@ -169,7 +207,9 @@ public sealed class VehiclesController(RentalDbContext dbContext) : ApiControlle
             {
                 StoredPath = item.StoredPath,
                 SortOrder = item.SortOrder == 0 && validation.Photos.Count == 1 ? 0 : item.SortOrder,
-                IsPrimary = item.IsPrimary || (validation.Photos.Count == 1 && index == 0)
+                IsPrimary = item.IsPrimary || (validation.Photos.Count == 1 && index == 0),
+                CreatedAtUtc = DateTime.UtcNow,
+                UpdatedAtUtc = DateTime.UtcNow
             }).ToList()
         };
 
@@ -208,8 +248,8 @@ public sealed class VehiclesController(RentalDbContext dbContext) : ApiControlle
             return BuildVehicleValidationResult(validation.ConflictMessage, validation.ErrorMessage);
         }
 
-        entity.Make = request.Make.Trim();
-        entity.Model = request.Model.Trim();
+        entity.MakeId = request.MakeId;
+        entity.ModelId = request.ModelId;
         entity.PowertrainCapacityValue = request.PowertrainCapacityValue;
         entity.PowertrainCapacityUnit = validation.PowertrainUnit;
         entity.FuelTypeCode = validation.FuelTypeCode!;
@@ -225,17 +265,10 @@ public sealed class VehiclesController(RentalDbContext dbContext) : ApiControlle
         entity.Mileage = request.Mileage;
         entity.DailyRate = request.DailyRate;
         entity.ServiceIntervalKm = request.ServiceIntervalKm;
-        entity.Photos.Clear();
-        foreach (var (photo, index) in validation.Photos.Select((item, index) => (item, index)))
-        {
-            entity.Photos.Add(new VehiclePhoto
-            {
-                VehicleId = entity.Id,
-                StoredPath = photo.StoredPath,
-                SortOrder = photo.SortOrder == 0 && validation.Photos.Count == 1 ? 0 : photo.SortOrder,
-                IsPrimary = photo.IsPrimary || (validation.Photos.Count == 1 && index == 0)
-            });
-        }
+        entity.ReconcilePhotos(validation.Photos.Select((item, index) => (
+            item.StoredPath,
+            item.SortOrder == 0 && validation.Photos.Count == 1 ? 0 : item.SortOrder,
+            item.IsPrimary || (validation.Photos.Count == 1 && index == 0))));
 
         try
         {
@@ -341,6 +374,20 @@ public sealed class VehiclesController(RentalDbContext dbContext) : ApiControlle
             return VehicleRequestValidationResult.Fail("Unknown vehicle status.");
         }
 
+        var makeExists = await dbContext.VehicleMakes
+            .AnyAsync(item => item.Id == request.MakeId, cancellationToken);
+        if (!makeExists)
+        {
+            return VehicleRequestValidationResult.Fail("Unknown vehicle make.");
+        }
+
+        var modelExists = await dbContext.VehicleModels
+            .AnyAsync(item => item.Id == request.ModelId && item.MakeId == request.MakeId, cancellationToken);
+        if (!modelExists)
+        {
+            return VehicleRequestValidationResult.Fail("Unknown vehicle model.");
+        }
+
         var plateExists = await dbContext.Vehicles
             .AnyAsync(item => item.Id != currentVehicleId && item.LicensePlate == normalizedPlate, cancellationToken);
         if (plateExists)
@@ -405,7 +452,7 @@ public sealed class VehiclesController(RentalDbContext dbContext) : ApiControlle
 
     private Task<bool> HasActiveRentalAsync(int vehicleId, CancellationToken cancellationToken)
         => dbContext.Rentals.AnyAsync(
-            item => item.VehicleId == vehicleId && item.Status == RentalStatus.Active,
+            item => item.VehicleId == vehicleId && item.StatusId == RentalStatus.Active,
             cancellationToken);
 
     private static IActionResult BuildVehicleValidationResult(string? conflictMessage, string? errorMessage)
@@ -471,12 +518,12 @@ public sealed class VehiclesController(RentalDbContext dbContext) : ApiControlle
 
         return (normalizedSortBy, descending) switch
         {
-            ("dailyrate", false) => query.OrderBy(item => item.DailyRate).ThenBy(item => item.Make).ThenBy(item => item.Model),
-            ("dailyrate", true) => query.OrderByDescending(item => item.DailyRate).ThenBy(item => item.Make).ThenBy(item => item.Model),
-            ("mileage", false) => query.OrderBy(item => item.Mileage).ThenBy(item => item.Make).ThenBy(item => item.Model),
-            ("mileage", true) => query.OrderByDescending(item => item.Mileage).ThenBy(item => item.Make).ThenBy(item => item.Model),
-            ("name", true) => query.OrderByDescending(item => item.Make).ThenByDescending(item => item.Model),
-            _ => query.OrderBy(item => item.Make).ThenBy(item => item.Model)
+            ("dailyrate", false) => query.OrderBy(item => item.DailyRate).ThenBy(item => item.MakeLookup!.Name).ThenBy(item => item.ModelLookup!.Name),
+            ("dailyrate", true) => query.OrderByDescending(item => item.DailyRate).ThenBy(item => item.MakeLookup!.Name).ThenBy(item => item.ModelLookup!.Name),
+            ("mileage", false) => query.OrderBy(item => item.Mileage).ThenBy(item => item.MakeLookup!.Name).ThenBy(item => item.ModelLookup!.Name),
+            ("mileage", true) => query.OrderByDescending(item => item.Mileage).ThenBy(item => item.MakeLookup!.Name).ThenBy(item => item.ModelLookup!.Name),
+            ("name", true) => query.OrderByDescending(item => item.MakeLookup!.Name).ThenByDescending(item => item.ModelLookup!.Name),
+            _ => query.OrderBy(item => item.MakeLookup!.Name).ThenBy(item => item.ModelLookup!.Name)
         };
     }
 

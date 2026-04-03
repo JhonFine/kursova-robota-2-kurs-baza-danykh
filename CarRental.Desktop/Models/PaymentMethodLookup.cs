@@ -1,4 +1,4 @@
-namespace CarRental.Desktop.Models;
+﻿namespace CarRental.Desktop.Models;
 
 public sealed class PaymentMethodLookup
 {
@@ -8,3 +8,4 @@ public sealed class PaymentMethodLookup
 
     public ICollection<Payment> Payments { get; set; } = new List<Payment>();
 }
+

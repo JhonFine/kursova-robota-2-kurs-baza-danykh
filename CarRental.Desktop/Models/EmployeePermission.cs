@@ -1,4 +1,4 @@
-namespace CarRental.Desktop.Models;
+﻿namespace CarRental.Desktop.Models;
 
 [Flags]
 public enum EmployeePermission
@@ -17,4 +17,5 @@ public enum EmployeePermission
     DeleteRecords = 1 << 10,
     All = int.MaxValue
 }
+
 

@@ -1,4 +1,4 @@
-namespace CarRental.Desktop.Models;
+﻿namespace CarRental.Desktop.Models;
 
 public enum RentalStatus
 {
@@ -7,4 +7,5 @@ public enum RentalStatus
     Closed = 3,
     Canceled = 4
 }
+
 

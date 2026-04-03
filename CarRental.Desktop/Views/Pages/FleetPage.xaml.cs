@@ -1,4 +1,4 @@
-using CarRental.Desktop.ViewModels;
+﻿using CarRental.Desktop.ViewModels;
 using CarRental.Desktop.Views.Windows;
 using System.ComponentModel;
 using System.Windows;
@@ -92,7 +92,7 @@ public partial class FleetPage : UserControl
             () => SearchToggleButton));
         _guideSteps.Add(new GuideStep(
             "Панель пошуку",
-            "Оберіть поле, введіть значення і натисніть \"Знайти\" або \"Очистити\".",
+            "Оберіть поле, введіть значення і натисніть \\\"Знайти\\\" або \\\"Очистити\\\".",
             () => SearchPanelCard,
             EnsureSearchPanelOpen));
         _guideSteps.Add(new GuideStep(
@@ -308,3 +308,4 @@ public partial class FleetPage : UserControl
         Func<FrameworkElement?> ResolveTarget,
         Action? BeforeShow = null);
 }
+

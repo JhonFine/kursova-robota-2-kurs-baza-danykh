@@ -16,18 +16,31 @@ internal sealed class DesktopPostgresTestDatabase : IAsyncDisposable
     private readonly string _adminConnectionString;
     private readonly string _databaseName;
     private readonly DbContextOptions<DesktopRentalDbContext> _contextOptions;
+    public string ConnectionString { get; }
 
     private DesktopPostgresTestDatabase(
         string adminConnectionString,
         string databaseName,
+        string connectionString,
         DbContextOptions<DesktopRentalDbContext> contextOptions)
     {
         _adminConnectionString = adminConnectionString;
         _databaseName = databaseName;
+        ConnectionString = connectionString;
         _contextOptions = contextOptions;
     }
 
-    public static async Task<DesktopPostgresTestDatabase> CreateAsync()
+    public static Task<DesktopPostgresTestDatabase> CreateAsync()
+    {
+        return CreateAsync(applyCanonicalMigrations: true);
+    }
+
+    public static Task<DesktopPostgresTestDatabase> CreateEmptyAsync()
+    {
+        return CreateAsync(applyCanonicalMigrations: false);
+    }
+
+    private static async Task<DesktopPostgresTestDatabase> CreateAsync(bool applyCanonicalMigrations)
     {
         var baseConnectionString = ResolveConnectionString();
         var databaseName = $"desktop_test_{Guid.NewGuid():N}";
@@ -48,8 +61,9 @@ internal sealed class DesktopPostgresTestDatabase : IAsyncDisposable
         var webApiContextOptions = new DbContextOptionsBuilder<WebApiRentalDbContext>()
             .UseNpgsql(builder.ConnectionString)
             .Options;
-        await using (var webApiDbContext = new WebApiRentalDbContext(webApiContextOptions))
+        if (applyCanonicalMigrations)
         {
+            await using var webApiDbContext = new WebApiRentalDbContext(webApiContextOptions);
             await webApiDbContext.Database.MigrateAsync();
         }
 
@@ -57,7 +71,7 @@ internal sealed class DesktopPostgresTestDatabase : IAsyncDisposable
             .UseNpgsql(builder.ConnectionString)
             .Options;
 
-        return new DesktopPostgresTestDatabase(adminConnectionString, databaseName, contextOptions);
+        return new DesktopPostgresTestDatabase(adminConnectionString, databaseName, builder.ConnectionString, contextOptions);
     }
 
     public DesktopRentalDbContext CreateDbContext() => new(_contextOptions);

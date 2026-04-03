@@ -19,7 +19,7 @@ public static class ApiDtoMapping
         => new(
             employee.Id,
             employee.FullName,
-            employee.Role,
+            employee.RoleId,
             employee.Account?.ToDto()
                 ?? new AccountDto(
                     employee.AccountId,
@@ -51,6 +51,7 @@ public static class ApiDtoMapping
             client.IsBlacklisted,
             client.BlacklistReason,
             client.BlacklistedAtUtc,
+            client.BlacklistedByEmployeeId,
             client.AccountId,
             client.Documents
                 .Where(item => !item.IsDeleted)
@@ -66,6 +67,7 @@ public static class ApiDtoMapping
             client.IsBlacklisted,
             client.BlacklistReason,
             client.BlacklistedAtUtc,
+            client.BlacklistedByEmployeeId,
             client.AccountId,
             client.Documents
                 .Where(item => !item.IsDeleted)
@@ -75,16 +77,18 @@ public static class ApiDtoMapping
             isComplete);
 
     public static MediaAssetDto ToDto(this VehiclePhoto photo)
-        => new(photo.Id, photo.StoredPath, photo.SortOrder, photo.IsPrimary, photo.CreatedAtUtc);
+        => new(photo.Id, photo.StoredPath, photo.SortOrder, photo.IsPrimary, photo.CreatedAtUtc, photo.UpdatedAtUtc);
 
     public static MediaAssetDto ToDto(this DamagePhoto photo)
-        => new(photo.Id, photo.StoredPath, photo.SortOrder, false, photo.CreatedAtUtc);
+        => new(photo.Id, photo.StoredPath, photo.SortOrder, false, photo.CreatedAtUtc, photo.UpdatedAtUtc);
 
     public static VehicleDto ToDto(this Vehicle vehicle, bool? isAvailable = null)
         => new(
             vehicle.Id,
-            vehicle.Make,
-            vehicle.Model,
+            vehicle.MakeId,
+            vehicle.MakeName,
+            vehicle.ModelId,
+            vehicle.ModelName,
             vehicle.PowertrainCapacityValue,
             vehicle.PowertrainCapacityUnit,
             vehicle.FuelTypeCode,
@@ -111,12 +115,12 @@ public static class ApiDtoMapping
         => new(
             payment.Id,
             payment.RentalId,
-            payment.EmployeeId,
-            payment.Employee?.FullName ?? string.Empty,
+            payment.RecordedByEmployeeId,
+            payment.RecordedByEmployee?.FullName,
             payment.Amount,
-            payment.Method,
-            payment.Direction,
-            payment.Status,
+            payment.MethodId,
+            payment.DirectionId,
+            payment.StatusId,
             payment.ExternalTransactionId,
             payment.CreatedAtUtc,
             payment.Notes);
@@ -125,7 +129,7 @@ public static class ApiDtoMapping
         => new(
             damage.Id,
             damage.VehicleId,
-            damage.Vehicle is null ? string.Empty : $"{damage.Vehicle.Make} {damage.Vehicle.Model} [{damage.Vehicle.LicensePlate}]",
+            damage.Vehicle is null ? string.Empty : $"{damage.Vehicle.MakeName} {damage.Vehicle.ModelName} [{damage.Vehicle.LicensePlate}]",
             damage.RentalId,
             damage.Rental?.ContractNumber,
             damage.ReportedByEmployeeId,
@@ -133,9 +137,9 @@ public static class ApiDtoMapping
             damage.Description,
             damage.DateReported,
             damage.RepairCost,
-            damage.ActNumber,
+            damage.DamageActNumber,
             damage.ChargedAmount,
-            damage.Status,
+            damage.StatusId,
             damage.Photos
                 .OrderBy(item => item.SortOrder)
                 .Select(item => item.ToDto())
@@ -145,7 +149,7 @@ public static class ApiDtoMapping
         => new(
             record.Id,
             record.VehicleId,
-            record.Vehicle is null ? string.Empty : $"{record.Vehicle.Make} {record.Vehicle.Model} [{record.Vehicle.LicensePlate}]",
+            record.Vehicle is null ? string.Empty : $"{record.Vehicle.MakeName} {record.Vehicle.ModelName} [{record.Vehicle.LicensePlate}]",
             record.PerformedByEmployeeId,
             record.PerformedByEmployee?.FullName,
             record.ServiceDate,
@@ -153,6 +157,7 @@ public static class ApiDtoMapping
             record.Description,
             record.Cost,
             record.NextServiceMileage,
+            record.NextServiceDate,
             record.MaintenanceTypeCode,
             record.ServiceProviderName);
 

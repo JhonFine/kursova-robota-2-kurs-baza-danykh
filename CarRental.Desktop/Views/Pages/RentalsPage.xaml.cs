@@ -18,6 +18,7 @@ public partial class RentalsPage : UserControl
         Loaded += RentalsPage_OnLoaded;
         Unloaded += RentalsPage_OnUnloaded;
         DataContextChanged += RentalsPage_OnDataContextChanged;
+        PreviewKeyDown += RentalsPage_OnPreviewKeyDown;
     }
 
     private void RentalsPage_OnLoaded(object sender, RoutedEventArgs e)
@@ -82,16 +83,16 @@ public partial class RentalsPage : UserControl
 
         _guideSteps.Add(new GuideStep(
             "Робочий простір",
-            "Тут зібрані всі ключові дії по орендах в одному місці.",
-            () => RentalsOverviewCard));
+            "Тут розміщені швидкі дії для створення оренди та оновлення списку.",
+            () => RentalsToolbarCard));
         _guideSteps.Add(new GuideStep(
             "Вкладки",
             "Тут перемикаються режими: договори та платежі з календарем.",
             () => RentalsTabControl));
         _guideSteps.Add(new GuideStep(
             "Створення оренди",
-            "Оберіть клієнта, авто, дати і створіть нову оренду.",
-            () => CreateRentalGroup,
+            "Кнопка відкриває overlay-форму для швидкого оформлення нової оренди.",
+            () => OpenCreateRentalDialogButton,
             SelectContractsTab));
         _guideSteps.Add(new GuideStep(
             "Список договорів",
@@ -270,9 +271,21 @@ public partial class RentalsPage : UserControl
         AdvanceGuide();
     }
 
+    private void RentalsPage_OnPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape || _viewModel?.IsCreateRentalDialogOpen != true)
+        {
+            return;
+        }
+
+        _viewModel.CloseCreateRentalDialog();
+        e.Handled = true;
+    }
+
     private sealed record GuideStep(
         string Title,
         string Description,
         Func<FrameworkElement?> ResolveTarget,
         Action? BeforeShow = null);
 }
+

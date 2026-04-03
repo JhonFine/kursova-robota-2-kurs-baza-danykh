@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Diagnostics;
 using System.IO;
 using System.Windows.Data;
@@ -59,3 +59,4 @@ public sealed class VehiclePhotoSourceConverter : IValueConverter
         };
     }
 }
+

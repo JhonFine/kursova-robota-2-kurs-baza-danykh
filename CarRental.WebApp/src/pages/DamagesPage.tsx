@@ -274,7 +274,7 @@ export function DamagesPage() {
         <StatCard label="Записи пошкоджень" value={totalCount} accent="blue" />
         <StatCard
           label="Відкриті"
-          value={damages.filter((item) => item.status !== 'Resolved').length}
+          value={damages.filter((item) => item.statusId !== 'Resolved').length}
           accent="red"
         />
         <StatCard
@@ -297,7 +297,7 @@ export function DamagesPage() {
                 <option value="">Оберіть авто</option>
                 {vehicles.map((vehicle) => (
                   <option key={vehicle.id} value={vehicle.id}>
-                    {vehicle.make} {vehicle.model} [{vehicle.licensePlate}]
+                    {vehicle.makeName} {vehicle.modelName} [{vehicle.licensePlate}]
                   </option>
                 ))}
               </select>
@@ -319,7 +319,7 @@ export function DamagesPage() {
                     <option value="">Без прив'язки</option>
                     {rentals.map((rental) => (
                       <option key={rental.id} value={rental.id}>
-                        {rental.contractNumber} ({rental.status})
+                        {rental.contractNumber} ({rental.statusId})
                       </option>
                     ))}
                   </>
@@ -409,7 +409,7 @@ export function DamagesPage() {
                 {damages.map((item) => (
                   <tr key={item.id}>
                     <td>{formatShortDate(item.dateReported)}</td>
-                    <td>{item.actNumber}</td>
+                    <td>{item.damageActNumber}</td>
                     <td>{item.vehicleName}</td>
                     <td>{item.contractNumber ?? '-'}</td>
                     <td>{formatCurrency(item.repairCost)}</td>
@@ -423,7 +423,7 @@ export function DamagesPage() {
                         '-'
                       )}
                     </td>
-                    <td>{item.status}</td>
+                    <td>{item.statusId}</td>
                   </tr>
                 ))}
               </tbody>
@@ -454,7 +454,7 @@ export function DamagesPage() {
             <div className="damage-gallery-header">
               <div className="damage-gallery-copy">
                 <span className="damage-gallery-kicker">Фото пошкодження</span>
-                <h2 id="damage-gallery-title">{galleryDamage.actNumber}</h2>
+                <h2 id="damage-gallery-title">{galleryDamage.damageActNumber}</h2>
                 <p>{galleryDamage.vehicleName}</p>
               </div>
               <button type="button" className="btn ghost" onClick={closeGallery}>
@@ -468,7 +468,7 @@ export function DamagesPage() {
               ) : (
                 <img
                   src={currentGalleryUrl}
-                  alt={`Фото пошкодження ${galleryIndex + 1} для акту ${galleryDamage.actNumber}`}
+                  alt={`Фото пошкодження ${galleryIndex + 1} для акту ${galleryDamage.damageActNumber}`}
                 />
               )}
             </div>

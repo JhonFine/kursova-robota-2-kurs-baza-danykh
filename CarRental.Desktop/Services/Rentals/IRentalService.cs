@@ -1,4 +1,4 @@
-using CarRental.Desktop.Models;
+﻿using CarRental.Desktop.Models;
 
 namespace CarRental.Desktop.Services.Rentals;
 
@@ -45,7 +45,7 @@ public interface IRentalService
 public sealed record CreateRentalRequest(
     int ClientId,
     int VehicleId,
-    int EmployeeId,
+    int? CreatedByEmployeeId,
     DateTime StartDate,
     DateTime EndDate,
     string PickupLocation = "",
@@ -54,13 +54,14 @@ public sealed record CreateRentalRequest(
 public sealed record CreateRentalWithPaymentRequest(
     int ClientId,
     int VehicleId,
-    int EmployeeId,
+    int? CreatedByEmployeeId,
     DateTime StartDate,
     DateTime EndDate,
     string PickupLocation = "",
     string ReturnLocation = "",
-    PaymentMethod Method = PaymentMethod.Cash,
-    PaymentDirection Direction = PaymentDirection.Incoming,
+    decimal Amount = 0m,
+    PaymentMethod MethodId = PaymentMethod.Cash,
+    PaymentDirection DirectionId = PaymentDirection.Incoming,
     string Notes = "");
 
 public sealed record CreateRentalResult(
@@ -74,6 +75,7 @@ public sealed record CloseRentalRequest(
     int RentalId,
     DateTime ActualEndDate,
     int EndMileage,
+    int ClosedByEmployeeId = 1,
     int? ReturnFuelPercent = null,
     string ReturnInspectionNotes = "");
 
@@ -82,7 +84,7 @@ public sealed record CloseRentalResult(
     string Message,
     decimal TotalAmount = 0m);
 
-public sealed record CancelRentalRequest(int RentalId, string Reason);
+public sealed record CancelRentalRequest(int RentalId, string Reason, int? CanceledByEmployeeId = null);
 
 public sealed record CancelRentalResult(bool Success, string Message);
 
@@ -90,7 +92,7 @@ public sealed record RescheduleRentalRequest(
     int RentalId,
     DateTime StartDate,
     DateTime EndDate,
-    int EmployeeId);
+    int? UpdatedByEmployeeId);
 
 public sealed record RescheduleRentalResult(
     bool Success,
@@ -100,7 +102,7 @@ public sealed record RescheduleRentalResult(
 
 public sealed record SettleRentalBalanceRequest(
     int RentalId,
-    int EmployeeId,
+    int? RecordedByEmployeeId,
     string Notes);
 
 public sealed record SettleRentalBalanceResult(
@@ -111,6 +113,9 @@ public sealed record SettleRentalBalanceResult(
 public sealed record PickupInspectionRequest(
     int RentalId,
     int FuelPercent,
-    string Notes);
+    string Notes = "",
+    int PerformedByEmployeeId = 1);
 
 public sealed record PickupInspectionResult(bool Success, string Message);
+
+

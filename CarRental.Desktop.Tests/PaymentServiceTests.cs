@@ -20,14 +20,13 @@ public sealed class PaymentServiceTests
             Id = 1,
             ClientId = 1,
             VehicleId = 1,
-            EmployeeId = 1,
+            CreatedByEmployeeId = 1,
             ContractNumber = "CR-2026-000080",
             StartDate = DateTime.UtcNow.Date,
             EndDate = DateTime.UtcNow.Date.AddDays(1),
             StartMileage = 1000,
             TotalAmount = 100m,
-            Status = RentalStatus.Active,
-            IsClosed = false,
+            StatusId = RentalStatus.Active,
             CreatedAtUtc = DateTime.UtcNow
         };
         dbContext.Rentals.Add(rental);
@@ -35,20 +34,20 @@ public sealed class PaymentServiceTests
             new Payment
             {
                 RentalId = rental.Id,
-                EmployeeId = 1,
+                RecordedByEmployeeId = 1,
                 Amount = 40m,
-                Method = PaymentMethod.Card,
-                Direction = PaymentDirection.Incoming,
+                MethodId = PaymentMethod.Card,
+                DirectionId = PaymentDirection.Incoming,
                 Notes = "incoming",
                 CreatedAtUtc = DateTime.UtcNow
             },
             new Payment
             {
                 RentalId = rental.Id,
-                EmployeeId = 1,
+                RecordedByEmployeeId = 1,
                 Amount = 10m,
-                Method = PaymentMethod.Card,
-                Direction = PaymentDirection.Refund,
+                MethodId = PaymentMethod.Card,
+                DirectionId = PaymentDirection.Refund,
                 Notes = "refund",
                 CreatedAtUtc = DateTime.UtcNow
             });
@@ -64,14 +63,21 @@ public sealed class PaymentServiceTests
     {
         TestLookupSeed.SeedVehicleLookups(dbContext);
 
+        var account = new Account
+        {
+            Id = 1,
+            Login = "admin",
+            PasswordHash = "x",
+            IsActive = true
+        };
+
+        dbContext.Accounts.Add(account);
         dbContext.Employees.Add(new Employee
         {
             Id = 1,
             FullName = "Admin",
-            Login = "admin",
-            PasswordHash = "x",
-            Role = UserRole.Admin,
-            IsActive = true
+            RoleId = UserRole.Admin,
+            Account = account
         });
         dbContext.Clients.Add(new Client
         {
@@ -82,27 +88,21 @@ public sealed class PaymentServiceTests
             PassportExpirationDate = DateTime.UtcNow.AddYears(5),
             DriverLicenseExpirationDate = DateTime.UtcNow.AddYears(5),
             Phone = "123",
-            Blacklisted = false
+            IsBlacklisted = false
         });
-        dbContext.Vehicles.Add(new Vehicle
-        {
-            Id = 1,
-            Make = "Toyota",
-            Model = "Camry",
-            FuelType = "Бензин",
-            TransmissionType = "Автомат",
-            PowertrainCapacityValue = 2m,
-            PowertrainCapacityUnit = "L",
-            CargoCapacityValue = 500m,
-            CargoCapacityUnit = "L",
-            ConsumptionValue = 7m,
-            ConsumptionUnit = "L_PER_100KM",
-            LicensePlate = "AA0011AA",
-            Mileage = 1000,
-            DailyRate = 70m,
-            IsAvailable = true,
-            ServiceIntervalKm = 10000
-        });
+        dbContext.Vehicles.Add(TestLookupSeed.CreateVehicle(
+            dbContext,
+            "Toyota",
+            "Camry",
+            "AA0011AA",
+            "PETROL",
+            "AUTO",
+            2m,
+            500m,
+            7m,
+            1000,
+            70m,
+            id: 1));
         dbContext.SaveChanges();
     }
 }

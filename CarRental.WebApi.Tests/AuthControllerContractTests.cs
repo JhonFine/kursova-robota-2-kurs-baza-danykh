@@ -74,7 +74,7 @@ public sealed class AuthControllerContractTests
         var employee = new Employee
         {
             FullName = "Manager User",
-            Role = UserRole.Manager,
+            RoleId = UserRole.Manager,
             Account = account
         };
 

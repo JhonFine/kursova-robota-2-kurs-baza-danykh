@@ -26,6 +26,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\CarRental.WebApi\CarRental.WebApi.csproj">
+      <Aliases>WebApiRuntime</Aliases>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Include="..\Shared\**\*.cs" LinkBase="Shared" />
   </ItemGroup>
 

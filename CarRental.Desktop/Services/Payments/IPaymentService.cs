@@ -1,4 +1,4 @@
-using CarRental.Desktop.Models;
+﻿using CarRental.Desktop.Models;
 
 namespace CarRental.Desktop.Services.Payments;
 
@@ -13,10 +13,14 @@ public interface IPaymentService
 
 public sealed record PaymentRequest(
     int RentalId,
-    int EmployeeId,
+    int? RecordedByEmployeeId,
     decimal Amount,
-    PaymentMethod Method,
-    PaymentDirection Direction,
-    string Notes);
+    PaymentMethod MethodId,
+    PaymentDirection DirectionId,
+    string Notes = "",
+    PaymentStatus StatusId = PaymentStatus.Completed,
+    string? ExternalTransactionId = null);
 
 public sealed record PaymentResult(bool Success, string Message, int PaymentId = 0);
+
+

@@ -256,3 +256,4 @@ public partial class ReportsPage : UserControl
         Func<FrameworkElement?> ResolveTarget,
         Action? BeforeShow = null);
 }
+

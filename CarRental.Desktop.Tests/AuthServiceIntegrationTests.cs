@@ -5,7 +5,6 @@ using FluentAssertions;
 
 namespace CarRental.Desktop.Tests;
 
-// Auth integration test фіксує shared lockout-поведінку, яка має бути однаковою для desktop і web.
 public sealed class AuthServiceIntegrationTests
 {
     [Fact]
@@ -14,13 +13,19 @@ public sealed class AuthServiceIntegrationTests
         await using var testDatabase = await DesktopPostgresTestDatabase.CreateAsync();
         await using var dbContext = testDatabase.CreateDbContext();
 
+        var account = new Account
+        {
+            Login = "manager",
+            PasswordHash = PasswordHasher.HashPassword("manager123"),
+            IsActive = true
+        };
+
+        dbContext.Accounts.Add(account);
         dbContext.Employees.Add(new Employee
         {
             FullName = "Manager",
-            Login = "manager",
-            PasswordHash = PasswordHasher.HashPassword("manager123"),
-            Role = UserRole.Manager,
-            IsActive = true
+            RoleId = UserRole.Manager,
+            Account = account
         });
         await dbContext.SaveChangesAsync();
 

@@ -190,7 +190,7 @@ public sealed class HttpValidationRegressionTests
 
         var managerId = await dbContext.Employees
             .AsNoTracking()
-            .Where(item => item.Role == UserRole.Manager)
+            .Where(item => item.RoleId == UserRole.Manager)
             .Select(item => item.Id)
             .FirstAsync();
 
@@ -205,26 +205,18 @@ public sealed class HttpValidationRegressionTests
             .FirstAsync();
 
         var suffix = Guid.NewGuid().ToString("N")[..8].ToUpperInvariant();
-        var vehicle = new Vehicle
-        {
-            Make = "Test",
-            Model = $"Vehicle {suffix}",
-            PowertrainCapacityValue = 2m,
-            PowertrainCapacityUnit = VehicleSpecificationUnits.Liters,
-            FuelTypeCode = fuelTypeCode,
-            TransmissionTypeCode = transmissionTypeCode,
-            VehicleStatusCode = VehicleStatuses.Ready,
-            DoorsCount = 4,
-            CargoCapacityValue = 450m,
-            CargoCapacityUnit = VehicleSpecificationUnits.Liters,
-            ConsumptionValue = 7.2m,
-            ConsumptionUnit = VehicleSpecificationUnits.LitersPer100Km,
-            HasAirConditioning = true,
-            LicensePlate = $"T{suffix[..7]}",
-            Mileage = 12000,
-            DailyRate = 150m,
-            ServiceIntervalKm = 10000
-        };
+        var vehicle = TestLookupSeed.CreateVehicle(
+            dbContext,
+            make: "Test",
+            model: $"Vehicle {suffix}",
+            licensePlate: $"T{suffix[..7]}",
+            fuelTypeCode: fuelTypeCode,
+            transmissionTypeCode: transmissionTypeCode,
+            powertrainCapacityValue: 2m,
+            cargoCapacityValue: 450m,
+            consumptionValue: 7.2m,
+            mileage: 12000,
+            dailyRate: 150m);
 
         var client = new Client
         {
@@ -248,7 +240,7 @@ public sealed class HttpValidationRegressionTests
             ReturnLocation = "Київ",
             StartMileage = vehicle.Mileage,
             TotalAmount = 300m,
-            Status = RentalStatus.Active
+            StatusId = RentalStatus.Active
         };
 
         dbContext.Rentals.Add(rental);

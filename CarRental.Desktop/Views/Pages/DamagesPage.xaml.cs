@@ -248,3 +248,4 @@ public partial class DamagesPage : UserControl
         Func<FrameworkElement?> ResolveTarget,
         Action? BeforeShow = null);
 }
+

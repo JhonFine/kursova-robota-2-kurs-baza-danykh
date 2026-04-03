@@ -1,4 +1,4 @@
-namespace CarRental.Desktop.Services.Logging;
+﻿namespace CarRental.Desktop.Services.Logging;
 
 public interface IAppLogger
 {
@@ -6,3 +6,4 @@ public interface IAppLogger
 
     void Error(string message, Exception? exception = null);
 }
+

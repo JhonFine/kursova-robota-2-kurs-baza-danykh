@@ -1,4 +1,5 @@
-using System.Data;
+﻿using System.Data;
+using CarRental.Shared.ReferenceData;
 using CarRental.Desktop.Data;
 using CarRental.Desktop.Models;
 using CarRental.Desktop.Services.Documents;
@@ -7,8 +8,6 @@ using Npgsql;
 
 namespace CarRental.Desktop.Services.Rentals;
 
-// Центральний доменний сервіс оренд:
-// тут зібрані правила конфлікту дат, створення договору, повернення, скасування, перенесення і інспекцій.
 public sealed class RentalService(
     RentalDbContext dbContext,
     IContractNumberService contractNumberService) : IRentalService
@@ -17,6 +16,8 @@ public sealed class RentalService(
     private const string AutoRescheduleRefundNote = "System refund after rental reschedule";
     private const string AutoBalanceSettlementNote = "Self-service balance settlement";
 
+    // РљРѕРЅС„Р»С–РєС‚ РїРµСЂРµРІС–СЂСЏС”РјРѕ Сѓ "бізнес-часі": СѓСЃС– РґР°С‚Рё РїРѕРїРµСЂРµРґРЅСЊРѕ РЅРѕСЂРјР°Р»С–Р·СѓСЋС‚СЊСЃСЏ,
+    // С‰РѕР± РїРѕСЂС–РІРЅСЏРЅРЅСЏ РЅРµ Р·Р°Р»РµР¶Р°Р»Рё РІС–Рґ РІРёРїР°РґРєРѕРІРёС… timezone-РєРѕРЅРІРµСЂС‚Р°С†С–Р№ РєР»С–С”РЅС‚Р°.
     public async Task<bool> HasDateConflictAsync(
         int vehicleId,
         DateTime startDate,
@@ -24,8 +25,6 @@ public sealed class RentalService(
         int? excludeRentalId = null,
         CancellationToken cancellationToken = default)
     {
-        // Усі перевірки конфліктів працюють уже з business-normalized timestamp,
-        // щоб UI не міг обійти правила різницею в часовій складовій.
         var normalizedStart = NormalizeBusinessTimestamp(startDate);
         var normalizedEnd = NormalizeBusinessTimestamp(endDate);
 
@@ -35,10 +34,10 @@ public sealed class RentalService(
                 rental =>
                     rental.VehicleId == vehicleId &&
                     (!excludeRentalId.HasValue || rental.Id != excludeRentalId.Value) &&
-                    rental.Status != RentalStatus.Closed &&
-                    rental.Status != RentalStatus.Canceled &&
-                    rental.StartDate <= normalizedEnd &&
-                    normalizedStart <= rental.EndDate,
+                    rental.StatusId != RentalStatus.Closed &&
+                    rental.StatusId != RentalStatus.Canceled &&
+                    rental.StartDate < normalizedEnd &&
+                    normalizedStart < rental.EndDate,
                 cancellationToken);
     }
 
@@ -55,23 +54,25 @@ public sealed class RentalService(
             new CreateRentalRequest(
                 request.ClientId,
                 request.VehicleId,
-                request.EmployeeId,
+                request.CreatedByEmployeeId,
                 request.StartDate,
                 request.EndDate,
                 request.PickupLocation,
                 request.ReturnLocation),
-            new PendingPayment(request.Method, request.Direction, request.Notes),
+            new PendingPayment(request.Amount, request.MethodId, request.DirectionId, request.Notes),
             cancellationToken);
     }
 
+    // Р—Р°РєСЂРёС‚С‚СЏ РѕСЂРµРЅРґРё РЅРµ Р»РёС€Рµ Р·РјС–РЅСЋС” СЃС‚Р°С‚СѓСЃ, Р° Р№ РґРѕР±СѓРґРѕРІСѓС” С„С–РЅР°Р»СЊРЅРёР№ СЂРѕР·СЂР°С…СѓРЅРѕРє:
+    // РїРѕРІРµСЂРЅРµРЅРЅСЏ РїРµСЂРµРїР»Р°С‚Рё, С„С–РЅР°Р»СЊРЅРёР№ inspection С– РѕРЅРѕРІР»РµРЅРЅСЏ РїСЂРѕР±С–РіСѓ Р°РІС‚Рѕ.
     public async Task<CloseRentalResult> CloseRentalAsync(
         CloseRentalRequest request,
         CancellationToken cancellationToken = default)
     {
-        // Закриття договору перераховує фінал оренди з фактичної дати повернення та вже зафіксованих damage charge-ів.
         var rental = await dbContext.Rentals
             .Include(item => item.Vehicle)
             .Include(item => item.Damages)
+            .Include(item => item.Payments)
             .Include(item => item.Inspections)
             .FirstOrDefaultAsync(item => item.Id == request.RentalId, cancellationToken);
         if (rental is null)
@@ -79,12 +80,12 @@ public sealed class RentalService(
             return new CloseRentalResult(false, "Оренду не знайдено.");
         }
 
-        if (rental.Status == RentalStatus.Closed)
+        if (rental.StatusId == RentalStatus.Closed)
         {
             return new CloseRentalResult(false, "Оренду вже закрито.");
         }
 
-        if (rental.Status == RentalStatus.Canceled)
+        if (rental.StatusId == RentalStatus.Canceled)
         {
             return new CloseRentalResult(false, "Скасовану оренду не можна закрити.");
         }
@@ -93,10 +94,10 @@ public sealed class RentalService(
         if (normalizedActualEndDate.Date == rental.StartDate.Date &&
             normalizedActualEndDate < rental.StartDate)
         {
-            normalizedActualEndDate = rental.StartDate;
+            normalizedActualEndDate = rental.StartDate.AddMinutes(1);
         }
 
-        if (normalizedActualEndDate < rental.StartDate)
+        if (normalizedActualEndDate <= rental.StartDate)
         {
             return new CloseRentalResult(false, "Некоректна дата повернення.");
         }
@@ -116,15 +117,40 @@ public sealed class RentalService(
         var damageCharges = rental.Damages.Sum(item => item.ChargedAmount);
         var totalAmount = baseAmount + damageCharges;
 
+        var paidAmount = CalculateNetPaid(rental.Payments);
+        var refundAmount = paidAmount - totalAmount;
+
+        if (refundAmount > 0m)
+        {
+            var refundPayment = new Payment
+            {
+                RentalId = rental.Id,
+                RecordedByEmployeeId = request.ClosedByEmployeeId,
+                Amount = refundAmount,
+                MethodId = ResolveRefundMethod(rental.Payments),
+                DirectionId = PaymentDirection.Refund,
+                Notes = "Автоматичне повернення переплати при закритті оренди.",
+                CreatedAtUtc = DateTime.UtcNow
+            };
+            dbContext.Payments.Add(refundPayment);
+        }
+
         rental.EndDate = normalizedActualEndDate;
         rental.EndMileage = request.EndMileage;
         rental.OverageFee = 0m;
         rental.TotalAmount = totalAmount;
-        rental.Status = RentalStatus.Closed;
+        rental.StatusId = RentalStatus.Closed;
+        rental.ClosedByEmployeeId = request.ClosedByEmployeeId;
+        rental.CanceledByEmployeeId = null;
         rental.ClosedAtUtc = DateTime.UtcNow;
         rental.CanceledAtUtc = null;
         rental.CancellationReason = null;
-        UpsertInspection(rental, RentalInspectionType.Return, request.ReturnFuelPercent, request.ReturnInspectionNotes);
+        UpsertInspection(
+            rental,
+            request.ClosedByEmployeeId,
+            RentalInspectionType.Return,
+            request.ReturnFuelPercent,
+            request.ReturnInspectionNotes);
 
         rental.Vehicle.Mileage = request.EndMileage;
 
@@ -136,11 +162,12 @@ public sealed class RentalService(
             totalAmount);
     }
 
+    // РЎРєР°СЃСѓРІР°РЅРЅСЏ booked-РѕСЂРµРЅРґРё РјРѕР¶Рµ Р°РІС‚РѕРјР°С‚РёС‡РЅРѕ РїРѕРІРµСЂРЅСѓС‚Рё РїРµСЂРµРґРѕРїР»Р°С‚Сѓ,
+    // С‚РѕРјСѓ С‚СѓС‚ Р¶РёРІРµ С– СЃС‚Р°С‚СѓСЃРЅР° Р»РѕРіС–РєР°, С– С„С–РЅР°РЅСЃРѕРІРёР№ side effect.
     public async Task<CancelRentalResult> CancelRentalAsync(
         CancelRentalRequest request,
         CancellationToken cancellationToken = default)
     {
-        // Для бронювання до видачі відкатуємо переплату системним refund-платежем, щоб баланс договору лишався прозорим.
         var rental = await dbContext.Rentals
             .Include(item => item.Vehicle)
             .Include(item => item.Payments)
@@ -150,17 +177,17 @@ public sealed class RentalService(
             return new CancelRentalResult(false, "Оренду не знайдено.");
         }
 
-        if (rental.Status == RentalStatus.Closed)
+        if (rental.StatusId == RentalStatus.Closed)
         {
             return new CancelRentalResult(false, "Закриту оренду не можна скасувати.");
         }
 
-        if (rental.Status == RentalStatus.Active)
+        if (rental.StatusId == RentalStatus.Active)
         {
             return new CancelRentalResult(false, "Активну оренду не можна скасувати.");
         }
 
-        if (rental.Status == RentalStatus.Canceled)
+        if (rental.StatusId == RentalStatus.Canceled)
         {
             return new CancelRentalResult(false, "Оренду вже скасовано.");
         }
@@ -171,7 +198,7 @@ public sealed class RentalService(
             return new CancelRentalResult(false, "Вкажіть причину скасування.");
         }
 
-        var originalStatus = rental.Status;
+        var originalStatus = rental.StatusId;
         if (originalStatus == RentalStatus.Booked)
         {
             var netPaid = CalculateNetPaid(rental.Payments);
@@ -180,10 +207,10 @@ public sealed class RentalService(
                 dbContext.Payments.Add(new Payment
                 {
                     RentalId = rental.Id,
-                    EmployeeId = rental.EmployeeId,
+                    RecordedByEmployeeId = request.CanceledByEmployeeId,
                     Amount = netPaid,
-                    Method = ResolveRefundMethod(rental.Payments),
-                    Direction = PaymentDirection.Refund,
+                    MethodId = ResolveRefundMethod(rental.Payments),
+                    DirectionId = PaymentDirection.Refund,
                     Notes = BuildSystemNote(AutoCancellationRefundNote, normalizedReason),
                     CreatedAtUtc = DateTime.UtcNow
                 });
@@ -193,7 +220,9 @@ public sealed class RentalService(
             rental.OverageFee = 0m;
         }
 
-        rental.Status = RentalStatus.Canceled;
+        rental.StatusId = RentalStatus.Canceled;
+        rental.ClosedByEmployeeId = null;
+        rental.CanceledByEmployeeId = request.CanceledByEmployeeId;
         rental.ClosedAtUtc = null;
         rental.CanceledAtUtc = DateTime.UtcNow;
         rental.CancellationReason = normalizedReason;
@@ -202,11 +231,12 @@ public sealed class RentalService(
         return new CancelRentalResult(true, "Оренду скасовано.");
     }
 
+    // РџРµСЂРµРЅРµСЃРµРЅРЅСЏ РґРѕР·РІРѕР»РµРЅРµ Р»РёС€Рµ РґР»СЏ booked-РѕСЂРµРЅРґРё С– РІРѕРґРЅРѕС‡Р°СЃ РїРµСЂРµСЂР°С…РѕРІСѓС”
+    // СЂС–Р·РЅРёС†СЋ РІ РѕРїР»Р°С‚С–, С‰РѕР± РїС–СЃР»СЏ Р·СЃСѓРІСѓ РґР°С‚ Р±Р°Р»Р°РЅСЃ РЅРµ Р·Р°Р»РёС€РёРІСЃСЏ "старим".
     public async Task<RescheduleRentalResult> RescheduleRentalAsync(
         RescheduleRentalRequest request,
         CancellationToken cancellationToken = default)
     {
-        // Перенесення дозволене лише для booked-оренди: активний чи вже закритий договір не можна "переписувати" заднім числом.
         var now = NormalizeBusinessTimestamp(DateTime.UtcNow);
         var normalizedStart = NormalizeBusinessTimestamp(request.StartDate);
         var normalizedEnd = NormalizeBusinessTimestamp(request.EndDate);
@@ -219,12 +249,13 @@ public sealed class RentalService(
             return new RescheduleRentalResult(false, "Оренду не знайдено.");
         }
 
-        if (rental.Status != RentalStatus.Booked)
+        if (rental.StatusId != RentalStatus.Booked)
         {
             return new RescheduleRentalResult(false, "Перенесення доступне лише для заброньованих оренд.");
         }
 
-        if (!await dbContext.Employees.AnyAsync(item => item.Id == request.EmployeeId, cancellationToken))
+        if (request.UpdatedByEmployeeId.HasValue &&
+            !await dbContext.Employees.AnyAsync(item => item.Id == request.UpdatedByEmployeeId.Value, cancellationToken))
         {
             return new RescheduleRentalResult(false, "Працівника не знайдено.");
         }
@@ -268,10 +299,10 @@ public sealed class RentalService(
             dbContext.Payments.Add(new Payment
             {
                 RentalId = rental.Id,
-                EmployeeId = request.EmployeeId,
+                RecordedByEmployeeId = request.UpdatedByEmployeeId,
                 Amount = refundAmount,
-                Method = ResolveRefundMethod(rental.Payments),
-                Direction = PaymentDirection.Refund,
+                MethodId = ResolveRefundMethod(rental.Payments),
+                DirectionId = PaymentDirection.Refund,
                 Notes = AutoRescheduleRefundNote,
                 CreatedAtUtc = DateTime.UtcNow
             });
@@ -280,7 +311,9 @@ public sealed class RentalService(
         rental.StartDate = normalizedStart;
         rental.EndDate = normalizedEnd;
         rental.TotalAmount = totalAmount;
-        rental.Status = RentalStatus.Booked;
+        rental.StatusId = RentalStatus.Booked;
+        rental.ClosedByEmployeeId = null;
+        rental.CanceledByEmployeeId = null;
         rental.ClosedAtUtc = null;
         rental.CanceledAtUtc = null;
         rental.CancellationReason = null;
@@ -297,6 +330,8 @@ public sealed class RentalService(
             balance);
     }
 
+    // РћРєСЂРµРјРёР№ СЃС†РµРЅР°СЂС–Р№ self-service РґРѕРїР»Р°С‚Рё: РєР»С–С”РЅС‚ РјРѕР¶Рµ Р»РёС€Рµ Р·Р°РЅСѓР»РёС‚Рё РїРѕС‚РѕС‡РЅРёР№ Р±РѕСЂРі,
+    // Р°Р»Рµ РЅРµ Р·РјС–РЅРёС‚Рё РґРѕРІС–Р»СЊРЅРѕ СЃСѓРјСѓ С‡Рё РЅР°РїСЂСЏРј РїР»Р°С‚РµР¶Сѓ.
     public async Task<SettleRentalBalanceResult> SettleRentalBalanceAsync(
         SettleRentalBalanceRequest request,
         CancellationToken cancellationToken = default)
@@ -309,7 +344,8 @@ public sealed class RentalService(
             return new SettleRentalBalanceResult(false, "Оренду не знайдено.");
         }
 
-        if (!await dbContext.Employees.AnyAsync(item => item.Id == request.EmployeeId, cancellationToken))
+        if (request.RecordedByEmployeeId.HasValue &&
+            !await dbContext.Employees.AnyAsync(item => item.Id == request.RecordedByEmployeeId.Value, cancellationToken))
         {
             return new SettleRentalBalanceResult(false, "Працівника не знайдено.");
         }
@@ -323,10 +359,10 @@ public sealed class RentalService(
         dbContext.Payments.Add(new Payment
         {
             RentalId = rental.Id,
-            EmployeeId = request.EmployeeId,
+            RecordedByEmployeeId = request.RecordedByEmployeeId,
             Amount = balance,
-            Method = PaymentMethod.Card,
-            Direction = PaymentDirection.Incoming,
+            MethodId = PaymentMethod.Card,
+            DirectionId = PaymentDirection.Incoming,
             Notes = string.IsNullOrWhiteSpace(request.Notes)
                 ? AutoBalanceSettlementNote
                 : request.Notes.Trim(),
@@ -352,26 +388,34 @@ public sealed class RentalService(
             return new PickupInspectionResult(false, "Оренду не знайдено.");
         }
 
-        if (rental.Status == RentalStatus.Closed || rental.Status == RentalStatus.Canceled)
+        if (rental.StatusId == RentalStatus.Closed || rental.StatusId == RentalStatus.Canceled)
         {
             return new PickupInspectionResult(false, "Для цієї оренди огляд видачі недоступний.");
         }
 
-        if (rental.Status == RentalStatus.Booked && now > rental.StartDate)
+        if (rental.StatusId == RentalStatus.Booked && now > rental.StartDate)
         {
             return new PickupInspectionResult(false, "Час видачі за цим бронюванням уже минув. Перенесіть або скасуйте бронювання.");
         }
 
-        if (rental.Vehicle is not null && !rental.Vehicle.IsBookable)
+        if (!await dbContext.Employees.AnyAsync(item => item.Id == request.PerformedByEmployeeId, cancellationToken))
+        {
+            return new PickupInspectionResult(false, "Працівника не знайдено.");
+        }
+
+        if (rental.Vehicle is not null &&
+            !string.Equals(rental.Vehicle.VehicleStatusCode, VehicleStatuses.Ready, StringComparison.OrdinalIgnoreCase))
         {
             return new PickupInspectionResult(false, "Vehicle is temporarily unavailable for pickup.");
         }
 
-        UpsertInspection(rental, RentalInspectionType.Pickup, request.FuelPercent, request.Notes);
+        UpsertInspection(rental, request.PerformedByEmployeeId, RentalInspectionType.Pickup, request.FuelPercent, request.Notes);
 
-        if (rental.Status == RentalStatus.Booked)
+        if (rental.StatusId == RentalStatus.Booked)
         {
-            rental.Status = RentalStatus.Active;
+            rental.StatusId = RentalStatus.Active;
+            rental.ClosedByEmployeeId = null;
+            rental.CanceledByEmployeeId = null;
             rental.ClosedAtUtc = null;
             rental.CanceledAtUtc = null;
             rental.CancellationReason = null;
@@ -385,6 +429,8 @@ public sealed class RentalService(
     public Task RefreshStatusesAsync(CancellationToken cancellationToken = default)
         => Task.CompletedTask;
 
+    // Р‘СЂРѕРЅСЋРІР°РЅРЅСЏ Р· payment С– Р±РµР· РЅСЊРѕРіРѕ СЃС…РѕРґСЏС‚СЊСЃСЏ РІ РѕРґРёРЅ internal flow,
+    // С‰РѕР± РїСЂР°РІРёР»Р° РґР°С‚, РєРѕРЅС„Р»С–РєС‚С–РІ С– СЃС‚Р°СЂС‚РѕРІРёС… СЃСѓРј Р±СѓР»Рё С–РґРµРЅС‚РёС‡РЅРёРјРё.
     private async Task<CreateRentalResult> CreateRentalInternalAsync(
         CreateRentalRequest request,
         PendingPayment? pendingPayment,
@@ -435,7 +481,7 @@ public sealed class RentalService(
                     return new CreateRentalResult(false, "Авто не знайдено.");
                 }
 
-                if (!vehicle.IsBookable)
+                if (!string.Equals(vehicle.VehicleStatusCode, VehicleStatuses.Ready, StringComparison.OrdinalIgnoreCase))
                 {
                     return new CreateRentalResult(false, "Vehicle is temporarily unavailable for booking.");
                 }
@@ -448,7 +494,7 @@ public sealed class RentalService(
                     return new CreateRentalResult(false, "Клієнта не знайдено.");
                 }
 
-                if (client.Blacklisted)
+                if (client.IsBlacklisted)
                 {
                     return new CreateRentalResult(false, "Клієнт у чорному списку.");
                 }
@@ -459,9 +505,8 @@ public sealed class RentalService(
                     return new CreateRentalResult(false, "Driver license is missing or expired for the rental period.");
                 }
 
-                var employeeExists = await dbContext.Employees
-                    .AnyAsync(employee => employee.Id == request.EmployeeId, cancellationToken);
-                if (!employeeExists)
+                if (request.CreatedByEmployeeId.HasValue &&
+                    !await dbContext.Employees.AnyAsync(employee => employee.Id == request.CreatedByEmployeeId.Value, cancellationToken))
                 {
                     return new CreateRentalResult(false, "Працівника не знайдено.");
                 }
@@ -477,13 +522,26 @@ public sealed class RentalService(
                 }
 
                 var totalAmount = CalculateRentalAmount(vehicle.DailyRate, normalizedStart, normalizedEnd);
+                if (pendingPayment is not null)
+                {
+                    if (pendingPayment.Amount <= 0m)
+                    {
+                        return new CreateRentalResult(false, "Сума початкового платежу має бути більшою за нуль.");
+                    }
+
+                    if (pendingPayment.Amount > totalAmount)
+                    {
+                        return new CreateRentalResult(false, "Початковий платіж не може перевищувати вартість оренди.");
+                    }
+                }
+
                 var contractNumber = await contractNumberService.NextNumberAsync(cancellationToken);
 
                 var rental = new Rental
                 {
                     ClientId = request.ClientId,
                     VehicleId = request.VehicleId,
-                    EmployeeId = request.EmployeeId,
+                    CreatedByEmployeeId = request.CreatedByEmployeeId,
                     ContractNumber = contractNumber,
                     StartDate = normalizedStart,
                     EndDate = normalizedEnd,
@@ -491,7 +549,7 @@ public sealed class RentalService(
                     ReturnLocation = returnLocation,
                     StartMileage = vehicle.Mileage,
                     TotalAmount = totalAmount,
-                    Status = RentalStatus.Booked,
+                    StatusId = RentalStatus.Booked,
                     CreatedAtUtc = DateTime.UtcNow
                 };
 
@@ -502,11 +560,11 @@ public sealed class RentalService(
                     dbContext.Payments.Add(new Payment
                     {
                         Rental = rental,
-                        EmployeeId = request.EmployeeId,
-                        Amount = totalAmount,
-                        Method = pendingPayment.Method,
-                        Direction = pendingPayment.Direction,
-                        Notes = pendingPayment.Notes?.Trim() ?? string.Empty,
+                        RecordedByEmployeeId = request.CreatedByEmployeeId,
+                        Amount = decimal.Round(pendingPayment.Amount, 2, MidpointRounding.AwayFromZero),
+                        MethodId = pendingPayment.MethodId,
+                        DirectionId = pendingPayment.DirectionId,
+                        Notes = NormalizeOptionalText(pendingPayment.Notes, 500),
                         CreatedAtUtc = DateTime.UtcNow
                     });
                 }
@@ -563,9 +621,9 @@ public sealed class RentalService(
     private static decimal CalculateNetPaid(IEnumerable<Payment> payments)
     {
         return payments.Sum(payment =>
-            payment.Direction == PaymentDirection.Incoming
+            payment.DirectionId == PaymentDirection.Incoming
                 ? payment.Amount
-                : payment.Direction == PaymentDirection.Refund
+                : payment.DirectionId == PaymentDirection.Refund
                     ? -payment.Amount
                     : 0m);
     }
@@ -573,9 +631,9 @@ public sealed class RentalService(
     private static PaymentMethod ResolveRefundMethod(IEnumerable<Payment> payments)
     {
         return payments
-            .Where(item => item.Direction == PaymentDirection.Incoming)
+            .Where(item => item.DirectionId == PaymentDirection.Incoming)
             .OrderByDescending(item => item.CreatedAtUtc)
-            .Select(item => item.Method)
+            .Select(item => item.MethodId)
             .DefaultIfEmpty(PaymentMethod.Cash)
             .First();
     }
@@ -617,6 +675,8 @@ public sealed class RentalService(
         return $"{baseNote}. {suffix}";
     }
 
+    // РЈ СЃРёСЃС‚РµРјС– РІСЃС– "операційні" DateTime Р·Р±РµСЂС–РіР°СЋС‚СЊСЃСЏ СЏРє UTC Р±РµР· timezone-РєРѕРјРїРѕРЅРµРЅС‚Р°,
+    // С‚РѕРјСѓ С‚СѓС‚ РІС–РґС‚РёРЅР°С”РјРѕ Р·Р°Р№РІСѓ С‡Р°СЃРѕРІСѓ С–РЅС„РѕСЂРјР°С†С–СЋ РґРѕ СѓР·РіРѕРґР¶РµРЅРѕРіРѕ РІРёРґСѓ.
     private static DateTime NormalizeBusinessTimestamp(DateTime value)
     {
         return value.Kind switch
@@ -628,25 +688,30 @@ public sealed class RentalService(
         };
     }
 
+    // Inspection РґР»СЏ РІРёРґР°С‡С– С– РїРѕРІРµСЂРЅРµРЅРЅСЏ РѕРЅРѕРІР»СЋС”РјРѕ СЏРє upsert, С‰РѕР± РїРѕРІС‚РѕСЂРЅРµ
+    // РїС–РґС‚РІРµСЂРґР¶РµРЅРЅСЏ РЅРµ РїР»РѕРґРёР»Рѕ РґСѓР±Р»С–РєР°С‚Рё, Р° РєРѕСЂРёРіСѓРІР°Р»Рѕ РІР¶Рµ С–СЃРЅСѓСЋС‡РёР№ Р·Р°РїРёСЃ.
     private static void UpsertInspection(
         Rental rental,
+        int performedByEmployeeId,
         RentalInspectionType type,
         int? fuelPercent,
         string? notes)
     {
         var timestamp = DateTime.UtcNow;
-        var inspection = rental.Inspections.FirstOrDefault(item => item.Type == type);
+        var inspection = rental.Inspections.FirstOrDefault(item => item.TypeId == type);
         if (inspection is null)
         {
             inspection = new RentalInspection
             {
                 Rental = rental,
-                Type = type,
+                TypeId = type,
+                PerformedByEmployeeId = performedByEmployeeId,
                 CreatedAtUtc = timestamp
             };
             rental.Inspections.Add(inspection);
         }
 
+        inspection.PerformedByEmployeeId = performedByEmployeeId;
         inspection.CompletedAtUtc = timestamp;
         inspection.FuelPercent = fuelPercent;
         inspection.Notes = NormalizeOptionalText(notes, 500);
@@ -666,7 +731,11 @@ public sealed class RentalService(
     }
 
     private sealed record PendingPayment(
-        PaymentMethod Method,
-        PaymentDirection Direction,
+        decimal Amount,
+        PaymentMethod MethodId,
+        PaymentDirection DirectionId,
         string Notes);
 }
+
+
+

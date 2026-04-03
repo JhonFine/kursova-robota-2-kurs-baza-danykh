@@ -1,4 +1,4 @@
-namespace CarRental.Desktop.Models;
+﻿namespace CarRental.Desktop.Models;
 
 public sealed class TransmissionTypeLookup : IAuditableEntity
 {
@@ -12,3 +12,4 @@ public sealed class TransmissionTypeLookup : IAuditableEntity
 
     public ICollection<Vehicle> Vehicles { get; set; } = new List<Vehicle>();
 }
+

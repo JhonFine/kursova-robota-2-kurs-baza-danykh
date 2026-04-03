@@ -1,4 +1,4 @@
-using CarRental.WebApi.Data;
+﻿using CarRental.WebApi.Data;
 using CarRental.WebApi.Models;
 using Microsoft.EntityFrameworkCore;
 
@@ -6,8 +6,6 @@ namespace CarRental.WebApi.Services.Maintenance;
 
 public sealed class MaintenanceService(RentalDbContext dbContext) : IMaintenanceService
 {
-    // Запис ТО валідований не лише по авто, а й по довіднику типів,
-    // щоб staff не міг зберегти "довільний" maintenance code поза reference data.
     public async Task<MaintenanceResult> AddRecordAsync(MaintenanceRequest request, CancellationToken cancellationToken = default)
     {
         var vehicle = await dbContext.Vehicles.FirstOrDefaultAsync(item => item.Id == request.VehicleId, cancellationToken);
@@ -16,13 +14,26 @@ public sealed class MaintenanceService(RentalDbContext dbContext) : IMaintenance
             return new MaintenanceResult(false, "Авто не знайдено.");
         }
 
+        var hasEmployee = request.PerformedByEmployeeId.HasValue;
+        var hasProvider = !string.IsNullOrWhiteSpace(request.ServiceProviderName);
+        if (hasEmployee == hasProvider)
+        {
+            return new MaintenanceResult(false, "Вкажіть або внутрішнього виконавця, або зовнішню СТО.");
+        }
+
+        if (!request.NextServiceMileage.HasValue && !request.NextServiceDate.HasValue)
+        {
+            return new MaintenanceResult(false, "Вкажіть наступний сервіс за пробігом або датою.");
+        }
+
         if (request.PerformedByEmployeeId.HasValue &&
             !await dbContext.Employees.AnyAsync(item => item.Id == request.PerformedByEmployeeId.Value, cancellationToken))
         {
             return new MaintenanceResult(false, "Працівника не знайдено.");
         }
 
-        if (!await dbContext.MaintenanceTypes.AnyAsync(item => item.Code == request.MaintenanceTypeCode.Trim().ToUpperInvariant(), cancellationToken))
+        var maintenanceTypeCode = request.MaintenanceTypeCode.Trim().ToUpperInvariant();
+        if (!await dbContext.MaintenanceTypes.AnyAsync(item => item.Code == maintenanceTypeCode, cancellationToken))
         {
             return new MaintenanceResult(false, "Тип обслуговування не знайдено.");
         }
@@ -31,12 +42,13 @@ public sealed class MaintenanceService(RentalDbContext dbContext) : IMaintenance
         {
             VehicleId = request.VehicleId,
             PerformedByEmployeeId = request.PerformedByEmployeeId,
-            ServiceDate = request.ServiceDate,
+            ServiceDate = request.ServiceDate.Date,
             MileageAtService = request.MileageAtService,
             Description = request.Description.Trim(),
             Cost = request.Cost,
             NextServiceMileage = request.NextServiceMileage,
-            MaintenanceTypeCode = request.MaintenanceTypeCode.Trim().ToUpperInvariant(),
+            NextServiceDate = request.NextServiceDate?.Date,
+            MaintenanceTypeCode = maintenanceTypeCode,
             ServiceProviderName = string.IsNullOrWhiteSpace(request.ServiceProviderName) ? null : request.ServiceProviderName.Trim()
         };
 
@@ -45,25 +57,28 @@ public sealed class MaintenanceService(RentalDbContext dbContext) : IMaintenance
         return new MaintenanceResult(true, "Запис ТО додано.");
     }
 
-    // Прострочення визначаємо від останнього зафіксованого порога NextServiceMileage,
-    // а якщо записів ще не було — від штатного інтервалу самого авто.
     public async Task<IReadOnlyList<MaintenanceDueItem>> GetDueItemsAsync(CancellationToken cancellationToken = default)
     {
+        var today = DateTime.UtcNow.Date;
         var vehicles = await dbContext.Vehicles
             .AsNoTracking()
-            .OrderBy(item => item.Make)
-            .ThenBy(item => item.Model)
+            .OrderBy(item => item.MakeLookup!.Name)
+            .ThenBy(item => item.ModelLookup!.Name)
             .Select(item => new
             {
                 item.Id,
-                item.Make,
-                item.Model,
+                MakeName = item.MakeLookup!.Name,
+                ModelName = item.ModelLookup!.Name,
                 item.LicensePlate,
                 item.Mileage,
                 item.ServiceIntervalKm,
                 LastNextServiceMileage = item.MaintenanceRecords
                     .OrderByDescending(record => record.ServiceDate)
-                    .Select(record => (int?)record.NextServiceMileage)
+                    .Select(record => record.NextServiceMileage)
+                    .FirstOrDefault(),
+                LastNextServiceDate = item.MaintenanceRecords
+                    .OrderByDescending(record => record.ServiceDate)
+                    .Select(record => record.NextServiceDate)
                     .FirstOrDefault()
             })
             .ToListAsync(cancellationToken);
@@ -72,15 +87,22 @@ public sealed class MaintenanceService(RentalDbContext dbContext) : IMaintenance
         foreach (var vehicle in vehicles)
         {
             var nextServiceMileage = vehicle.LastNextServiceMileage ?? (vehicle.Mileage + vehicle.ServiceIntervalKm);
+            var nextServiceDate = vehicle.LastNextServiceDate?.Date;
+            var overdueByKm = vehicle.Mileage >= nextServiceMileage ? vehicle.Mileage - nextServiceMileage : 0;
+            var overdueByDays = nextServiceDate.HasValue && today >= nextServiceDate.Value
+                ? (today - nextServiceDate.Value).Days
+                : 0;
 
-            if (vehicle.Mileage >= nextServiceMileage)
+            if (overdueByKm > 0 || overdueByDays > 0)
             {
                 due.Add(new MaintenanceDueItem(
                     vehicle.Id,
-                    $"{vehicle.Make} {vehicle.Model} [{vehicle.LicensePlate}]",
+                    $"{vehicle.MakeName} {vehicle.ModelName} [{vehicle.LicensePlate}]",
                     vehicle.Mileage,
                     nextServiceMileage,
-                    vehicle.Mileage - nextServiceMileage));
+                    nextServiceDate,
+                    overdueByKm,
+                    overdueByDays));
             }
         }
 

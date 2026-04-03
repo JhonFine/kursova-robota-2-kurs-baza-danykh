@@ -7,9 +7,9 @@ public sealed class Vehicle : IAuditableEntity, ISoftDeletableEntity
 {
     public int Id { get; set; }
 
-    public string Make { get; set; } = string.Empty;
+    public int MakeId { get; set; }
 
-    public string Model { get; set; } = string.Empty;
+    public int ModelId { get; set; }
 
     public decimal PowertrainCapacityValue { get; set; }
 
@@ -52,7 +52,7 @@ public sealed class Vehicle : IAuditableEntity, ISoftDeletableEntity
     {
         get => !IsDeleted &&
                string.Equals(VehicleStatusCode, VehicleStatuses.Ready, StringComparison.OrdinalIgnoreCase) &&
-               Rentals.All(rental => rental.Status != RentalStatus.Active);
+               Rentals.All(rental => rental.StatusId != RentalStatus.Active);
         set => IsBookable = value;
     }
 
@@ -90,27 +90,29 @@ public sealed class Vehicle : IAuditableEntity, ISoftDeletableEntity
     public string? PhotoPath
     {
         get => Photos
+            .Where(item => !item.IsDeleted)
             .OrderByDescending(item => item.IsPrimary)
             .ThenBy(item => item.SortOrder)
             .Select(item => item.StoredPath)
             .FirstOrDefault();
         set
         {
-            Photos.Clear();
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                return;
-            }
-
-            Photos.Add(new VehiclePhoto
-            {
-                VehicleId = Id,
-                StoredPath = value,
-                SortOrder = 0,
-                IsPrimary = true
-            });
+            var nextPath = value?.Trim();
+            ReconcilePhotos(string.IsNullOrWhiteSpace(nextPath)
+                ? Array.Empty<(string StoredPath, int SortOrder, bool IsPrimary)>()
+                : [(nextPath!, 0, true)]);
         }
     }
+
+    [NotMapped]
+    public string MakeName => MakeLookup?.Name ?? string.Empty;
+
+    [NotMapped]
+    public string ModelName => ModelLookup?.Name ?? string.Empty;
+
+    public VehicleMake? MakeLookup { get; set; }
+
+    public VehicleModel? ModelLookup { get; set; }
 
     public FuelTypeLookup? FuelTypeLookup { get; set; }
 
@@ -125,4 +127,45 @@ public sealed class Vehicle : IAuditableEntity, ISoftDeletableEntity
     public ICollection<MaintenanceRecord> MaintenanceRecords { get; set; } = new List<MaintenanceRecord>();
 
     public ICollection<VehiclePhoto> Photos { get; set; } = new List<VehiclePhoto>();
+
+    public void ReconcilePhotos(IEnumerable<(string StoredPath, int SortOrder, bool IsPrimary)> desiredPhotos)
+    {
+        var utcNow = DateTime.UtcNow;
+        var desired = desiredPhotos
+            .Where(item => !string.IsNullOrWhiteSpace(item.StoredPath))
+            .Select(item => (StoredPath: item.StoredPath.Trim(), item.SortOrder, item.IsPrimary))
+            .ToList();
+
+        foreach (var existing in Photos)
+        {
+            var match = desired.FirstOrDefault(item =>
+                string.Equals(item.StoredPath, existing.StoredPath, StringComparison.OrdinalIgnoreCase));
+
+            if (string.IsNullOrWhiteSpace(match.StoredPath))
+            {
+                existing.IsDeleted = true;
+                existing.UpdatedAtUtc = utcNow;
+                continue;
+            }
+
+            existing.SortOrder = match.SortOrder;
+            existing.IsPrimary = match.IsPrimary;
+            existing.IsDeleted = false;
+            existing.UpdatedAtUtc = utcNow;
+        }
+
+        foreach (var missing in desired.Where(item =>
+                     Photos.All(existing => !string.Equals(existing.StoredPath, item.StoredPath, StringComparison.OrdinalIgnoreCase))))
+        {
+            Photos.Add(new VehiclePhoto
+            {
+                VehicleId = Id,
+                StoredPath = missing.StoredPath,
+                SortOrder = missing.SortOrder,
+                IsPrimary = missing.IsPrimary,
+                CreatedAtUtc = utcNow,
+                UpdatedAtUtc = utcNow
+            });
+        }
+    }
 }

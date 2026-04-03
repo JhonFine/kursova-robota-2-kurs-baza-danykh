@@ -47,9 +47,12 @@ public partial class App : Application
             RegisterGlobalExceptionHandlers();
             _logger.Info("Запуск застосунку.");
 
+            _logger.Info("Синхронізація схеми PostgreSQL через канонічні WebApi-міграції.");
+            PostgresSchemaBootstrapper.EnsureCanonicalSchema(_databaseConnectionOptions.PostgresConnectionString);
+            _logger.Info("Схема PostgreSQL готова.");
+
             using (var bootstrapDbContext = CreateDbContext(_databaseConnectionOptions, trackLifetime: false))
             {
-                EnsurePostgresSchemaReady(bootstrapDbContext);
                 var seededCredentials = DatabaseInitializer.Seed(bootstrapDbContext);
                 ShowGeneratedSeedCredentials(seededCredentials);
             }
@@ -180,12 +183,18 @@ public partial class App : Application
         var maintenanceService = new MaintenanceService(maintenanceDbContext);
         var damageService = new DamageService(damagesDbContext);
         var documentGenerator = new SimpleContractGenerator(contractsDir);
+        var clientDocumentStorage = new ClientDocumentStorage();
         var printService = new ShellPrintService();
         var exportService = new AnalyticsExportService(reportsDbContext, exportsDir);
         var adminAuthService = new AuthService(adminDbContext);
 
         var fleetPageViewModel = new FleetPageViewModel(fleetDbContext, authorizationService, refreshCoordinator, authenticatedEmployee);
-        var clientsPageViewModel = new ClientsPageViewModel(clientsDbContext, authorizationService, refreshCoordinator, authenticatedEmployee);
+        var clientsPageViewModel = new ClientsPageViewModel(
+            clientsDbContext,
+            authorizationService,
+            refreshCoordinator,
+            clientDocumentStorage,
+            authenticatedEmployee);
         var rentalsPageViewModel = new RentalsPageViewModel(
             rentalsDbContext,
             rentalsService,
@@ -206,7 +215,7 @@ public partial class App : Application
             refreshCoordinator,
             authenticatedEmployee);
         var reportsPageViewModel = new ReportsPageViewModel(reportsDbContext, exportService);
-        var maintenancePageViewModel = new MaintenancePageViewModel(maintenanceDbContext, maintenanceService, refreshCoordinator);
+        var maintenancePageViewModel = new MaintenancePageViewModel(maintenanceDbContext, maintenanceService, refreshCoordinator, authenticatedEmployee);
         var damagesPageViewModel = new DamagesPageViewModel(damagesDbContext, damageService, refreshCoordinator);
         var adminPageViewModel = new AdminPageViewModel(
             adminDbContext,
@@ -230,6 +239,8 @@ public partial class App : Application
 
         userRentalsPageViewModel.OpenCatalogRequestedAsync = mainViewModel.NavigateToProkatAsync;
         userRentalsPageViewModel.RebookRequestedAsync = mainViewModel.NavigateToRebookingAsync;
+        clientsPageViewModel.OpenRentalsRequestedAsync = mainViewModel.NavigateToRentalsAsync;
+        maintenancePageViewModel.OpenVehicleRequestedAsync = mainViewModel.NavigateToFleetAsync;
 
         var mainWindow = new MainWindow
         {
@@ -324,40 +335,6 @@ public partial class App : Application
         return dbContext;
     }
 
-    private static void EnsurePostgresSchemaReady(RentalDbContext dbContext)
-    {
-        try
-        {
-            var requiredChecks = new[]
-            {
-                "SELECT 1 FROM \"Accounts\" LIMIT 1;",
-                "SELECT 1 FROM \"Employees\" LIMIT 1;",
-                "SELECT 1 FROM \"Clients\" LIMIT 1;",
-                "SELECT 1 FROM \"ClientDocuments\" LIMIT 1;",
-                "SELECT 1 FROM \"Vehicles\" LIMIT 1;",
-                "SELECT 1 FROM \"VehiclePhotos\" LIMIT 1;",
-                "SELECT 1 FROM \"Damages\" LIMIT 1;",
-                "SELECT 1 FROM \"DamagePhotos\" LIMIT 1;",
-                "SELECT 1 FROM \"Payments\" LIMIT 1;",
-                "SELECT 1 FROM \"MaintenanceRecords\" LIMIT 1;",
-                "SELECT \"CreatedByEmployeeId\" FROM \"Rentals\" LIMIT 1;",
-                "SELECT \"VehicleStatusCode\" FROM \"Vehicles\" LIMIT 1;",
-                "SELECT \"ReportedByEmployeeId\" FROM \"Damages\" LIMIT 1;"
-            };
-
-            foreach (var sql in requiredChecks)
-            {
-                dbContext.Database.ExecuteSqlRaw(sql);
-            }
-        }
-        catch (Exception exception)
-        {
-            throw new InvalidOperationException(
-                "PostgreSQL schema is outdated or incomplete for the desktop app. Run RunWeb.ps1 or FactoryReset.ps1 to apply current WebApi migrations, then retry desktop startup.",
-                exception);
-        }
-    }
-
     private void ShowGeneratedSeedCredentials(DatabaseInitializer.SeedCredentials? seededCredentials)
     {
         if (seededCredentials is null)
@@ -397,3 +374,4 @@ public partial class App : Application
         MainViewModel ViewModel,
         IReadOnlyList<RentalDbContext> DbContexts);
 }
+

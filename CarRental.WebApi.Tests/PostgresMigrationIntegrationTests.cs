@@ -154,7 +154,7 @@ public sealed class PostgresMigrationIntegrationTests
 
         var employee = CreateEmployee("integration_admin", now);
         var client = CreateClient("Integration Client", "PP999999", "DL999999", "+10000000000");
-        var vehicle = CreateVehicle(
+        var vehicle = CreateVehicle(dbContext,
             "Toyota",
             "Corolla",
             "IT-0001",
@@ -175,13 +175,13 @@ public sealed class PostgresMigrationIntegrationTests
         {
             ClientId = client.Id,
             VehicleId = vehicle.Id,
-            EmployeeId = employee.Id,
+            CreatedByEmployeeId = employee.Id,
             ContractNumber = "CR-2026-900001",
             StartDate = now.AddHours(-1),
             EndDate = now.AddHours(6),
             StartMileage = vehicle.Mileage,
             TotalAmount = 180m,
-            Status = RentalStatus.Active,
+            StatusId = RentalStatus.Active,
             IsClosed = false,
             CreatedAtUtc = now
         };
@@ -192,7 +192,7 @@ public sealed class PostgresMigrationIntegrationTests
         var lockedVehicleIsAvailable = await ComputeVehicleAvailabilityAsync(dbContext, lockedVehicle);
         lockedVehicleIsAvailable.Should().BeFalse();
 
-        rental.Status = RentalStatus.Closed;
+        rental.StatusId = RentalStatus.Closed;
         rental.IsClosed = true;
         rental.EndDate = now;
         rental.ClosedAtUtc = DateTime.UtcNow;
@@ -223,7 +223,7 @@ public sealed class PostgresMigrationIntegrationTests
 
         var employee = CreateEmployee("integration_soft_delete_user", now);
         var client = CreateClient("Reusable Client", "PP300000", "DL300000", "+10000000003");
-        var vehicle = CreateVehicle(
+        var vehicle = CreateVehicle(dbContext,
             "Mazda",
             "6",
             "IT-0004",
@@ -244,13 +244,13 @@ public sealed class PostgresMigrationIntegrationTests
         {
             ClientId = client.Id,
             VehicleId = vehicle.Id,
-            EmployeeId = employee.Id,
+            CreatedByEmployeeId = employee.Id,
             ContractNumber = "CR-2026-900010",
             StartDate = now.AddDays(2),
             EndDate = now.AddDays(4),
             StartMileage = vehicle.Mileage,
             TotalAmount = 200m,
-            Status = RentalStatus.Booked,
+            StatusId = RentalStatus.Booked,
             IsClosed = false,
             CreatedAtUtc = now
         });
@@ -260,13 +260,13 @@ public sealed class PostgresMigrationIntegrationTests
         {
             ClientId = client.Id,
             VehicleId = vehicle.Id,
-            EmployeeId = employee.Id,
+            CreatedByEmployeeId = employee.Id,
             ContractNumber = "CR-2026-900011",
             StartDate = now.AddDays(4),
             EndDate = now.AddDays(5),
             StartMileage = vehicle.Mileage,
             TotalAmount = 120m,
-            Status = RentalStatus.Booked,
+            StatusId = RentalStatus.Booked,
             IsClosed = false,
             CreatedAtUtc = now
         });
@@ -285,7 +285,7 @@ public sealed class PostgresMigrationIntegrationTests
         await dbContext.SaveChangesAsync();
 
         dbContext.Clients.Add(CreateClient("Reusable Client 2", "PP300001", "DL300000", "+10000000004"));
-        dbContext.Vehicles.Add(CreateVehicle(
+        dbContext.Vehicles.Add(CreateVehicle(dbContext,
             "Mazda",
             "CX-5",
             "IT-0004",
@@ -314,7 +314,7 @@ public sealed class PostgresMigrationIntegrationTests
 
         dbContext.Employees.Add(CreateEmployee("integration_manager", now, UserRole.Manager));
         dbContext.Clients.Add(CreateClient("Constraint Client", "PP100000", "DL100000", "+10000000001"));
-        var vehicle = CreateVehicle(
+        var vehicle = CreateVehicle(dbContext,
             "Skoda",
             "Octavia",
             "IT-0002",
@@ -334,9 +334,9 @@ public sealed class PostgresMigrationIntegrationTests
             Description = "Invalid charge consistency",
             DateReported = now,
             RepairCost = 150m,
-            ActNumber = "ACT-INVALID-TEST-0001",
+            DamageActNumber = "ACT-INVALID-TEST-0001",
             ChargedAmount = 10m,
-            Status = DamageStatus.Open
+            StatusId = DamageStatus.Open
         });
 
         var action = async () => await dbContext.SaveChangesAsync();
@@ -358,7 +358,7 @@ public sealed class PostgresMigrationIntegrationTests
 
         dbContext.Employees.Add(CreateEmployee("integration_index_user", now, UserRole.Manager));
         dbContext.Clients.Add(CreateClient("Index Client", "PP200000", "DL200000", "+10000000002"));
-        var vehicle = CreateVehicle(
+        var vehicle = CreateVehicle(dbContext,
             "Renault",
             "Logan",
             "IT-0003",
@@ -379,9 +379,9 @@ public sealed class PostgresMigrationIntegrationTests
             Description = "Damage one",
             DateReported = now,
             RepairCost = 90m,
-            ActNumber = duplicateActNumber,
+            DamageActNumber = duplicateActNumber,
             ChargedAmount = 0m,
-            Status = DamageStatus.Open
+            StatusId = DamageStatus.Open
         });
         dbContext.Damages.Add(new Damage
         {
@@ -389,9 +389,9 @@ public sealed class PostgresMigrationIntegrationTests
             Description = "Damage two",
             DateReported = now.AddMinutes(1),
             RepairCost = 120m,
-            ActNumber = duplicateActNumber,
+            DamageActNumber = duplicateActNumber,
             ChargedAmount = 0m,
-            Status = DamageStatus.Open
+            StatusId = DamageStatus.Open
         });
 
         var action = async () => await dbContext.SaveChangesAsync();
@@ -400,16 +400,46 @@ public sealed class PostgresMigrationIntegrationTests
         ((PostgresException)exception.Which.InnerException!).SqlState.Should().Be(PostgresErrorCodes.UniqueViolation);
     }
 
+    [PostgresFact]
+    public async Task PostgresAccountExclusivityTrigger_ShouldRejectSharedAccountBetweenEmployeeAndClient()
+    {
+        await using var testDatabase = await PostgresTestDatabase.TryCreateAsync();
+        await using var dbContext = testDatabase.CreateDbContext();
+
+        var now = DateTime.UtcNow;
+        var employee = CreateEmployee("integration_shared_account", now, UserRole.Manager);
+        dbContext.Employees.Add(employee);
+        await dbContext.SaveChangesAsync();
+
+        dbContext.Clients.Add(new Client
+        {
+            FullName = "Shared Account Client",
+            AccountId = employee.AccountId,
+            Phone = "+10000000005",
+            PassportData = "PP500000",
+            DriverLicense = "DL500000",
+            IsBlacklisted = false
+        });
+
+        var action = async () => await dbContext.SaveChangesAsync();
+        var exception = await action.Should().ThrowAsync<DbUpdateException>();
+        exception.Which.InnerException.Should().BeOfType<PostgresException>();
+        ((PostgresException)exception.Which.InnerException!).SqlState.Should().Be(PostgresErrorCodes.RaiseException);
+    }
+
     private static Employee CreateEmployee(string login, DateTime now, UserRole role = UserRole.Admin)
     {
         return new Employee
         {
             FullName = $"Employee {login}",
-            Login = login,
-            PasswordHash = "hash",
-            Role = role,
-            IsActive = true,
-            PasswordChangedAtUtc = now
+            RoleId = role,
+            Account = new Account
+            {
+                Login = login,
+                PasswordHash = "hash",
+                IsActive = true,
+                PasswordChangedAtUtc = now
+            }
         };
     }
 
@@ -421,7 +451,7 @@ public sealed class PostgresMigrationIntegrationTests
             PassportData = passportData,
             DriverLicense = driverLicense,
             Phone = phone,
-            Blacklisted = false
+            IsBlacklisted = false
         };
     }
 
@@ -437,31 +467,25 @@ public sealed class PostgresMigrationIntegrationTests
         int mileage,
         decimal dailyRate)
     {
-        return new Vehicle
-        {
-            Make = make,
-            Model = model,
-            FuelType = fuelTypeCode,
-            TransmissionType = transmissionTypeCode,
-            PowertrainCapacityValue = powertrainCapacityValue,
-            PowertrainCapacityUnit = "L",
-            CargoCapacityValue = cargoCapacityValue,
-            CargoCapacityUnit = "L",
-            ConsumptionValue = consumptionValue,
-            ConsumptionUnit = "L_PER_100KM",
-            LicensePlate = licensePlate,
-            Mileage = mileage,
-            DailyRate = dailyRate,
-            IsBookable = true,
-            ServiceIntervalKm = 10000
-        };
+        return TestLookupSeed.CreateVehicle(
+            dbContext,
+            make,
+            model,
+            licensePlate,
+            fuelTypeCode,
+            transmissionTypeCode,
+            powertrainCapacityValue,
+            cargoCapacityValue,
+            consumptionValue,
+            mileage,
+            dailyRate);
     }
 
     private static async Task<bool> ComputeVehicleAvailabilityAsync(RentalDbContext dbContext, Vehicle vehicle)
     {
         var hasActiveRental = await dbContext.Rentals
             .AsNoTracking()
-            .AnyAsync(item => item.VehicleId == vehicle.Id && item.Status == RentalStatus.Active);
+            .AnyAsync(item => item.VehicleId == vehicle.Id && item.StatusId == RentalStatus.Active);
         return !vehicle.IsDeleted && vehicle.IsBookable && !hasActiveRental;
     }
 
@@ -549,3 +573,5 @@ public sealed class PostgresMigrationIntegrationTests
         }
     }
 }
+
+

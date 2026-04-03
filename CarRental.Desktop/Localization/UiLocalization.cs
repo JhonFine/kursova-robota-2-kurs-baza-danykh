@@ -1,4 +1,5 @@
 using CarRental.Desktop.Models;
+using CarRental.Shared.ReferenceData;
 
 namespace CarRental.Desktop.Localization;
 
@@ -42,4 +43,17 @@ public static class UiLocalization
         DamageStatus.Resolved => "Закрите",
         _ => status.ToString()
     };
+
+    public static string ToDisplayMaintenanceType(this string? maintenanceTypeCode)
+    {
+        var normalizedCode = maintenanceTypeCode?.Trim().ToUpperInvariant();
+        return normalizedCode switch
+        {
+            MaintenanceTypes.Scheduled => "Планове ТО",
+            MaintenanceTypes.Repair => "Ремонт",
+            MaintenanceTypes.Tires => "Шини",
+            MaintenanceTypes.Inspection => "Огляд",
+            _ => string.IsNullOrWhiteSpace(maintenanceTypeCode) ? "Невідомо" : maintenanceTypeCode.Trim()
+        };
+    }
 }

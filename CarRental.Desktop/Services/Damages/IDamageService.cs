@@ -1,4 +1,4 @@
-namespace CarRental.Desktop.Services.Damages;
+﻿namespace CarRental.Desktop.Services.Damages;
 
 public interface IDamageService
 {
@@ -14,3 +14,4 @@ public sealed record DamageRequest(
     bool AutoChargeToRental);
 
 public sealed record DamageResult(bool Success, string Message);
+

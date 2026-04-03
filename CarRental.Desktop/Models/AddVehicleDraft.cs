@@ -15,3 +15,4 @@ public sealed record AddVehicleDraft(
     string DailyRate,
     string ServiceIntervalKm,
     string? PhotoPath);
+

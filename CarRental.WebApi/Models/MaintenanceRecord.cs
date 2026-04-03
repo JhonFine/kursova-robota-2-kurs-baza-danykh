@@ -18,7 +18,9 @@ public sealed class MaintenanceRecord
 
     public decimal Cost { get; set; }
 
-    public int NextServiceMileage { get; set; }
+    public int? NextServiceMileage { get; set; }
+
+    public DateTime? NextServiceDate { get; set; }
 
     public string MaintenanceTypeCode { get; set; } = MaintenanceTypes.Scheduled;
 

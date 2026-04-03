@@ -1,4 +1,4 @@
-using CarRental.Shared.ReferenceData;
+﻿using CarRental.Shared.ReferenceData;
 
 namespace CarRental.Desktop.Models;
 
@@ -26,3 +26,4 @@ public sealed class ClientDocument : IAuditableEntity, ISoftDeletableEntity
 
     public ClientDocumentTypeLookup? DocumentType { get; set; }
 }
+

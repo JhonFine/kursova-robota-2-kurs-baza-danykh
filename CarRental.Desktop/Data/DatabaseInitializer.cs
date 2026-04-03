@@ -6,10 +6,12 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CarRental.Desktop.Data;
 
-// Seed desktop-бази виконується фазами: staff/login довідники, каталог, клієнти,
-// потім історичні операції. Це дозволяє повторно запускати ініціалізацію без дублювання runtime-даних.
 public static class DatabaseInitializer
 {
+    private const string CanonicalAdminFullName = "Системний адміністратор";
+    private const string CanonicalManagerFullName = "Менеджер прокату";
+    private const string LegacyAdminFullName = "РЎРёСЃС‚РµРјРЅРёР№ Р°РґРјС–РЅС–СЃС‚СЂР°С‚РѕСЂ";
+    private const string LegacyManagerFullName = "РњРµРЅРµРґР¶РµСЂ РїСЂРѕРєР°С‚Сѓ";
     private static readonly int SeedRandomValue = DemoSeedReferenceData.SeedRandomValue;
     private static readonly int TotalClients = DemoSeedReferenceData.TotalClients;
     private static readonly int TotalClosedRentals = DemoSeedReferenceData.TotalClosedRentals;
@@ -40,17 +42,27 @@ public static class DatabaseInitializer
     private static readonly decimal[] DamageCostTemplate = [.. DemoSeedReferenceData.DamageCostTemplate];
     private static readonly IReadOnlySet<int> ChargedDamageIndices = DemoSeedReferenceData.ChargedDamageIndices;
     private static readonly IReadOnlyList<PlateLocation> WeightedPlateLocations = BuildPlateLocations();
+    private static readonly IReadOnlyDictionary<string, string> CanonicalSeedEmployeeNames = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        [DemoSeedReferenceData.AdminLogin] = CanonicalAdminFullName,
+        [DemoSeedReferenceData.ManagerLogin] = CanonicalManagerFullName
+    };
+    private static readonly IReadOnlyDictionary<string, string> LegacySeedEmployeeNames = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        [DemoSeedReferenceData.AdminLogin] = LegacyAdminFullName,
+        [DemoSeedReferenceData.ManagerLogin] = LegacyManagerFullName
+    };
 
+    // Seed іде фазами: staff-акаунти, довідники, клієнти, каталог авто,
+    // а історичні оренди/платежі генеруються лише для порожньої operational частини.
     public static SeedCredentials? Seed(RentalDbContext dbContext)
     {
-        // Спочатку готуємо облікові записи й довідники, від яких залежить увесь інший seed.
         var seededCredentials = EnsureEmployees(dbContext);
         EnsureVehicleLookups(dbContext);
         EnsureClients(dbContext);
         EnsureVehicleCatalogSync(dbContext);
         dbContext.SaveChanges();
 
-        // Операційна історія додається лише в порожню базу, щоб не підмішувати demo-дані у вже робочий контур.
         if (!dbContext.Rentals.Any() &&
             !dbContext.Payments.Any() &&
             !dbContext.Damages.Any() &&
@@ -65,14 +77,16 @@ public static class DatabaseInitializer
         return seededCredentials;
     }
 
+    // Працівників створюємо один раз на "чистій" базі, бо їх логіни і ролі
+    // використовуються як стартова точка для всього staff-режиму.
     private static SeedCredentials? EnsureEmployees(RentalDbContext dbContext)
     {
         if (dbContext.Employees.Any())
         {
+            RepairLegacySeedEmployeeNames(dbContext);
             return null;
         }
 
-        // Паролі seed-акаунтів можна перевизначити env-перемінними, щоб локальна/demo база не вимагала жорстко зашитих секретів.
         var adminPassword = ResolvePassword("CAR_RENTAL_ADMIN_PASSWORD", DemoSeedReferenceData.AdminFallbackPassword);
         var managerPassword = ResolvePassword("CAR_RENTAL_MANAGER_PASSWORD", DemoSeedReferenceData.ManagerFallbackPassword);
         var passwordChangedAt = DateTime.UtcNow.Date.AddHours(8);
@@ -80,19 +94,19 @@ public static class DatabaseInitializer
         dbContext.Employees.AddRange(
             new Employee
             {
-                FullName = "РЎРёСЃС‚РµРјРЅРёР№ Р°РґРјС–РЅС–СЃС‚СЂР°С‚РѕСЂ",
+                FullName = CanonicalAdminFullName,
                 Login = DemoSeedReferenceData.AdminLogin,
                 PasswordHash = PasswordHasher.HashPassword(adminPassword.Password),
-                Role = UserRole.Admin,
+                RoleId = UserRole.Admin,
                 IsActive = true,
                 PasswordChangedAtUtc = passwordChangedAt
             },
             new Employee
             {
-                FullName = "РњРµРЅРµРґР¶РµСЂ РїСЂРѕРєР°С‚Сѓ",
+                FullName = CanonicalManagerFullName,
                 Login = DemoSeedReferenceData.ManagerLogin,
                 PasswordHash = PasswordHasher.HashPassword(managerPassword.Password),
-                Role = UserRole.Manager,
+                RoleId = UserRole.Manager,
                 IsActive = true,
                 PasswordChangedAtUtc = passwordChangedAt
             });
@@ -101,11 +115,11 @@ public static class DatabaseInitializer
                      .Where(entry => entry.State == EntityState.Added && entry.Entity.Account is null)
                      .Select(entry => entry.Entity))
         {
-            if (employee.Role == UserRole.Admin)
+            if (employee.RoleId == UserRole.Admin)
             {
                 employee.Account = CreateSeedAccount(DemoSeedReferenceData.AdminLogin, adminPassword.Password, passwordChangedAt);
             }
-            else if (employee.Role == UserRole.Manager)
+            else if (employee.RoleId == UserRole.Manager)
             {
                 employee.Account = CreateSeedAccount(DemoSeedReferenceData.ManagerLogin, managerPassword.Password, passwordChangedAt);
             }
@@ -120,9 +134,42 @@ public static class DatabaseInitializer
             managerPassword.IsGenerated);
     }
 
+    private static void RepairLegacySeedEmployeeNames(RentalDbContext dbContext)
+    {
+        var employees = dbContext.Employees
+            .Include(item => item.Account)
+            .Where(item => item.RoleId == UserRole.Admin || item.RoleId == UserRole.Manager)
+            .ToList();
+
+        var hasChanges = false;
+        foreach (var employee in employees)
+        {
+            var login = employee.Account?.Login ?? employee.Login;
+            if (string.IsNullOrWhiteSpace(login) ||
+                !CanonicalSeedEmployeeNames.TryGetValue(login, out var canonicalName) ||
+                !LegacySeedEmployeeNames.TryGetValue(login, out var legacyName) ||
+                !string.Equals(employee.FullName, legacyName, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            employee.FullName = canonicalName;
+            hasChanges = true;
+        }
+
+        if (hasChanges)
+        {
+            dbContext.SaveChanges();
+        }
+    }
+
+    // Демо-клієнти генеруються детерміновано, щоб телефон, паспорт і водійське
+    // залишалися стабільними між factory reset та тестовими сценаріями.
     private static void EnsureClients(RentalDbContext dbContext)
     {
-        // Унікальність клієнтів тримаємо на рівні реальних документів і телефону, а не лише ПІБ.
+        var blacklistActorId = ResolveSeedBlacklistEmployeeId(dbContext);
+        BackfillBlacklistedClientActors(dbContext, blacklistActorId);
+
         var existingDriverLicenses = dbContext.ClientDocuments
             .Where(document => !document.IsDeleted && document.DocumentTypeCode == ClientDocumentTypes.DriverLicense)
             .Select(document => document.DocumentNumber)
@@ -141,7 +188,7 @@ public static class DatabaseInitializer
             return;
         }
 
-        foreach (var client in BuildClientSeeds().Skip(currentCount).Take(TotalClients - currentCount))
+        foreach (var client in BuildClientSeeds(blacklistActorId).Skip(currentCount).Take(TotalClients - currentCount))
         {
             if (existingDriverLicenses.Contains(client.DriverLicense) ||
                 existingPhones.Contains(client.Phone) ||
@@ -157,7 +204,7 @@ public static class DatabaseInitializer
         }
     }
 
-    private static IEnumerable<Client> BuildClientSeeds()
+    private static IEnumerable<Client> BuildClientSeeds(int blacklistActorId)
     {
         var generated = 0;
         var blacklistedIndexes = DemoSeedReferenceData.BlacklistedClientIndexes;
@@ -166,7 +213,7 @@ public static class DatabaseInitializer
         {
             foreach (var firstName in MaleFirstNames)
             {
-                yield return CreateClientSeed(generated, $"{firstName} {familyName}", blacklistedIndexes.Contains(generated));
+                yield return CreateClientSeed(generated, $"{firstName} {familyName}", blacklistedIndexes.Contains(generated), blacklistActorId);
                 generated++;
                 if (generated == TotalClients / 2)
                 {
@@ -180,7 +227,7 @@ public static class DatabaseInitializer
         {
             foreach (var firstName in FemaleFirstNames)
             {
-                yield return CreateClientSeed(generated, $"{firstName} {familyName}", blacklistedIndexes.Contains(generated));
+                yield return CreateClientSeed(generated, $"{firstName} {familyName}", blacklistedIndexes.Contains(generated), blacklistActorId);
                 generated++;
                 if (generated == TotalClients)
                 {
@@ -190,7 +237,7 @@ public static class DatabaseInitializer
         }
     }
 
-    private static Client CreateClientSeed(int index, string fullName, bool blacklisted)
+    private static Client CreateClientSeed(int index, string fullName, bool blacklisted, int blacklistActorId)
     {
         var passportSeries = PassportSeries[index % PassportSeries.Length];
         var driverSeries = DriverLicenseSeries[index % DriverLicenseSeries.Length];
@@ -206,12 +253,54 @@ public static class DatabaseInitializer
             DriverLicense = $"{driverSeries}{500000 + index:000000}",
             DriverLicenseExpirationDate = issuedAt.AddYears(5),
             Phone = $"+380{phonePrefix}{phoneSuffix:0000000}",
-            Blacklisted = blacklisted
+            IsBlacklisted = blacklisted,
+            BlacklistReason = blacklisted ? "Seeded blacklist restriction." : null,
+            BlacklistedAtUtc = blacklisted ? DateTime.UtcNow : null,
+            BlacklistedByEmployeeId = blacklisted ? blacklistActorId : null
         };
+    }
+
+    private static void BackfillBlacklistedClientActors(RentalDbContext dbContext, int blacklistActorId)
+    {
+        foreach (var client in dbContext.Clients.Where(item => item.IsBlacklisted && !item.BlacklistedByEmployeeId.HasValue))
+        {
+            client.BlacklistedByEmployeeId = blacklistActorId;
+            client.BlacklistedAtUtc ??= client.UpdatedAtUtc;
+            client.BlacklistReason = string.IsNullOrWhiteSpace(client.BlacklistReason)
+                ? "Legacy blacklist backfill."
+                : client.BlacklistReason.Trim();
+        }
+    }
+
+    private static int ResolveSeedBlacklistEmployeeId(RentalDbContext dbContext)
+    {
+        var adminId = dbContext.Employees
+            .Where(employee => employee.RoleId == UserRole.Admin)
+            .OrderBy(employee => employee.CreatedAtUtc)
+            .ThenBy(employee => employee.Id)
+            .Select(employee => (int?)employee.Id)
+            .FirstOrDefault();
+        if (adminId.HasValue)
+        {
+            return adminId.Value;
+        }
+
+        return dbContext.Employees
+            .OrderBy(employee => employee.CreatedAtUtc)
+            .ThenBy(employee => employee.Id)
+            .Select(employee => employee.Id)
+            .First();
     }
 
     private static void EnsureVehicleLookups(RentalDbContext dbContext)
     {
+        var existingMakes = dbContext.VehicleMakes
+            .ToList()
+            .ToDictionary(item => NormalizeLookupName(item.Name), item => item, StringComparer.Ordinal);
+        var existingModels = dbContext.VehicleModels
+            .ToList()
+            .ToDictionary(item => (item.MakeId, NormalizeLookupName(item.Name)), item => item);
+
         var existingFuelCodes = dbContext.FuelTypes
             .Select(item => item.Code)
             .ToHashSet(StringComparer.Ordinal);
@@ -255,12 +344,64 @@ public static class DatabaseInitializer
             });
             existingTransmissionCodes.Add(transmissionType);
         }
+
+        foreach (var makeName in VehicleCatalogSeeds.All
+                     .Select(item => item.Make)
+                     .Where(item => !string.IsNullOrWhiteSpace(item))
+                     .Distinct(StringComparer.Ordinal)
+                     .OrderBy(item => item, StringComparer.Ordinal))
+        {
+            var normalizedName = NormalizeLookupName(makeName);
+            if (existingMakes.ContainsKey(normalizedName))
+            {
+                continue;
+            }
+
+            var make = new VehicleMake
+            {
+                Name = makeName.Trim(),
+                NormalizedName = normalizedName
+            };
+            dbContext.VehicleMakes.Add(make);
+            existingMakes.Add(normalizedName, make);
+        }
+
+        dbContext.SaveChanges();
+
+        var makeIds = dbContext.VehicleMakes
+            .AsNoTracking()
+            .ToDictionary(item => NormalizeLookupName(item.Name), item => item.Id, StringComparer.Ordinal);
+
+        foreach (var seed in VehicleCatalogSeeds.All.OrderBy(item => item.Make, StringComparer.Ordinal).ThenBy(item => item.Model, StringComparer.Ordinal))
+        {
+            if (!makeIds.TryGetValue(NormalizeLookupName(seed.Make), out var makeId))
+            {
+                continue;
+            }
+
+            var normalizedModelName = NormalizeLookupName(seed.Model);
+            if (existingModels.ContainsKey((makeId, normalizedModelName)))
+            {
+                continue;
+            }
+
+            var model = new VehicleModel
+            {
+                MakeId = makeId,
+                Name = seed.Model.Trim(),
+                NormalizedName = normalizedModelName
+            };
+            dbContext.VehicleModels.Add(model);
+            existingModels.Add((makeId, normalizedModelName), model);
+        }
+
+        dbContext.SaveChanges();
     }
 
+    // Каталог авто синхронізується акуратно: якщо в системі вже є орендна історія,
+    // не можна бездумно перегенерувати номерні знаки чи набір машин.
     private static void EnsureVehicleCatalogSync(RentalDbContext dbContext)
     {
-        // Після появи реальної історії оренд не перетираємо характеристики парку wholesale,
-        // а лише добудовуємо відсутні seed-авто й нормалізуємо безпечні поля.
         var hasRentalHistory = dbContext.Rentals.Any();
         var vehicles = dbContext.Vehicles.ToList();
         var existingPlates = vehicles
@@ -272,7 +413,7 @@ public static class DatabaseInitializer
 
         foreach (var vehicle in vehicles)
         {
-            var seed = VehicleCatalogSeeds.TryFindByVehicle(vehicle.Make, vehicle.Model);
+            var seed = VehicleCatalogSeeds.TryFindByVehicle(vehicle.MakeName, vehicle.ModelName);
             if (seed is null)
             {
                 continue;
@@ -309,8 +450,8 @@ public static class DatabaseInitializer
 
             var vehicle = new Vehicle
             {
-                Make = seed.Make,
-                Model = seed.Model,
+                MakeId = ResolveVehicleMakeId(dbContext, seed.Make),
+                ModelId = ResolveVehicleModelId(dbContext, seed.Make, seed.Model),
                 LicensePlate = plate,
                 Mileage = CalculateInitialMileage(seed),
                 DailyRate = seed.DailyRate,
@@ -328,6 +469,8 @@ public static class DatabaseInitializer
         EnsureCatalogPhotoPaths(vehicles);
     }
 
+    // Операційну історію домальовуємо лише на повністю "порожню" бізнес-частину,
+    // щоб не домішувати demo-оренди до вже існуючих реальних даних.
     private static void SeedOperationalHistory(RentalDbContext dbContext)
     {
         var random = new Random(SeedRandomValue);
@@ -335,10 +478,10 @@ public static class DatabaseInitializer
         var periodStart = today.AddDays(-365);
 
         var employees = dbContext.Employees
-            .OrderBy(employee => employee.Role)
+            .OrderBy(employee => employee.RoleId)
             .ThenBy(employee => employee.Id)
             .ToList();
-        var manager = employees.FirstOrDefault(employee => employee.Role == UserRole.Manager) ?? employees.First();
+        var manager = employees.FirstOrDefault(employee => employee.RoleId == UserRole.Manager) ?? employees.First();
         var admin = employees.First();
 
         var clients = dbContext.Clients
@@ -350,7 +493,7 @@ public static class DatabaseInitializer
             .ToList()
             .Select(vehicle =>
             {
-                var seed = VehicleCatalogSeeds.TryFindByVehicle(vehicle.Make, vehicle.Model);
+                var seed = VehicleCatalogSeeds.TryFindByVehicle(vehicle.MakeName, vehicle.ModelName);
                 return seed is null ? null : CreateVehicleSeedState(vehicle, seed);
             })
             .Where(state => state is not null)
@@ -396,6 +539,14 @@ public static class DatabaseInitializer
         var damages = new List<Damage>();
         var inspections = new List<RentalInspection>();
         var maintenanceRecords = vehicleStates.SelectMany(state => state.MaintenanceRecords).ToList();
+        foreach (var maintenanceRecord in maintenanceRecords)
+        {
+            if (!maintenanceRecord.PerformedByEmployeeId.HasValue &&
+                string.IsNullOrWhiteSpace(maintenanceRecord.ServiceProviderName))
+            {
+                maintenanceRecord.PerformedByEmployeeId = manager.Id;
+            }
+        }
 
         foreach (var scheduledRental in scheduledRentals.OrderBy(item => item.StartDate).ThenBy(item => item.ContractNumber, StringComparer.Ordinal))
         {
@@ -403,7 +554,7 @@ public static class DatabaseInitializer
             {
                 Client = scheduledRental.Client,
                 Vehicle = scheduledRental.VehicleState.Vehicle,
-                Employee = scheduledRental.Employee,
+                CreatedByEmployee = scheduledRental.Employee,
                 ContractNumber = scheduledRental.ContractNumber,
                 StartDate = scheduledRental.StartDate,
                 EndDate = scheduledRental.EndDate,
@@ -413,7 +564,7 @@ public static class DatabaseInitializer
                 EndMileage = scheduledRental.EndMileage,
                 OverageFee = scheduledRental.OverageFee,
                 TotalAmount = scheduledRental.TotalAmount,
-                Status = scheduledRental.Status,
+                StatusId = scheduledRental.StatusId,
                 CreatedAtUtc = scheduledRental.CreatedAtUtc,
                 ClosedAtUtc = scheduledRental.ClosedAtUtc,
                 CanceledAtUtc = scheduledRental.CanceledAtUtc,
@@ -426,7 +577,8 @@ public static class DatabaseInitializer
                 inspections.Add(new RentalInspection
                 {
                     Rental = rental,
-                    Type = RentalInspectionType.Pickup,
+                    PerformedByEmployeeId = scheduledRental.Employee.Id,
+                    TypeId = RentalInspectionType.Pickup,
                     CompletedAtUtc = scheduledRental.PickupInspectionCompletedAtUtc.Value,
                     FuelPercent = scheduledRental.PickupFuelPercent,
                     Notes = scheduledRental.PickupInspectionNotes,
@@ -440,7 +592,8 @@ public static class DatabaseInitializer
                 inspections.Add(new RentalInspection
                 {
                     Rental = rental,
-                    Type = RentalInspectionType.Return,
+                    PerformedByEmployeeId = scheduledRental.Employee.Id,
+                    TypeId = RentalInspectionType.Return,
                     CompletedAtUtc = scheduledRental.ReturnInspectionCompletedAtUtc.Value,
                     FuelPercent = scheduledRental.ReturnFuelPercent,
                     Notes = scheduledRental.ReturnInspectionNotes,
@@ -454,10 +607,10 @@ public static class DatabaseInitializer
                 payments.Add(new Payment
                 {
                     Rental = rental,
-                    EmployeeId = paymentPlan.EmployeeId,
+                    RecordedByEmployeeId = paymentPlan.RecordedByEmployeeId,
                     Amount = paymentPlan.Amount,
-                    Method = paymentPlan.Method,
-                    Direction = paymentPlan.Direction,
+                    MethodId = paymentPlan.MethodId,
+                    DirectionId = paymentPlan.DirectionId,
                     CreatedAtUtc = paymentPlan.CreatedAtUtc,
                     Notes = paymentPlan.Notes
                 });
@@ -469,12 +622,13 @@ public static class DatabaseInitializer
                 {
                     Rental = rental,
                     VehicleId = scheduledRental.VehicleState.Vehicle.Id,
+                    ReportedByEmployeeId = scheduledRental.Employee.Id,
                     Description = damagePlan.Description,
                     DateReported = damagePlan.DateReported,
                     RepairCost = damagePlan.RepairCost,
-                    ActNumber = damagePlan.ActNumber,
+                    DamageActNumber = damagePlan.DamageActNumber,
                     ChargedAmount = damagePlan.ChargedAmount,
-                    Status = damagePlan.Status
+                    StatusId = damagePlan.StatusId
                 });
             }
         }
@@ -561,7 +715,7 @@ public static class DatabaseInitializer
                 VehicleState = vehicleState,
                 Client = client,
                 Employee = employee,
-                Status = status,
+                StatusId = status,
                 DurationDays = durationDays,
                 StartDate = startDate,
                 EndDate = endDate,
@@ -571,7 +725,7 @@ public static class DatabaseInitializer
                 IsOneWay = !string.Equals(pickupLocation, returnLocation, StringComparison.Ordinal)
             };
 
-            if (status == RentalStatus.Canceled)
+            if (scheduledRental.StatusId == RentalStatus.Canceled)
             {
                 scheduledRental.CanceledAtUtc = ResolveCanceledAt(random, createdAtUtc, startDate);
                 scheduledRental.CancellationReason = CancellationReasons[sequenceIndex % CancellationReasons.Length];
@@ -579,7 +733,7 @@ public static class DatabaseInitializer
             else
             {
                 vehicleState.OccupiedIntervals.Add(new DateInterval(startDate, endDate));
-                if (status == RentalStatus.Active)
+                if (scheduledRental.StatusId == RentalStatus.Active)
                 {
                     vehicleState.HasActiveRental = true;
                 }
@@ -731,7 +885,7 @@ public static class DatabaseInitializer
                 rental.StartMileage = vehicleState.CurrentMileage;
                 rental.BaseAmount = rental.VehicleState.Vehicle.DailyRate * rental.DurationDays;
 
-                if (rental.Status == RentalStatus.Canceled)
+                if (rental.StatusId == RentalStatus.Canceled)
                 {
                     rental.EndMileage = null;
                     rental.OverageFee = 0m;
@@ -742,11 +896,11 @@ public static class DatabaseInitializer
 
                 rental.PickupInspectionCompletedAtUtc = rental.StartDate.AddMinutes(25);
                 rental.PickupFuelPercent = 75 + random.Next(21);
-                rental.PickupInspectionNotes = "РђРІС‚Рѕ С‡РёСЃС‚Рµ, РґРѕРєСѓРјРµРЅС‚Рё С‚Р° РєР»СЋС‡С– РїРµСЂРµРґР°РЅС– РєР»С–С”РЅС‚Сѓ.";
+                rental.PickupInspectionNotes = "Авто чисте, документи та ключі передані клієнту.";
 
                 var distance = EstimateDistance(random, rental.VehicleState.CatalogSeed, rental.DurationDays, rental.IsOneWay);
 
-                if (rental.Status == RentalStatus.Closed)
+                if (rental.StatusId == RentalStatus.Closed)
                 {
                     rental.EndMileage = rental.StartMileage + distance;
                     rental.OverageFee = ResolveOverageFee(random, rental.DurationDays);
@@ -754,7 +908,7 @@ public static class DatabaseInitializer
                     rental.ClosedAtUtc = rental.EndDate.AddHours(2);
                     rental.ReturnInspectionCompletedAtUtc = rental.EndDate.AddMinutes(35);
                     rental.ReturnFuelPercent = Math.Max(30, rental.PickupFuelPercent.Value - random.Next(8, 36));
-                    rental.ReturnInspectionNotes = "РџСЂРѕР±С–Рі Р·РІС–СЂРµРЅРѕ, РІС–Р·СѓР°Р»СЊРЅРёР№ РѕРіР»СЏРґ РІРёРєРѕРЅР°РЅРѕ Р±РµР· РєСЂРёС‚РёС‡РЅРёС… Р·Р°СѓРІР°Р¶РµРЅСЊ.";
+                    rental.ReturnInspectionNotes = "Пробіг звірено, візуальний огляд виконано без критичних зауважень.";
                     PlanClosedPayments(rental, random);
 
                     vehicleState.CurrentMileage = rental.EndMileage.Value;
@@ -786,7 +940,7 @@ public static class DatabaseInitializer
     private static int ResolveBaseDailyMileage(VehicleCatalogSeeds.CatalogVehicleSeed seed)
     {
         var normalizedModel = seed.Model.ToLowerInvariant();
-        if (seed.FuelType.Contains("Р•Р»РµРєС‚СЂРѕ", StringComparison.OrdinalIgnoreCase))
+        if (seed.FuelType.Contains("Електро", StringComparison.OrdinalIgnoreCase))
         {
             return 95;
         }
@@ -836,7 +990,7 @@ public static class DatabaseInitializer
         var useSplitPayment = rental.TotalAmount >= 5000m && random.Next(100) < 65;
         if (!useSplitPayment)
         {
-            rental.Payments.Add(new ScheduledPayment(rental.Employee.Id, rental.TotalAmount, PaymentMethod.Card, PaymentDirection.Incoming, rental.CreatedAtUtc.AddHours(2), "РћРїР»Р°С‚Р° РѕСЂРµРЅРґРё"));
+            rental.Payments.Add(new ScheduledPayment(rental.Employee.Id, rental.TotalAmount, PaymentMethod.Card, PaymentDirection.Incoming, rental.CreatedAtUtc.AddHours(2), "Оплата оренди"));
             return;
         }
 
@@ -846,8 +1000,8 @@ public static class DatabaseInitializer
             deposit = RoundToNearest50(rental.TotalAmount / 2m);
         }
 
-        rental.Payments.Add(new ScheduledPayment(rental.Employee.Id, deposit, PaymentMethod.Card, PaymentDirection.Incoming, rental.CreatedAtUtc.AddHours(2), "РџРµСЂРµРґРїР»Р°С‚Р° Р·Р° РѕСЂРµРЅРґСѓ"));
-        rental.Payments.Add(new ScheduledPayment(rental.Employee.Id, rental.TotalAmount - deposit, random.Next(100) < 75 ? PaymentMethod.Card : PaymentMethod.Cash, PaymentDirection.Incoming, rental.EndDate.AddHours(1), "Р¤С–РЅР°Р»СЊРЅРёР№ СЂРѕР·СЂР°С…СѓРЅРѕРє Р·Р° РѕСЂРµРЅРґСѓ"));
+        rental.Payments.Add(new ScheduledPayment(rental.Employee.Id, deposit, PaymentMethod.Card, PaymentDirection.Incoming, rental.CreatedAtUtc.AddHours(2), "Передплата за оренду"));
+        rental.Payments.Add(new ScheduledPayment(rental.Employee.Id, rental.TotalAmount - deposit, random.Next(100) < 75 ? PaymentMethod.Card : PaymentMethod.Cash, PaymentDirection.Incoming, rental.EndDate.AddHours(1), "Фінальний розрахунок за оренду"));
     }
 
     private static void PlanActivePayments(ScheduledRental rental, Random random)
@@ -857,15 +1011,15 @@ public static class DatabaseInitializer
         var prepaidAmount = RoundToNearest50(rental.TotalAmount * prepaidShare);
         prepaidAmount = Math.Clamp(prepaidAmount, 500m, rental.TotalAmount);
 
-        rental.Payments.Add(new ScheduledPayment(rental.Employee.Id, prepaidAmount, PaymentMethod.Card, PaymentDirection.Incoming, rental.CreatedAtUtc.AddHours(3), "РџРµСЂРµРґРїР»Р°С‚Р° Р·Р° Р°РєС‚РёРІРЅСѓ РѕСЂРµРЅРґСѓ"));
+        rental.Payments.Add(new ScheduledPayment(rental.Employee.Id, prepaidAmount, PaymentMethod.Card, PaymentDirection.Incoming, rental.CreatedAtUtc.AddHours(3), "Передплата за активну оренду"));
     }
 
     private static void PlanCanceledPayments(ScheduledRental rental)
     {
         rental.Payments.Clear();
         var reservedAmount = RoundToNearest50(Math.Max(rental.BaseAmount * 0.25m, 500m));
-        rental.Payments.Add(new ScheduledPayment(rental.Employee.Id, reservedAmount, PaymentMethod.Card, PaymentDirection.Incoming, rental.CreatedAtUtc.AddHours(2), "РћРїР»Р°С‚Р° Р±СЂРѕРЅСЋРІР°РЅРЅСЏ"));
-        rental.Payments.Add(new ScheduledPayment(rental.Employee.Id, reservedAmount, PaymentMethod.Card, PaymentDirection.Refund, rental.CanceledAtUtc ?? rental.StartDate.AddHours(-2), "РџРѕРІРµСЂРЅРµРЅРЅСЏ РѕРїР»Р°С‚Рё Р·Р° СЃРєР°СЃРѕРІР°РЅРµ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ"));
+        rental.Payments.Add(new ScheduledPayment(rental.Employee.Id, reservedAmount, PaymentMethod.Card, PaymentDirection.Incoming, rental.CreatedAtUtc.AddHours(2), "Оплата бронювання"));
+        rental.Payments.Add(new ScheduledPayment(rental.Employee.Id, reservedAmount, PaymentMethod.Card, PaymentDirection.Refund, rental.CanceledAtUtc ?? rental.StartDate.AddHours(-2), "Повернення оплати за скасоване бронювання"));
     }
 
     private static void MaybeCreateMaintenanceRecord(VehicleSeedState vehicleState, ScheduledRental rental, Random random, DateTime today)
@@ -905,7 +1059,7 @@ public static class DatabaseInitializer
     private static void AttachDamages(IReadOnlyList<ScheduledRental> scheduledRentals, Random random)
     {
         var closedRentals = scheduledRentals
-            .Where(rental => rental.Status == RentalStatus.Closed)
+            .Where(rental => rental.StatusId == RentalStatus.Closed)
             .OrderByDescending(rental => rental.DurationDays)
             .ThenBy(rental => rental.StartDate)
             .ToList();
@@ -936,10 +1090,12 @@ public static class DatabaseInitializer
             }
 
             rental.TotalAmount += repairCost;
-            rental.Payments.Add(new ScheduledPayment(rental.Employee.Id, repairCost, PaymentMethod.Card, PaymentDirection.Incoming, rental.ClosedAtUtc?.AddHours(6) ?? rental.EndDate.AddHours(6), "РљРѕРјРїРµРЅСЃР°С†С–СЏ Р·Р° РїРѕС€РєРѕРґР¶РµРЅРЅСЏ"));
+            rental.Payments.Add(new ScheduledPayment(rental.Employee.Id, repairCost, PaymentMethod.Card, PaymentDirection.Incoming, rental.ClosedAtUtc?.AddHours(6) ?? rental.EndDate.AddHours(6), "Компенсація за пошкодження"));
         }
     }
 
+    // Послідовності договорів відновлюємо в кінці, коли вже відома фактична
+    // максимальна нумерація після seed-оренд і каталогу.
     private static void EnsureContractSequences(RentalDbContext dbContext)
     {
         var rentalsByYear = dbContext.Rentals
@@ -1045,7 +1201,7 @@ public static class DatabaseInitializer
 
     private static int ResolveServiceInterval(VehicleCatalogSeeds.CatalogVehicleSeed seed)
     {
-        if (seed.FuelType.Contains("Р•Р»РµРєС‚СЂРѕ", StringComparison.OrdinalIgnoreCase))
+        if (seed.FuelType.Contains("Електро", StringComparison.OrdinalIgnoreCase))
         {
             return 15000;
         }
@@ -1079,9 +1235,9 @@ public static class DatabaseInitializer
                 continue;
             }
 
-            var seed = VehicleCatalogSeeds.TryFindByVehicle(vehicle.Make, vehicle.Model);
+            var seed = VehicleCatalogSeeds.TryFindByVehicle(vehicle.MakeName, vehicle.ModelName);
             var resolved = seed is null
-                ? TryResolveCatalogPhotoPath(vehicle.Make, vehicle.Model)
+                ? TryResolveCatalogPhotoPath(vehicle.MakeName, vehicle.ModelName)
                 : TryResolveCatalogPhotoPath(seed.Make, seed.Model);
             if (!string.IsNullOrWhiteSpace(resolved))
             {
@@ -1094,6 +1250,28 @@ public static class DatabaseInitializer
     {
         return VehiclePhotoCatalog.TryBuildCatalogPhotoPath(make, model);
     }
+
+    private static int ResolveVehicleMakeId(RentalDbContext dbContext, string make)
+    {
+        var normalizedName = NormalizeLookupName(make);
+        return dbContext.VehicleMakes
+            .Where(item => item.NormalizedName == normalizedName)
+            .Select(item => item.Id)
+            .First();
+    }
+
+    private static int ResolveVehicleModelId(RentalDbContext dbContext, string make, string model)
+    {
+        var makeId = ResolveVehicleMakeId(dbContext, make);
+        var normalizedName = NormalizeLookupName(model);
+        return dbContext.VehicleModels
+            .Where(item => item.MakeId == makeId && item.NormalizedName == normalizedName)
+            .Select(item => item.Id)
+            .First();
+    }
+
+    private static string NormalizeLookupName(string value)
+        => string.Join(' ', value.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries)).ToUpperInvariant();
 
     private static void ApplyCatalogSeed(Vehicle vehicle, VehicleCatalogSeeds.CatalogVehicleSeed? seed)
     {
@@ -1167,7 +1345,7 @@ public static class DatabaseInitializer
         public required VehicleSeedState VehicleState { get; init; }
         public required Client Client { get; init; }
         public required Employee Employee { get; init; }
-        public required RentalStatus Status { get; init; }
+        public required RentalStatus StatusId { get; init; }
         public required int DurationDays { get; init; }
         public required DateTime StartDate { get; init; }
         public required DateTime EndDate { get; init; }
@@ -1194,8 +1372,8 @@ public static class DatabaseInitializer
         public List<ScheduledDamage> Damages { get; } = [];
     }
 
-    private sealed record ScheduledPayment(int EmployeeId, decimal Amount, PaymentMethod Method, PaymentDirection Direction, DateTime CreatedAtUtc, string Notes);
-    private sealed record ScheduledDamage(string Description, DateTime DateReported, decimal RepairCost, decimal ChargedAmount, bool IsChargedToClient, DamageStatus Status, string ActNumber);
+    private sealed record ScheduledPayment(int RecordedByEmployeeId, decimal Amount, PaymentMethod MethodId, PaymentDirection DirectionId, DateTime CreatedAtUtc, string Notes);
+    private sealed record ScheduledDamage(string Description, DateTime DateReported, decimal RepairCost, decimal ChargedAmount, bool IsChargedToClient, DamageStatus StatusId, string DamageActNumber);
 
     public sealed record SeedCredentials(
         string AdminLogin,
@@ -1205,3 +1383,6 @@ public static class DatabaseInitializer
         string ManagerPassword,
         bool ManagerPasswordGenerated);
 }
+
+
+

@@ -14,7 +14,8 @@ public sealed record MaintenanceRequest(
     int MileageAtService,
     string Description,
     decimal Cost,
-    int NextServiceMileage,
+    int? NextServiceMileage,
+    DateTime? NextServiceDate,
     string MaintenanceTypeCode,
     string? ServiceProviderName);
 
@@ -24,6 +25,8 @@ public sealed record MaintenanceDueItem(
     int VehicleId,
     string Vehicle,
     int CurrentMileage,
-    int NextServiceMileage,
-    int OverdueByKm);
+    int? NextServiceMileage,
+    DateTime? NextServiceDate,
+    int OverdueByKm,
+    int OverdueByDays);
 

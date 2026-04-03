@@ -1,4 +1,4 @@
-using CarRental.Desktop.Data;
+﻿using CarRental.Desktop.Data;
 using CarRental.Desktop.Models;
 using CarRental.Desktop.Services.Rentals;
 using CarRental.Shared.ReferenceData;
@@ -9,8 +9,8 @@ using System.Globalization;
 
 namespace CarRental.Desktop.ViewModels;
 
-// Self-service історія договорів для клієнта:
-// відображає бронювання за статусами та дає безпечні callbacks у каталог і сценарій повторного бронювання.
+// Self-service С–СЃС‚РѕСЂС–СЏ РґРѕРіРѕРІРѕСЂС–РІ РґР»СЏ РєР»С–С”РЅС‚Р°:
+// РІС–РґРѕР±СЂР°Р¶Р°С” Р±СЂРѕРЅСЋРІР°РЅРЅСЏ Р·Р° СЃС‚Р°С‚СѓСЃР°РјРё С‚Р° РґР°С” Р±РµР·РїРµС‡РЅС– callbacks Сѓ РєР°С‚Р°Р»РѕРі С– СЃС†РµРЅР°СЂС–Р№ РїРѕРІС‚РѕСЂРЅРѕРіРѕ Р±СЂРѕРЅСЋРІР°РЅРЅСЏ.
 public sealed class UserRentalsPageViewModel : PageDataViewModelBase, ITransientStateOwner
 {
     private const string SelfServiceCancelReason = DemoSeedReferenceData.SelfServiceCancelReasonDesktop;
@@ -66,7 +66,7 @@ public sealed class UserRentalsPageViewModel : PageDataViewModelBase, ITransient
 
     public Func<int, Task>? RebookRequestedAsync { get; set; }
 
-    // ViewModel не знає про конкретну навігацію shell, тому просить зовнішній обробник відкрити каталог.
+    // ViewModel РЅРµ Р·РЅР°С” РїСЂРѕ РєРѕРЅРєСЂРµС‚РЅСѓ РЅР°РІС–РіР°С†С–СЋ shell, С‚РѕРјСѓ РїСЂРѕСЃРёС‚СЊ Р·РѕРІРЅС–С€РЅС–Р№ РѕР±СЂРѕР±РЅРёРє РІС–РґРєСЂРёС‚Рё РєР°С‚Р°Р»РѕРі.
     public Func<Task>? OpenCatalogRequestedAsync { get; set; }
 
     public bool IsLoading
@@ -153,7 +153,7 @@ public sealed class UserRentalsPageViewModel : PageDataViewModelBase, ITransient
             return;
         }
 
-        // Профіль клієнта може бути створений ліниво під staff/account модель, тому сторінка сама self-heal-ить цей зв'язок.
+        // РџСЂРѕС„С–Р»СЊ РєР»С–С”РЅС‚Р° РјРѕР¶Рµ Р±СѓС‚Рё СЃС‚РІРѕСЂРµРЅРёР№ Р»С–РЅРёРІРѕ РїС–Рґ staff/account РјРѕРґРµР»СЊ, С‚РѕРјСѓ СЃС‚РѕСЂС–РЅРєР° СЃР°РјР° self-heal-РёС‚СЊ С†РµР№ Р·РІ'СЏР·РѕРє.
         IsLoading = true;
         try
         {
@@ -184,16 +184,16 @@ public sealed class UserRentalsPageViewModel : PageDataViewModelBase, ITransient
                     item.VehicleId,
                     VehicleName = vehicles
                         .Where(vehicle => vehicle.Id == item.VehicleId)
-                        .Select(vehicle => vehicle.Make + " " + vehicle.Model + " [" + vehicle.LicensePlate + "]")
+                        .Select(vehicle => vehicle.MakeLookup!.Name + " " + vehicle.ModelLookup!.Name + " [" + vehicle.LicensePlate + "]")
                         .FirstOrDefault() ?? "Авто не знайдено",
                     item.StartDate,
                     item.EndDate,
-                    item.Status,
+                    item.StatusId,
                     item.TotalAmount,
                     PaidAmount = item.Payments.Sum(payment => (decimal?)(
-                        payment.Direction == PaymentDirection.Incoming
+                        payment.DirectionId == PaymentDirection.Incoming
                             ? payment.Amount
-                            : payment.Direction == PaymentDirection.Refund
+                            : payment.DirectionId == PaymentDirection.Refund
                                 ? -payment.Amount
                                 : 0m)) ?? 0m,
                     item.CreatedAtUtc,
@@ -211,7 +211,7 @@ public sealed class UserRentalsPageViewModel : PageDataViewModelBase, ITransient
                     item.VehicleName,
                     item.StartDate,
                     item.EndDate,
-                    item.Status,
+                    item.StatusId,
                     item.TotalAmount,
                     item.PaidAmount,
                     item.TotalAmount - item.PaidAmount,
@@ -223,15 +223,15 @@ public sealed class UserRentalsPageViewModel : PageDataViewModelBase, ITransient
 
             ReplaceCollection(
                 UpcomingRentals,
-                rows.Where(item => item.Status == RentalStatus.Booked)
+                rows.Where(item => item.StatusId == RentalStatus.Booked)
                     .OrderBy(item => item.StartDate));
             ReplaceCollection(
                 ActiveRentals,
-                rows.Where(item => item.Status == RentalStatus.Active)
+                rows.Where(item => item.StatusId == RentalStatus.Active)
                     .OrderBy(item => item.EndDate));
             ReplaceCollection(
                 HistoryRentals,
-                rows.Where(item => item.Status == RentalStatus.Closed || item.Status == RentalStatus.Canceled)
+                rows.Where(item => item.StatusId == RentalStatus.Closed || item.StatusId == RentalStatus.Canceled)
                     .OrderByDescending(item => item.HistoryMoment));
 
             ClientSummaryText = HasRentals
@@ -343,47 +343,40 @@ public sealed class UserRentalsPageViewModel : PageDataViewModelBase, ITransient
 
     private async Task<int?> EnsureClientProfileAsync()
     {
-        var employee = await _dbContext.Employees
-            .Include(item => item.Account)
-                .ThenInclude(item => item!.Client)
-                .ThenInclude(item => item!.Documents)
-            .FirstOrDefaultAsync(item => item.Id == _currentEmployee.Id);
-        if (employee is null)
+        if (_currentEmployee.AccountId <= 0)
         {
             return null;
         }
 
-        var passportData = $"EMP-{employee.Id:D6}";
-        var driverLicense = $"USR-{employee.Id:D6}";
-
-        Client? client = employee.Account?.Client;
-        if (client is null && employee.PortalClientId.HasValue)
+        var account = await _dbContext.Accounts
+            .Include(item => item.Client)
+                .ThenInclude(item => item!.Documents)
+            .FirstOrDefaultAsync(item => item.Id == _currentEmployee.AccountId);
+        if (account is null)
         {
-            client = await _dbContext.Clients
-                .FirstOrDefaultAsync(item => item.Id == employee.PortalClientId.Value);
+            return null;
         }
 
-        if (client is null && employee.AccountId > 0)
+        var passportData = $"ACC-{account.Id:D6}";
+        var driverLicense = $"USR-{account.Id:D6}";
+
+        Client? client = account.Client;
+        if (client is null)
         {
             client = await _dbContext.Clients
-                .FirstOrDefaultAsync(item => item.AccountId == employee.AccountId);
+                .Include(item => item.Documents)
+                .FirstOrDefaultAsync(item => item.AccountId == account.Id);
         }
-
-        client ??= await _dbContext.Clients
-            .FirstOrDefaultAsync(existing =>
-                _dbContext.ClientDocuments.Any(document =>
-                    document.ClientId == existing.Id &&
-                    ((document.DocumentTypeCode == ClientDocumentTypes.Passport && document.DocumentNumber == passportData) ||
-                     (document.DocumentTypeCode == ClientDocumentTypes.DriverLicense && document.DocumentNumber == driverLicense))));
 
         if (client is null)
         {
             client = new Client
             {
-                FullName = employee.FullName,
+                AccountId = account.Id,
+                FullName = _currentEmployee.FullName,
                 PassportData = passportData,
                 DriverLicense = driverLicense,
-                Phone = ResolveClientPhone(employee.Login)
+                Phone = ResolveClientPhone(account.Login)
             };
 
             _dbContext.Clients.Add(client);
@@ -391,23 +384,22 @@ public sealed class UserRentalsPageViewModel : PageDataViewModelBase, ITransient
         }
 
         var hasChanges = false;
-        var normalizedPhone = ResolveClientPhone(employee.Login, client.Phone);
+        var normalizedPhone = ResolveClientPhone(account.Login, client.Phone);
         if (!string.Equals(client.Phone, normalizedPhone, StringComparison.Ordinal))
         {
             client.Phone = normalizedPhone;
             hasChanges = true;
         }
 
-        if (!string.Equals(client.FullName, employee.FullName, StringComparison.Ordinal))
+        if (!string.Equals(client.FullName, _currentEmployee.FullName, StringComparison.Ordinal))
         {
-            client.FullName = employee.FullName;
+            client.FullName = _currentEmployee.FullName;
             hasChanges = true;
         }
 
-        if (employee.PortalClientId != client.Id)
+        if (client.AccountId != account.Id)
         {
-            employee.PortalClientId = client.Id;
-            _currentEmployee.PortalClientId = client.Id;
+            client.AccountId = account.Id;
             hasChanges = true;
         }
 
@@ -421,30 +413,19 @@ public sealed class UserRentalsPageViewModel : PageDataViewModelBase, ITransient
 
     private static string ResolveClientPhone(string login, string? currentPhone = null)
     {
-        var normalizedCurrent = TryNormalizePhone(currentPhone);
+        var normalizedCurrent = ClientProfileConventions.TryNormalizePhone(currentPhone);
         if (normalizedCurrent is not null)
         {
             return normalizedCurrent;
         }
 
-        var normalizedLogin = TryNormalizePhone(login);
+        var normalizedLogin = ClientProfileConventions.TryNormalizePhone(login);
         if (normalizedLogin is not null)
         {
             return normalizedLogin;
         }
 
         return "Не вказано";
-    }
-
-    private static string? TryNormalizePhone(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return null;
-        }
-
-        var digits = string.Concat(value.Where(char.IsDigit));
-        return digits.Length is >= 10 and <= 15 ? $"+{digits}" : null;
     }
 
     private void ClearCollections()
@@ -482,7 +463,7 @@ public sealed class UserRentalsPageViewModel : PageDataViewModelBase, ITransient
         string VehicleName,
         DateTime StartDate,
         DateTime EndDate,
-        RentalStatus Status,
+        RentalStatus StatusId,
         decimal TotalAmount,
         decimal PaidAmount,
         decimal Balance,
@@ -491,20 +472,20 @@ public sealed class UserRentalsPageViewModel : PageDataViewModelBase, ITransient
         DateTime? CanceledAtUtc,
         string? CancellationReason)
     {
-        public bool CanCancel => Status == RentalStatus.Booked;
+        public bool CanCancel => StatusId == RentalStatus.Booked;
 
-        public bool CanBookAgain => Status is RentalStatus.Closed or RentalStatus.Canceled;
+        public bool CanBookAgain => StatusId is RentalStatus.Closed or RentalStatus.Canceled;
 
-        public string StatusText => Status switch
+        public string StatusText => StatusId switch
         {
             RentalStatus.Booked => "Заброньовано",
             RentalStatus.Active => "Активна",
             RentalStatus.Closed => "Завершена",
             RentalStatus.Canceled => "Скасована",
-            _ => Status.ToString()
+            _ => StatusId.ToString()
         };
 
-        public string StatusBadgeBackground => Status switch
+        public string StatusBadgeBackground => StatusId switch
         {
             RentalStatus.Booked => "#FEF3C7",
             RentalStatus.Active => "#DCFCE7",
@@ -513,7 +494,7 @@ public sealed class UserRentalsPageViewModel : PageDataViewModelBase, ITransient
             _ => "#E5E7EB"
         };
 
-        public string StatusBadgeForeground => Status switch
+        public string StatusBadgeForeground => StatusId switch
         {
             RentalStatus.Booked => "#92400E",
             RentalStatus.Active => "#166534",

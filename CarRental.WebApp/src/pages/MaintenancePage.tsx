@@ -26,6 +26,7 @@ export function MaintenancePage() {
     description: DEFAULT_MAINTENANCE_DESCRIPTION,
     cost: '',
     nextServiceMileage: '',
+    nextServiceDate: '',
   });
 
   const load = useCallback(async (pageToLoad: number): Promise<void> => {
@@ -58,16 +59,22 @@ export function MaintenancePage() {
   const addRecord = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
 
+    if (!form.nextServiceMileage && !form.nextServiceDate) {
+      setError('Вкажіть пробіг або дату наступного ТО.');
+      return;
+    }
+
     // Після додавання запису оновлюємо весь модуль, щоб одразу перерахувати
     // overdue-список і поточну історію ТО без локальних "ручних" патчів стану.
     try {
       await Api.addMaintenanceRecord({
         vehicleId: Number(form.vehicleId),
-        serviceDate: `${form.serviceDate}T00:00:00`,
+        serviceDate: form.serviceDate,
         mileageAtService: Number(form.mileageAtService),
         description: form.description,
         cost: Number(form.cost),
-        nextServiceMileage: Number(form.nextServiceMileage),
+        nextServiceMileage: form.nextServiceMileage ? Number(form.nextServiceMileage) : null,
+        nextServiceDate: form.nextServiceDate || null,
       });
 
       setForm((prev) => ({
@@ -75,6 +82,7 @@ export function MaintenancePage() {
         mileageAtService: '',
         cost: '',
         nextServiceMileage: '',
+        nextServiceDate: '',
       }));
       await load(page);
     } catch (requestError) {
@@ -102,7 +110,7 @@ export function MaintenancePage() {
                 <option value="">Оберіть авто</option>
                 {vehicles.map((vehicle) => (
                   <option key={vehicle.id} value={vehicle.id}>
-                    {vehicle.make} {vehicle.model} [{vehicle.licensePlate}]
+                    {vehicle.makeName} {vehicle.modelName} [{vehicle.licensePlate}]
                   </option>
                 ))}
               </select>
@@ -117,7 +125,11 @@ export function MaintenancePage() {
             </label>
             <label>
               Наступне ТО (км)
-              <input required type="number" min={1} value={form.nextServiceMileage} onChange={(event) => setForm((prev) => ({ ...prev, nextServiceMileage: event.target.value }))} />
+              <input type="number" min={1} value={form.nextServiceMileage} onChange={(event) => setForm((prev) => ({ ...prev, nextServiceMileage: event.target.value }))} />
+            </label>
+            <label>
+              Наступне ТО (дата)
+              <input type="date" value={form.nextServiceDate} onChange={(event) => setForm((prev) => ({ ...prev, nextServiceDate: event.target.value }))} />
             </label>
             <label>
               Вартість
@@ -147,8 +159,14 @@ export function MaintenancePage() {
                   <tr key={`${item.vehicleId}-${item.nextServiceMileage}`}>
                     <td>{item.vehicle}</td>
                     <td>{item.currentMileage.toLocaleString('uk-UA')}</td>
-                    <td>{item.nextServiceMileage.toLocaleString('uk-UA')}</td>
-                    <td>{item.overdueByKm.toLocaleString('uk-UA')} км</td>
+                    <td>
+                      {item.nextServiceMileage ? `${item.nextServiceMileage.toLocaleString('uk-UA')} км` : '-'}
+                      {item.nextServiceDate ? ` / ${formatShortDate(item.nextServiceDate)}` : ''}
+                    </td>
+                    <td>
+                      {item.overdueByKm > 0 ? `${item.overdueByKm.toLocaleString('uk-UA')} км` : '-'}
+                      {item.overdueByDays > 0 ? ` / ${item.overdueByDays} дн.` : ''}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -176,7 +194,10 @@ export function MaintenancePage() {
                   <td>{formatShortDate(record.serviceDate)}</td>
                   <td>{record.vehicleName}</td>
                   <td>{record.mileageAtService.toLocaleString('uk-UA')}</td>
-                  <td>{record.nextServiceMileage.toLocaleString('uk-UA')}</td>
+                  <td>
+                    {record.nextServiceMileage ? `${record.nextServiceMileage.toLocaleString('uk-UA')} км` : '-'}
+                    {record.nextServiceDate ? ` / ${formatShortDate(record.nextServiceDate)}` : ''}
+                  </td>
                   <td>{formatCurrency(record.cost)}</td>
                   <td>{record.description}</td>
                 </tr>

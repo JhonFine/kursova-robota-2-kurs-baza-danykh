@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Windows.Data;
 using System.Windows.Media;
 
@@ -56,9 +56,9 @@ internal static class StatusBadgePalette
         {
             "скасовано" or "cancel" or "canceled" or "refund" or "недоступний" or "ремонт" or "помилка" or "error" or "blocked" or "прострочено" or "debt" or "борг"
                 => new StatusBadgeColors(DangerBackground, DangerForeground),
-            "заброньовано" or "booked" or "open" or "відкрита" or "pending" or "очікує" or "due" or "донарахування"
+            "заброньовано" or "booked" or "open" or "відкрита" or "pending" or "очікує" or "due" or "донарахування" or "скоро"
                 => new StatusBadgeColors(WarningBackground, WarningForeground),
-            "активна" or "active" or "доступний" or "available" or "вільно" or "закрита" or "closed" or "resolved" or "успішно" or "paid" or "надходження" or "сплачено"
+            "активна" or "active" or "доступний" or "available" or "вільно" or "закрита" or "closed" or "resolved" or "успішно" or "paid" or "надходження" or "сплачено" or "за планом"
                 => new StatusBadgeColors(SuccessBackground, SuccessForeground),
             _ => new StatusBadgeColors(NeutralBackground, NeutralForeground)
         };

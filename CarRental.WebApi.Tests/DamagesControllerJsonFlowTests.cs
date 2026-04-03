@@ -55,7 +55,7 @@ public sealed class DamagesControllerJsonFlowTests
             Id = 10,
             ClientId = 1,
             VehicleId = 1,
-            EmployeeId = 1,
+            CreatedByEmployeeId = 1,
             ContractNumber = "CR-2026-000035",
             StartDate = DateTime.UtcNow.AddDays(-2),
             EndDate = DateTime.UtcNow.AddDays(1),
@@ -63,7 +63,7 @@ public sealed class DamagesControllerJsonFlowTests
             ReturnLocation = "Kyiv",
             StartMileage = 1000,
             TotalAmount = 500m,
-            Status = RentalStatus.Closed,
+            StatusId = RentalStatus.Closed,
             IsClosed = true,
             ClosedAtUtc = DateTime.UtcNow,
             CreatedAtUtc = DateTime.UtcNow
@@ -122,7 +122,7 @@ public sealed class DamagesControllerJsonFlowTests
         var badRequest = result.Should().BeOfType<BadRequestObjectResult>().Subject;
         badRequest.Value.Should().BeEquivalentTo(new
         {
-            message = "Не вдалося зберегти акт через неузгоджені довідники статусів пошкоджень. Перезапустіть API та спробуйте ще раз."
+            message = "РќРµ РІРґР°Р»РѕСЃСЏ Р·Р±РµСЂРµРіС‚Рё Р°РєС‚ С‡РµСЂРµР· РЅРµСѓР·РіРѕРґР¶РµРЅС– РґРѕРІС–РґРЅРёРєРё СЃС‚Р°С‚СѓСЃС–РІ РїРѕС€РєРѕРґР¶РµРЅСЊ. РџРµСЂРµР·Р°РїСѓСЃС‚С–С‚СЊ API С‚Р° СЃРїСЂРѕР±СѓР№С‚Рµ С‰Рµ СЂР°Р·."
         });
         (await dbContext.Damages.CountAsync()).Should().Be(0);
     }
@@ -157,10 +157,14 @@ public sealed class DamagesControllerJsonFlowTests
         {
             Id = 1,
             FullName = "Manager User",
-            Login = "manager",
-            PasswordHash = "x",
-            Role = UserRole.Manager,
-            IsActive = true
+            RoleId = UserRole.Manager,
+            Account = new Account
+            {
+                Login = "manager",
+                PasswordHash = "x",
+                IsActive = true,
+                PasswordChangedAtUtc = DateTime.UtcNow
+            }
         });
         dbContext.Clients.Add(new Client
         {
@@ -171,28 +175,21 @@ public sealed class DamagesControllerJsonFlowTests
             PassportExpirationDate = DateTime.UtcNow.AddYears(5),
             DriverLicenseExpirationDate = DateTime.UtcNow.AddYears(5),
             Phone = "+380500000001",
-            Blacklisted = false
+            IsBlacklisted = false
         });
-        dbContext.Vehicles.Add(new Vehicle
-        {
-            Id = 1,
-            Make = "Dacia",
-            Model = "Duster",
-            FuelType = "Бензин",
-            TransmissionType = "Автомат",
-            PowertrainCapacityValue = 2m,
-            PowertrainCapacityUnit = "L",
-            CargoCapacityValue = 500m,
-            CargoCapacityUnit = "L",
-            ConsumptionValue = 7m,
-            ConsumptionUnit = "L_PER_100KM",
-            LicensePlate = "BC6709CE",
-            Mileage = 1000,
-            DailyRate = 70m,
-            IsBookable = true,
-            IsAvailable = true,
-            ServiceIntervalKm = 10000
-        });
+        dbContext.Vehicles.Add(TestLookupSeed.CreateVehicle(
+            dbContext,
+            make: "Dacia",
+            model: "Duster",
+            licensePlate: "BC6709CE",
+            fuelTypeCode: "Р‘РµРЅР·РёРЅ",
+            transmissionTypeCode: "РђРІС‚РѕРјР°С‚",
+            powertrainCapacityValue: 2m,
+            cargoCapacityValue: 500m,
+            consumptionValue: 7m,
+            mileage: 1000,
+            dailyRate: 70m,
+            id: 1));
         dbContext.SaveChanges();
     }
 }

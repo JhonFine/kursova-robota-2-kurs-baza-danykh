@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Api } from '../api/client';
-import type { Vehicle } from '../api/types';
+import type { Vehicle, VehicleMake, VehicleModel } from '../api/types';
 import { FilterField, FilterToolbar, type ActiveFilterChipItem } from '../components/FilterToolbar';
 import { EmptyState } from '../components/EmptyState';
 import { FeedbackBanner } from '../components/FeedbackBanner';
@@ -64,9 +64,11 @@ export function FleetPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [newRate, setNewRate] = useState('');
+  const [vehicleMakes, setVehicleMakes] = useState<VehicleMake[]>([]);
+  const [vehicleModels, setVehicleModels] = useState<VehicleModel[]>([]);
   const [createForm, setCreateForm] = useState({
-    make: '',
-    model: '',
+    makeId: '',
+    modelId: '',
     powertrainCapacityValue: '',
     powertrainCapacityUnit: 'L',
     fuelType: '',
@@ -199,6 +201,72 @@ export function FleetPage() {
     void loadVehicles();
   }, [loadVehicles]);
 
+  useEffect(() => {
+    let active = true;
+
+    const loadLookups = async (): Promise<void> => {
+      try {
+        const makes = await Api.getVehicleMakes();
+        if (!active) {
+          return;
+        }
+
+        setVehicleMakes(makes);
+        setCreateForm((prev) => ({
+          ...prev,
+          makeId: prev.makeId || String(makes[0]?.id ?? ''),
+        }));
+      } catch (requestError) {
+        if (active) {
+          setError(Api.errorMessage(requestError));
+        }
+      }
+    };
+
+    void loadLookups();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadModels = async (): Promise<void> => {
+      const parsedMakeId = Number(createForm.makeId);
+      if (!Number.isFinite(parsedMakeId) || parsedMakeId <= 0) {
+        setVehicleModels([]);
+        return;
+      }
+
+      try {
+        const models = await Api.getVehicleModels(parsedMakeId);
+        if (!active) {
+          return;
+        }
+
+        setVehicleModels(models);
+        setCreateForm((prev) => ({
+          ...prev,
+          modelId: models.some((item) => String(item.id) === prev.modelId)
+            ? prev.modelId
+            : String(models[0]?.id ?? ''),
+        }));
+      } catch (requestError) {
+        if (active) {
+          setError(Api.errorMessage(requestError));
+        }
+      }
+    };
+
+    void loadModels();
+
+    return () => {
+      active = false;
+    };
+  }, [createForm.makeId]);
+
   const onCreate = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
 
@@ -211,12 +279,12 @@ export function FleetPage() {
     try {
       setError(null);
       await Api.createVehicle({
-        make: createForm.make.trim(),
-        model: createForm.model.trim(),
+        makeId: Number(createForm.makeId),
+        modelId: Number(createForm.modelId),
         powertrainCapacityValue: Number(createForm.powertrainCapacityValue),
         powertrainCapacityUnit: createForm.powertrainCapacityUnit,
-        fuelType: createForm.fuelType.trim(),
-        transmissionType: createForm.transmissionType.trim(),
+        fuelTypeCode: createForm.fuelType.trim(),
+        transmissionTypeCode: createForm.transmissionType.trim(),
         doorsCount: Number(createForm.doorsCount),
         cargoCapacityValue: Number(createForm.cargoCapacityValue),
         cargoCapacityUnit: createForm.cargoCapacityUnit,
@@ -226,14 +294,13 @@ export function FleetPage() {
         licensePlate: normalizedPlate,
         mileage: Number(createForm.mileage),
         dailyRate: Number(createForm.dailyRate),
-        isBookable: true,
         serviceIntervalKm: Number(createForm.serviceIntervalKm),
         photoPath: createForm.photoPath.trim() || null,
       });
 
       setCreateForm({
-        make: '',
-        model: '',
+        makeId: String(vehicleMakes[0]?.id ?? ''),
+        modelId: '',
         powertrainCapacityValue: '',
         powertrainCapacityUnit: 'L',
         fuelType: '',
@@ -272,7 +339,7 @@ export function FleetPage() {
       setError(null);
       await Api.updateVehicleRate(selectedVehicle.id, parsed);
       setNewRate('');
-      setMessage(`Ставку для ${selectedVehicle.make} ${selectedVehicle.model} оновлено.`);
+      setMessage(`Ставку для ${selectedVehicle.makeName} ${selectedVehicle.modelName} оновлено.`);
       await loadVehicles();
     } catch (requestError) {
       setError(Api.errorMessage(requestError));
@@ -470,14 +537,14 @@ export function FleetPage() {
                         onClick={() => setSelectedId(vehicle.id)}
                       >
                         <td>{vehicle.id}</td>
-                        <td>{vehicle.make} {vehicle.model}</td>
+                        <td>{vehicle.makeName} {vehicle.modelName}</td>
                         <td>{resolveVehicleClassLabel(vehicle.dailyRate)}</td>
                         <td>{vehicle.licensePlate}</td>
                         <td>{vehicle.mileage.toLocaleString('uk-UA')} км</td>
                         <td>{formatCurrency(vehicle.dailyRate)}</td>
                         <td>
-                          <span className={`status-pill ${vehicle.isAvailable ? 'ok' : vehicle.isBookable ? 'wait' : 'bad'}`}>
-                            {vehicle.isAvailable ? 'Доступне' : vehicle.isBookable ? 'Зайняте' : 'Недоступне'}
+                          <span className={`status-pill ${vehicle.isAvailable ? 'ok' : vehicle.vehicleStatusCode === 'READY' ? 'wait' : 'bad'}`}>
+                            {vehicle.isAvailable ? 'Доступне' : vehicle.vehicleStatusCode === 'READY' ? 'Зайняте' : 'Недоступне'}
                           </span>
                         </td>
                       </tr>
@@ -504,11 +571,11 @@ export function FleetPage() {
       </Panel>
 
       <div className="staff-dashboard-grid">
-        <Panel title="Оновити ціну" subtitle={selectedVehicle ? `${selectedVehicle.make} ${selectedVehicle.model}` : 'Оберіть авто в таблиці'}>
+        <Panel title="Оновити ціну" subtitle={selectedVehicle ? `${selectedVehicle.makeName} ${selectedVehicle.modelName}` : 'Оберіть авто в таблиці'}>
           {selectedVehicle ? (
             <div className="panel-stack">
               <div className="panel-intro">
-                <strong>{selectedVehicle.make} {selectedVehicle.model}</strong>
+                <strong>{selectedVehicle.makeName} {selectedVehicle.modelName}</strong>
                 <p>
                   {selectedVehicle.licensePlate} • {formatCurrency(selectedVehicle.dailyRate)} за добу • {selectedVehicle.mileage.toLocaleString('uk-UA')} км
                 </p>
@@ -544,11 +611,34 @@ export function FleetPage() {
           <form className="form-grid" onSubmit={(event) => void onCreate(event)}>
             <label>
               Марка
-              <input required value={createForm.make} onChange={(event) => setCreateForm((prev) => ({ ...prev, make: event.target.value }))} />
+              <select
+                required
+                value={createForm.makeId}
+                onChange={(event) => setCreateForm((prev) => ({ ...prev, makeId: event.target.value, modelId: '' }))}
+              >
+                <option value="">Оберіть марку</option>
+                {vehicleMakes.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               Модель
-              <input required value={createForm.model} onChange={(event) => setCreateForm((prev) => ({ ...prev, model: event.target.value }))} />
+              <select
+                required
+                value={createForm.modelId}
+                onChange={(event) => setCreateForm((prev) => ({ ...prev, modelId: event.target.value }))}
+                disabled={!createForm.makeId}
+              >
+                <option value="">Оберіть модель</option>
+                {vehicleModels.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               Двигун / батарея
@@ -569,8 +659,8 @@ export function FleetPage() {
               <select required value={createForm.fuelType} onChange={(event) => setCreateForm((prev) => ({ ...prev, fuelType: event.target.value }))}>
                 <option value="">Оберіть тип</option>
                 {FUEL_TYPE_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
+                  <option key={option.value} value={option.value}>
+                    {option.label}
                   </option>
                 ))}
               </select>
@@ -580,8 +670,8 @@ export function FleetPage() {
               <select required value={createForm.transmissionType} onChange={(event) => setCreateForm((prev) => ({ ...prev, transmissionType: event.target.value }))}>
                 <option value="">Оберіть коробку</option>
                 {TRANSMISSION_TYPE_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
+                  <option key={option.value} value={option.value}>
+                    {option.label}
                   </option>
                 ))}
               </select>
@@ -668,3 +758,4 @@ export function FleetPage() {
     </div>
   );
 }
+

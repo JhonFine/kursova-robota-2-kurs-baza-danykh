@@ -1,4 +1,4 @@
-namespace CarRental.Desktop.Services.Documents;
+﻿namespace CarRental.Desktop.Services.Documents;
 
 public interface IDocumentGenerator
 {
@@ -17,3 +17,4 @@ public sealed record ContractData(
     decimal TotalAmount);
 
 public sealed record GeneratedContractFiles(string TextPath, string DocxPath, string PdfPath);
+

@@ -280,3 +280,4 @@ public partial class AdminPage : UserControl
         Func<FrameworkElement?> ResolveTarget,
         Action? BeforeShow = null);
 }
+

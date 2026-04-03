@@ -22,12 +22,12 @@ public sealed class ReportsController(RentalDbContext dbContext) : ApiController
         var activeRentals = await dbContext.Rentals
             .AsNoTracking()
             .CountAsync(
-                rental => rental.Status == RentalStatus.Active && rental.StartDate <= today && today <= rental.EndDate,
+                rental => rental.StatusId == RentalStatus.Active && rental.StartDate <= today && today <= rental.EndDate,
                 cancellationToken);
 
         var totalRevenue = await dbContext.Rentals
             .AsNoTracking()
-            .Where(rental => rental.Status == RentalStatus.Closed)
+            .Where(rental => rental.StatusId == RentalStatus.Closed)
             .SumAsync(rental => (decimal?)rental.TotalAmount, cancellationToken) ?? 0m;
 
         var totalDamageCost = await dbContext.Damages

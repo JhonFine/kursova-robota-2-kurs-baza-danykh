@@ -25,13 +25,13 @@ public sealed class DatabaseIntegrityTests
             {
                 ClientId = 1,
                 VehicleId = 1,
-                EmployeeId = 1,
+                CreatedByEmployeeId = 1,
                 ContractNumber = "CR-2026-000001",
                 StartDate = now.AddHours(-2),
                 EndDate = now.AddHours(4),
                 StartMileage = 1000,
                 TotalAmount = 100m,
-                Status = RentalStatus.Active,
+                StatusId = RentalStatus.Active,
                 IsClosed = false,
                 CreatedAtUtc = DateTime.UtcNow
             },
@@ -39,13 +39,13 @@ public sealed class DatabaseIntegrityTests
             {
                 ClientId = 1,
                 VehicleId = 1,
-                EmployeeId = 1,
+                CreatedByEmployeeId = 1,
                 ContractNumber = "CR-2026-000002",
                 StartDate = now.AddDays(2),
                 EndDate = now.AddDays(3),
                 StartMileage = 1000,
                 TotalAmount = 120m,
-                Status = RentalStatus.Booked,
+                StatusId = RentalStatus.Booked,
                 IsClosed = false,
                 CreatedAtUtc = DateTime.UtcNow
             });
@@ -57,7 +57,7 @@ public sealed class DatabaseIntegrityTests
         // Тест повторює те саме обчислення availability, яке очікує UI після refresh статусів.
         var hasActiveRental = await dbContext.Rentals
             .AsNoTracking()
-            .AnyAsync(item => item.VehicleId == 1 && item.Status == RentalStatus.Active);
+            .AnyAsync(item => item.VehicleId == 1 && item.StatusId == RentalStatus.Active);
         var vehicle = await dbContext.Vehicles.AsNoTracking().SingleAsync(item => item.Id == 1);
         var isAvailable = !vehicle.IsDeleted && vehicle.IsBookable && !hasActiveRental;
         isAvailable.Should().BeFalse();
@@ -80,7 +80,7 @@ public sealed class DatabaseIntegrityTests
         var result = await service.CreateRentalAsync(new CreateRentalRequest(
             ClientId: 1,
             VehicleId: 1,
-            EmployeeId: 1,
+            CreatedByEmployeeId: 1,
             StartDate: start,
             EndDate: start.AddDays(1),
             PickupLocation: "Kyiv"));
@@ -101,7 +101,7 @@ public sealed class DatabaseIntegrityTests
         {
             ClientId = 1,
             VehicleId = 1,
-            EmployeeId = 1,
+            CreatedByEmployeeId = 1,
             ContractNumber = "CR-2026-000091",
             StartDate = start,
             EndDate = start.AddDays(1),
@@ -109,7 +109,7 @@ public sealed class DatabaseIntegrityTests
             ReturnLocation = "Kyiv",
             StartMileage = 1000,
             TotalAmount = 70m,
-            Status = RentalStatus.Booked,
+            StatusId = RentalStatus.Booked,
             IsClosed = false,
             CreatedAtUtc = DateTime.UtcNow
         });
@@ -129,7 +129,7 @@ public sealed class DatabaseIntegrityTests
 
         result.Success.Should().BeFalse();
         (await dbContext.RentalInspections.CountAsync()).Should().Be(0);
-        (await dbContext.Rentals.AsNoTracking().SingleAsync(item => item.Id == rentalId)).Status.Should().Be(RentalStatus.Booked);
+        (await dbContext.Rentals.AsNoTracking().SingleAsync(item => item.Id == rentalId)).StatusId.Should().Be(RentalStatus.Booked);
     }
 
     [Fact]
@@ -161,7 +161,7 @@ public sealed class DatabaseIntegrityTests
         var numbers = await dbContext.Damages
             .AsNoTracking()
             .OrderBy(item => item.Id)
-            .Select(item => item.ActNumber)
+            .Select(item => item.DamageActNumber)
             .ToListAsync();
         numbers.Should().HaveCount(2);
         numbers[0].Should().NotBe(numbers[1]);
@@ -174,31 +174,24 @@ public sealed class DatabaseIntegrityTests
         await using var dbContext = testDatabase.CreateDbContext();
         SeedMinimalData(dbContext);
 
-        dbContext.Vehicles.Add(new Vehicle
-        {
-            Id = 2,
-            Make = "BMW",
-            Model = "M5",
-            FuelType = "Бензин",
-            TransmissionType = "Автомат",
-            PowertrainCapacityValue = 4.4m,
-            PowertrainCapacityUnit = "L",
-            CargoCapacityValue = 530m,
-            CargoCapacityUnit = "L",
-            ConsumptionValue = 11m,
-            ConsumptionUnit = "L_PER_100KM",
-            LicensePlate = "AA0022AA",
-            Mileage = 1500,
-            DailyRate = 120m,
-            IsBookable = true,
-            IsAvailable = true,
-            ServiceIntervalKm = 10000
-        });
+        dbContext.Vehicles.Add(TestLookupSeed.CreateVehicle(
+            dbContext,
+            make: "BMW",
+            model: "M5",
+            licensePlate: "AA0022AA",
+            fuelTypeCode: "Бензин",
+            transmissionTypeCode: "Автомат",
+            powertrainCapacityValue: 4.4m,
+            cargoCapacityValue: 530m,
+            consumptionValue: 11m,
+            mileage: 1500,
+            dailyRate: 120m,
+            id: 2));
         dbContext.Rentals.Add(new Rental
         {
             ClientId = 1,
             VehicleId = 2,
-            EmployeeId = 1,
+            CreatedByEmployeeId = 1,
             ContractNumber = "CR-2026-000079",
             StartDate = DateTime.UtcNow.AddDays(-2),
             EndDate = DateTime.UtcNow.AddDays(1),
@@ -206,7 +199,7 @@ public sealed class DatabaseIntegrityTests
             ReturnLocation = "Kyiv",
             StartMileage = 1500,
             TotalAmount = 500m,
-            Status = RentalStatus.Active,
+            StatusId = RentalStatus.Active,
             IsClosed = false,
             CreatedAtUtc = DateTime.UtcNow
         });
@@ -242,13 +235,13 @@ public sealed class DatabaseIntegrityTests
         {
             ClientId = 1,
             VehicleId = 1,
-            EmployeeId = 1,
+            CreatedByEmployeeId = 1,
             ContractNumber = "CR-2026-000010",
             StartDate = DateTime.UtcNow,
             EndDate = DateTime.UtcNow.AddDays(1),
             StartMileage = 1000,
             TotalAmount = 150m,
-            Status = RentalStatus.Active,
+            StatusId = RentalStatus.Active,
             IsClosed = false,
             CreatedAtUtc = DateTime.UtcNow
         };
@@ -258,17 +251,17 @@ public sealed class DatabaseIntegrityTests
         var paymentService = new PaymentService(dbContext);
         var result = await paymentService.AddPaymentAsync(new PaymentRequest(
             RentalId: rental.Id,
-            EmployeeId: 1,
+            RecordedByEmployeeId: 1,
             Amount: 0m,
-            Method: PaymentMethod.Cash,
-            Direction: PaymentDirection.Incoming,
+            MethodId: PaymentMethod.Cash,
+            DirectionId: PaymentDirection.Incoming,
             Notes: "invalid"));
         result.Success.Should().BeFalse();
 
         var damageType = dbContext.Model.FindEntityType(typeof(Damage));
         damageType.Should().NotBeNull();
         damageType!.GetIndexes()
-            .Any(index => index.IsUnique && index.Properties.Count == 1 && index.Properties[0].Name == nameof(Damage.ActNumber))
+            .Any(index => index.IsUnique && index.Properties.Count == 1 && index.Properties[0].Name == nameof(Damage.DamageActNumber))
             .Should()
             .BeTrue();
     }
@@ -284,13 +277,13 @@ public sealed class DatabaseIntegrityTests
         {
             ClientId = 1,
             VehicleId = 1,
-            EmployeeId = 1,
+            CreatedByEmployeeId = 1,
             ContractNumber = "CR-2026-000011",
             StartDate = DateTime.UtcNow,
             EndDate = DateTime.UtcNow.AddDays(1),
             StartMileage = 1000,
             TotalAmount = 100m,
-            Status = RentalStatus.Active,
+            StatusId = RentalStatus.Active,
             IsClosed = false,
             CreatedAtUtc = DateTime.UtcNow
         };
@@ -301,20 +294,20 @@ public sealed class DatabaseIntegrityTests
             new Payment
             {
                 RentalId = rental.Id,
-                EmployeeId = 1,
+                RecordedByEmployeeId = 1,
                 Amount = 40m,
-                Method = PaymentMethod.Card,
-                Direction = PaymentDirection.Incoming,
+                MethodId = PaymentMethod.Card,
+                DirectionId = PaymentDirection.Incoming,
                 Notes = "incoming",
                 CreatedAtUtc = DateTime.UtcNow
             },
             new Payment
             {
                 RentalId = rental.Id,
-                EmployeeId = 1,
+                RecordedByEmployeeId = 1,
                 Amount = 10m,
-                Method = PaymentMethod.Card,
-                Direction = PaymentDirection.Refund,
+                MethodId = PaymentMethod.Card,
+                DirectionId = PaymentDirection.Refund,
                 Notes = "refund",
                 CreatedAtUtc = DateTime.UtcNow
             });
@@ -338,12 +331,12 @@ public sealed class DatabaseIntegrityTests
         var createResult = await service.CreateRentalWithPaymentAsync(new CreateRentalWithPaymentRequest(
             ClientId: 1,
             VehicleId: 1,
-            EmployeeId: 1,
+            CreatedByEmployeeId: 1,
             StartDate: start,
             EndDate: start.AddDays(2),
             PickupLocation: "Київ",
-            Method: PaymentMethod.Card,
-            Direction: PaymentDirection.Incoming,
+            MethodId: PaymentMethod.Card,
+            DirectionId: PaymentDirection.Incoming,
             Notes: "Initial payment"));
         createResult.Success.Should().BeTrue();
 
@@ -353,7 +346,7 @@ public sealed class DatabaseIntegrityTests
         cancelResult.Success.Should().BeTrue();
 
         var rental = await dbContext.Rentals.AsNoTracking().SingleAsync(item => item.Id == createResult.RentalId);
-        rental.Status.Should().Be(RentalStatus.Canceled);
+        rental.StatusId.Should().Be(RentalStatus.Canceled);
         rental.TotalAmount.Should().Be(0m);
 
         var payments = await dbContext.Payments
@@ -362,8 +355,8 @@ public sealed class DatabaseIntegrityTests
             .OrderBy(item => item.Id)
             .ToListAsync();
         payments.Should().HaveCount(2);
-        payments[0].Direction.Should().Be(PaymentDirection.Incoming);
-        payments[1].Direction.Should().Be(PaymentDirection.Refund);
+        payments[0].DirectionId.Should().Be(PaymentDirection.Incoming);
+        payments[1].DirectionId.Should().Be(PaymentDirection.Refund);
         payments[1].Amount.Should().Be(payments[0].Amount);
 
         var paymentService = new PaymentService(dbContext);
@@ -383,12 +376,12 @@ public sealed class DatabaseIntegrityTests
         var createResult = await service.CreateRentalWithPaymentAsync(new CreateRentalWithPaymentRequest(
             ClientId: 1,
             VehicleId: 1,
-            EmployeeId: 1,
+            CreatedByEmployeeId: 1,
             StartDate: start,
             EndDate: start.AddDays(3),
             PickupLocation: "Київ",
-            Method: PaymentMethod.Card,
-            Direction: PaymentDirection.Incoming,
+            MethodId: PaymentMethod.Card,
+            DirectionId: PaymentDirection.Incoming,
             Notes: "Initial payment"));
         createResult.Success.Should().BeTrue();
         createResult.TotalAmount.Should().Be(210m);
@@ -408,10 +401,10 @@ public sealed class DatabaseIntegrityTests
 
         var refund = await dbContext.Payments
             .AsNoTracking()
-            .Where(item => item.RentalId == createResult.RentalId && item.Direction == PaymentDirection.Refund)
+            .Where(item => item.RentalId == createResult.RentalId && item.DirectionId == PaymentDirection.Refund)
             .SingleAsync();
         refund.Amount.Should().Be(140m);
-        refund.Method.Should().Be(PaymentMethod.Card);
+        refund.MethodId.Should().Be(PaymentMethod.Card);
     }
 
     [Fact]
@@ -426,7 +419,7 @@ public sealed class DatabaseIntegrityTests
         var createResult = await service.CreateRentalAsync(new CreateRentalRequest(
             ClientId: 1,
             VehicleId: 1,
-            EmployeeId: 1,
+            CreatedByEmployeeId: 1,
             StartDate: start,
             EndDate: start.AddDays(2),
             PickupLocation: "Київ"));
@@ -441,8 +434,8 @@ public sealed class DatabaseIntegrityTests
         settleResult.Amount.Should().Be(createResult.TotalAmount);
 
         var payment = await dbContext.Payments.AsNoTracking().SingleAsync(item => item.RentalId == createResult.RentalId);
-        payment.Direction.Should().Be(PaymentDirection.Incoming);
-        payment.Method.Should().Be(PaymentMethod.Card);
+        payment.DirectionId.Should().Be(PaymentDirection.Incoming);
+        payment.MethodId.Should().Be(PaymentMethod.Card);
         payment.Amount.Should().Be(createResult.TotalAmount);
         payment.Notes.Should().Be("Card **** 4242");
     }
@@ -458,7 +451,7 @@ public sealed class DatabaseIntegrityTests
         {
             ClientId = 1,
             VehicleId = 1,
-            EmployeeId = 1,
+            CreatedByEmployeeId = 1,
             ContractNumber = "CR-2026-000015",
             StartDate = DateTime.UtcNow.AddMinutes(15),
             EndDate = DateTime.UtcNow.AddDays(1),
@@ -466,7 +459,7 @@ public sealed class DatabaseIntegrityTests
             ReturnLocation = "Київ",
             StartMileage = 1000,
             TotalAmount = 70m,
-            Status = RentalStatus.Booked,
+            StatusId = RentalStatus.Booked,
             IsClosed = false,
             CreatedAtUtc = DateTime.UtcNow
         });
@@ -483,11 +476,11 @@ public sealed class DatabaseIntegrityTests
         result.Success.Should().BeTrue();
 
         var rental = await dbContext.Rentals.AsNoTracking().SingleAsync(item => item.Id == rentalId);
-        rental.Status.Should().Be(RentalStatus.Active);
+        rental.StatusId.Should().Be(RentalStatus.Active);
 
         var inspection = await dbContext.RentalInspections
             .AsNoTracking()
-            .SingleAsync(item => item.RentalId == rentalId && item.Type == RentalInspectionType.Pickup);
+            .SingleAsync(item => item.RentalId == rentalId && item.TypeId == RentalInspectionType.Pickup);
         inspection.FuelPercent.Should().Be(85);
         inspection.Notes.Should().Be("Ready for pickup");
         inspection.CompletedAtUtc.Should().NotBe(default);
@@ -504,7 +497,7 @@ public sealed class DatabaseIntegrityTests
         {
             ClientId = 1,
             VehicleId = 1,
-            EmployeeId = 1,
+            CreatedByEmployeeId = 1,
             ContractNumber = "CR-2026-000016",
             StartDate = DateTime.UtcNow.AddMinutes(-15),
             EndDate = DateTime.UtcNow.AddDays(1),
@@ -512,7 +505,7 @@ public sealed class DatabaseIntegrityTests
             ReturnLocation = "Kyiv",
             StartMileage = 1000,
             TotalAmount = 70m,
-            Status = RentalStatus.Booked,
+            StatusId = RentalStatus.Booked,
             IsClosed = false,
             CreatedAtUtc = DateTime.UtcNow
         });
@@ -529,11 +522,11 @@ public sealed class DatabaseIntegrityTests
         result.Success.Should().BeFalse();
 
         var rental = await dbContext.Rentals.AsNoTracking().SingleAsync(item => item.Id == rentalId);
-        rental.Status.Should().Be(RentalStatus.Booked);
+        rental.StatusId.Should().Be(RentalStatus.Booked);
 
         var hasPickupInspection = await dbContext.RentalInspections
             .AsNoTracking()
-            .AnyAsync(item => item.RentalId == rentalId && item.Type == RentalInspectionType.Pickup);
+            .AnyAsync(item => item.RentalId == rentalId && item.TypeId == RentalInspectionType.Pickup);
         hasPickupInspection.Should().BeFalse();
     }
 
@@ -549,7 +542,7 @@ public sealed class DatabaseIntegrityTests
         var createResult = await service.CreateRentalAsync(new CreateRentalRequest(
             ClientId: 1,
             VehicleId: 1,
-            EmployeeId: 1,
+            CreatedByEmployeeId: 1,
             StartDate: start,
             EndDate: start.AddDays(2),
             PickupLocation: "Київ"));
@@ -577,7 +570,7 @@ public sealed class DatabaseIntegrityTests
         var createResult = await service.CreateRentalAsync(new CreateRentalRequest(
             ClientId: 1,
             VehicleId: 1,
-            EmployeeId: 1,
+            CreatedByEmployeeId: 1,
             StartDate: start,
             EndDate: start.AddDays(2),
             PickupLocation: "Київ"));
@@ -601,10 +594,14 @@ public sealed class DatabaseIntegrityTests
         {
             Id = 1,
             FullName = "Admin",
-            Login = "admin",
-            PasswordHash = "x",
-            Role = UserRole.Admin,
-            IsActive = true
+            RoleId = UserRole.Admin,
+            Account = new Account
+            {
+                Login = "admin",
+                PasswordHash = "x",
+                IsActive = true,
+                PasswordChangedAtUtc = DateTime.UtcNow
+            }
         });
         dbContext.Clients.Add(new Client
         {
@@ -615,33 +612,30 @@ public sealed class DatabaseIntegrityTests
             PassportExpirationDate = DateTime.UtcNow.AddYears(5),
             DriverLicenseExpirationDate = DateTime.UtcNow.AddYears(5),
             Phone = "123",
-            Blacklisted = false
+            IsBlacklisted = false
         });
-        dbContext.Vehicles.Add(new Vehicle
-        {
-            Id = 1,
-            Make = "Toyota",
-            Model = "Camry",
-            FuelType = "Бензин",
-            TransmissionType = "Автомат",
-            PowertrainCapacityValue = 2m,
-            PowertrainCapacityUnit = "L",
-            CargoCapacityValue = 500m,
-            CargoCapacityUnit = "L",
-            ConsumptionValue = 7m,
-            ConsumptionUnit = "L_PER_100KM",
-            LicensePlate = "AA0011AA",
-            Mileage = 1000,
-            DailyRate = 70m,
-            IsBookable = true,
-            IsAvailable = true,
-            ServiceIntervalKm = 10000
-        });
+        dbContext.Vehicles.Add(TestLookupSeed.CreateVehicle(
+            dbContext,
+            make: "Toyota",
+            model: "Camry",
+            licensePlate: "AA0011AA",
+            fuelTypeCode: "Бензин",
+            transmissionTypeCode: "Автомат",
+            powertrainCapacityValue: 2m,
+            cargoCapacityValue: 500m,
+            consumptionValue: 7m,
+            mileage: 1000,
+            dailyRate: 70m,
+            id: 1));
         dbContext.SaveChanges();
     }
-
     private sealed class StubContractNumberService(string value) : IContractNumberService
     {
         public Task<string> NextNumberAsync(CancellationToken cancellationToken = default) => Task.FromResult(value);
     }
 }
+
+
+
+
+

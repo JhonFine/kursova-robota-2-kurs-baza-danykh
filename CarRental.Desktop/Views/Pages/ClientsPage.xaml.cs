@@ -1,4 +1,5 @@
 using CarRental.Desktop.ViewModels;
+using Microsoft.Win32;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
@@ -82,28 +83,70 @@ public partial class ClientsPage : UserControl
 
         _guideSteps.Add(new GuideStep(
             "CRM-панель",
-            "Верхній блок дає швидкий контекст сторінки та кнопку оновлення даних.",
+            "Верхній блок відкриває швидке створення клієнта та примусове оновлення даних.",
             () => ClientsOverviewCard));
         _guideSteps.Add(new GuideStep(
-            "Оновлення даних",
-            "Кнопка примусово оновлює список клієнтів із бази.",
-            () => ClientsRefreshButton));
+            "Додавання клієнта",
+            "Кнопка переводить праву панель у режим швидкої реєстрації клієнта за стійкою.",
+            () => CreateClientButton));
         _guideSteps.Add(new GuideStep(
-            "Список клієнтів",
-            "Тут відображаються всі клієнти з телефоном, посвідченням та статусом.",
+            "Пошук і список",
+            "Ліворуч можна знайти клієнта за ПІБ, телефоном або документами й одразу створити профіль, якщо пошук порожній.",
             () => ClientsListGroup));
         _guideSteps.Add(new GuideStep(
-            "Картка клієнта",
-            "Праворуч показані деталі обраного клієнта.",
+            "Права панель",
+            "Праворуч або картка обраного клієнта, або форма реєстрації та редагування.",
             () => ClientDetailsGroup));
         _guideSteps.Add(new GuideStep(
-            "Керування статусом",
-            "Ці кнопки додають клієнта в список/прибирають або видаляють клієнта.",
-            () => ToggleBlacklistButton));
+            "Оренда з картки",
+            "Після вибору клієнта можна одразу перейти до оформлення оренди з уже підставленим профілем.",
+            () => OpenRentalsButton));
         _guideSteps.Add(new GuideStep(
             "Панель повідомлень",
             "Нижній рядок показує результат останньої дії або помилку.",
             () => ClientsStatusPanel));
+    }
+
+    private void ChoosePassportFileButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel is null)
+        {
+            return;
+        }
+
+        var openFileDialog = new OpenFileDialog
+        {
+            Title = "Оберіть файл паспорта",
+            Filter = "Файли документів|*.jpg;*.jpeg;*.png;*.webp|Усі файли|*.*",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+
+        if (openFileDialog.ShowDialog(Window.GetWindow(this)) == true)
+        {
+            _viewModel.SelectPassportSourceFile(openFileDialog.FileName);
+        }
+    }
+
+    private void ChooseDriverLicenseFileButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel is null)
+        {
+            return;
+        }
+
+        var openFileDialog = new OpenFileDialog
+        {
+            Title = "Оберіть файл посвідчення водія",
+            Filter = "Файли документів|*.jpg;*.jpeg;*.png;*.webp|Усі файли|*.*",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+
+        if (openFileDialog.ShowDialog(Window.GetWindow(this)) == true)
+        {
+            _viewModel.SelectDriverLicenseSourceFile(openFileDialog.FileName);
+        }
     }
 
     private void StartGuide()
@@ -226,24 +269,12 @@ public partial class ClientsPage : UserControl
     }
 
     private static double Clamp(double value, double min, double max)
-    {
-        if (value < min)
-        {
-            return min;
-        }
-
-        if (value > max)
-        {
-            return max;
-        }
-
-        return value;
-    }
+        => Math.Min(Math.Max(value, min), max);
 
     private void GuideOverlay_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        e.Handled = true;
         AdvanceGuide();
+        e.Handled = true;
     }
 
     private sealed record GuideStep(

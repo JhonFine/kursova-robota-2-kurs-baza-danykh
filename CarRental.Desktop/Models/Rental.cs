@@ -1,4 +1,4 @@
-using System.ComponentModel.DataAnnotations.Schema;
+﻿using System.ComponentModel.DataAnnotations.Schema;
 
 namespace CarRental.Desktop.Models;
 
@@ -10,7 +10,7 @@ public sealed class Rental
 
     public int VehicleId { get; set; }
 
-    public int CreatedByEmployeeId { get; set; }
+    public int? CreatedByEmployeeId { get; set; }
 
     public int? ClosedByEmployeeId { get; set; }
 
@@ -34,7 +34,7 @@ public sealed class Rental
 
     public decimal TotalAmount { get; set; }
 
-    public RentalStatus Status { get; set; } = RentalStatus.Booked;
+    public RentalStatus StatusId { get; set; } = RentalStatus.Booked;
 
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
@@ -45,30 +45,23 @@ public sealed class Rental
     public string? CancellationReason { get; set; }
 
     [NotMapped]
-    public int EmployeeId
-    {
-        get => CreatedByEmployeeId;
-        set => CreatedByEmployeeId = value;
-    }
-
-    [NotMapped]
     public bool IsClosed
     {
-        get => Status == RentalStatus.Closed;
+        get => StatusId == RentalStatus.Closed;
         set
         {
             if (!value)
             {
-                if (Status == RentalStatus.Closed)
+                if (StatusId == RentalStatus.Closed)
                 {
-                    Status = RentalStatus.Booked;
+                    StatusId = RentalStatus.Booked;
                 }
 
                 ClosedAtUtc = null;
                 return;
             }
 
-            Status = RentalStatus.Closed;
+            StatusId = RentalStatus.Closed;
             ClosedAtUtc ??= DateTime.UtcNow;
             CanceledAtUtc = null;
             CancellationReason = null;
@@ -85,14 +78,9 @@ public sealed class Rental
 
     public Employee? CanceledByEmployee { get; set; }
 
-    [NotMapped]
-    public Employee? Employee
-    {
-        get => CreatedByEmployee;
-        set => CreatedByEmployee = value;
-    }
-
     public RentalStatusLookup? StatusLookup { get; set; }
+
+    public ICollection<RentalStatusHistory> StatusHistory { get; set; } = new List<RentalStatusHistory>();
 
     public ICollection<Payment> Payments { get; set; } = new List<Payment>();
 
@@ -100,3 +88,4 @@ public sealed class Rental
 
     public ICollection<RentalInspection> Inspections { get; set; } = new List<RentalInspection>();
 }
+

@@ -1,4 +1,4 @@
-using CarRental.Desktop.Data;
+﻿using CarRental.Desktop.Data;
 using CarRental.Desktop.Localization;
 using CarRental.Desktop.Services.Damages;
 using CarRental.Shared.ReferenceData;
@@ -9,8 +9,8 @@ using System.Globalization;
 
 namespace CarRental.Desktop.ViewModels;
 
-// Екран пошкоджень тримає зв'язок між авто, конкретною орендою і можливим автоматичним донарахуванням,
-// тому вибір vehicle/rental синхронізується обережно, без зайвих повторних запитів.
+// Р•РєСЂР°РЅ РїРѕС€РєРѕРґР¶РµРЅСЊ С‚СЂРёРјР°С” Р·РІ'СЏР·РѕРє РјС–Р¶ Р°РІС‚Рѕ, РєРѕРЅРєСЂРµС‚РЅРѕСЋ РѕСЂРµРЅРґРѕСЋ С– РјРѕР¶Р»РёРІРёРј Р°РІС‚РѕРјР°С‚РёС‡РЅРёРј РґРѕРЅР°СЂР°С…СѓРІР°РЅРЅСЏРј,
+// С‚РѕРјСѓ РІРёР±С–СЂ vehicle/rental СЃРёРЅС…СЂРѕРЅС–Р·СѓС”С‚СЊСЃСЏ РѕР±РµСЂРµР¶РЅРѕ, Р±РµР· Р·Р°Р№РІРёС… РїРѕРІС‚РѕСЂРЅРёС… Р·Р°РїРёС‚С–РІ.
 public sealed class DamagesPageViewModel : PageDataViewModelBase, ITransientStateOwner
 {
     private static readonly RentalOption SelectVehiclePromptRental = new(null, "Спершу оберіть авто");
@@ -29,7 +29,7 @@ public sealed class DamagesPageViewModel : PageDataViewModelBase, ITransientStat
     private bool _autoChargeToRental;
     private string _statusMessage = string.Empty;
     private int _guideRequestId;
-    // Версія запиту відсікає застарілі відповіді, якщо користувач швидко перемикає автомобілі.
+    // Р’РµСЂСЃС–СЏ Р·Р°РїРёС‚Сѓ РІС–РґСЃС–РєР°С” Р·Р°СЃС‚Р°СЂС–Р»С– РІС–РґРїРѕРІС–РґС–, СЏРєС‰Рѕ РєРѕСЂРёСЃС‚СѓРІР°С‡ С€РІРёРґРєРѕ РїРµСЂРµРјРёРєР°С” Р°РІС‚РѕРјРѕР±С–Р»С–.
     private int _rentalLoadVersion;
 
     public DamagesPageViewModel(
@@ -151,13 +151,15 @@ public sealed class DamagesPageViewModel : PageDataViewModelBase, ITransientStat
 
             var vehicles = await _dbContext.Vehicles
                 .AsNoTracking()
-                .OrderBy(item => item.Make)
-                .ThenBy(item => item.Model)
+                .Include(item => item.MakeLookup)
+                .Include(item => item.ModelLookup)
+                .OrderBy(item => item.MakeLookup!.Name)
+                .ThenBy(item => item.ModelLookup!.Name)
                 .ToListAsync();
             Vehicles.Clear();
             foreach (var vehicle in vehicles)
             {
-                Vehicles.Add(new VehicleOption(vehicle.Id, $"{vehicle.Make} {vehicle.Model} [{vehicle.LicensePlate}]"));
+                Vehicles.Add(new VehicleOption(vehicle.Id, $"{vehicle.MakeName} {vehicle.ModelName} [{vehicle.LicensePlate}]"));
             }
 
             var restoredVehicle = selectedVehicleId.HasValue
@@ -178,17 +180,21 @@ public sealed class DamagesPageViewModel : PageDataViewModelBase, ITransientStat
 
             var damages = await _dbContext.Damages
                 .AsNoTracking()
+                .Include(item => item.Vehicle)
+                    .ThenInclude(item => item!.MakeLookup)
+                .Include(item => item.Vehicle)
+                    .ThenInclude(item => item!.ModelLookup)
                 .OrderByDescending(item => item.DateReported)
                 .Take(300)
                 .Select(item => new DamageRow(
                     item.Id,
-                    item.ActNumber,
-                    item.Vehicle != null ? $"{item.Vehicle.Make} {item.Vehicle.Model}" : string.Empty,
+                    item.DamageActNumber,
+                    item.Vehicle != null ? $"{item.Vehicle.MakeLookup!.Name} {item.Vehicle.ModelLookup!.Name}" : string.Empty,
                     item.Rental != null ? item.Rental.ContractNumber : "-",
                     item.DateReported,
                     item.RepairCost,
                     item.ChargedAmount,
-                    item.Status.ToDisplay(),
+                    item.StatusId.ToDisplay(),
                     item.Photos
                         .OrderBy(photo => photo.SortOrder)
                         .Select(photo => photo.StoredPath)
@@ -270,7 +276,7 @@ public sealed class DamagesPageViewModel : PageDataViewModelBase, ITransientStat
                 .Where(item => item.VehicleId == vehicleId.Value)
                 .OrderByDescending(item => item.StartDate)
                 .Take(200)
-                .Select(item => new RentalOption(item.Id, $"{item.ContractNumber} ({item.Status.ToDisplay()})"))
+                .Select(item => new RentalOption(item.Id, $"{item.ContractNumber} ({item.StatusId.ToDisplay()})"))
                 .ToListAsync();
 
             if (loadVersion != _rentalLoadVersion || SelectedVehicle?.Id != vehicleId.Value)
@@ -314,7 +320,7 @@ public sealed class DamagesPageViewModel : PageDataViewModelBase, ITransientStat
 
     public sealed record DamageRow(
         int Id,
-        string ActNumber,
+        string DamageActNumber,
         string Vehicle,
         string ContractNumber,
         DateTime ReportedAt,
@@ -323,3 +329,4 @@ public sealed class DamagesPageViewModel : PageDataViewModelBase, ITransientStat
         string Status,
         string PhotoPath);
 }
+

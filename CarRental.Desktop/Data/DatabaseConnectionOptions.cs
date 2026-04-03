@@ -1,4 +1,4 @@
-namespace CarRental.Desktop.Data;
+﻿namespace CarRental.Desktop.Data;
 
 public sealed class DatabaseConnectionOptions
 {
@@ -18,3 +18,4 @@ public sealed class DatabaseConnectionOptions
         };
     }
 }
+

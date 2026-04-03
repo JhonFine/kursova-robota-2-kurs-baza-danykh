@@ -54,7 +54,7 @@ function toDateTimePayload(date: string, time: string): string {
   return `${date}T${time}:00`;
 }
 
-function statusClass(status: Rental['status']): 'ok' | 'bad' | 'wait' {
+function statusClass(status: Rental['statusId']): 'ok' | 'bad' | 'wait' {
   if (status === 'Closed') {
     return 'ok';
   }
@@ -84,7 +84,7 @@ function resolveBoardActionTarget(rental: Rental, canManagePayments: boolean): S
     return 'payments';
   }
 
-  if (rental.status === 'Booked') {
+  if (rental.statusId === 'Booked') {
     return 'cancel';
   }
 
@@ -93,7 +93,7 @@ function resolveBoardActionTarget(rental: Rental, canManagePayments: boolean): S
 
 function resolveTimelineMarker(rentals: Rental[], date: Date): string {
   const activeRental = rentals.find((item) => {
-    if (item.status === 'Canceled') {
+    if (item.statusId === 'Canceled') {
       return false;
     }
 
@@ -106,11 +106,11 @@ function resolveTimelineMarker(rentals: Rental[], date: Date): string {
     return '·';
   }
 
-  if (activeRental.status === 'Active') {
+  if (activeRental.statusId === 'Active') {
     return 'A';
   }
 
-  if (activeRental.status === 'Booked') {
+  if (activeRental.statusId === 'Booked') {
     return 'B';
   }
 
@@ -181,8 +181,8 @@ export function RentalsPage() {
   );
   // Усі праві панелі staff-екрана синхронізовані з одним вибраним договором,
   // тому блокування дій і стартові значення форм обчислюються від selectedRental.
-  const pickupInspectionMissed = selectedRental?.status === 'Booked' && new Date(selectedRental.startDate) < new Date();
-  const pickupInspectionDisabled = !selectedRental || selectedRental.status !== 'Booked' || pickupInspectionMissed;
+  const pickupInspectionMissed = selectedRental?.statusId === 'Booked' && new Date(selectedRental.startDate) < new Date();
+  const pickupInspectionDisabled = !selectedRental || selectedRental.statusId !== 'Booked' || pickupInspectionMissed;
   const currentMoment = new Date();
   const todayDateValue = toDateInputValue(currentMoment);
   const createStartTimeOptions = getAvailableTimeOptionsForDate(createForm.startDate, currentMoment);
@@ -247,7 +247,7 @@ export function RentalsPage() {
   const ganttRows = useMemo(
     () => vehicles.map((vehicle) => ({
       id: vehicle.id,
-      vehicle: `${vehicle.make} ${vehicle.model} [${vehicle.licensePlate}]`,
+      vehicle: `${vehicle.makeName} ${vehicle.modelName} [${vehicle.licensePlate}]`,
       cells: ganttHorizon.map((date) => resolveTimelineMarker(rentalsByVehicleId.get(vehicle.id) ?? [], date)),
     })),
     [ganttHorizon, rentalsByVehicleId, vehicles],
@@ -691,8 +691,8 @@ export function RentalsPage() {
       await Api.addPayment({
         rentalId: selectedRental.id,
         amount,
-        method: paymentMethod,
-        direction: paymentDirection,
+        methodId: paymentMethod,
+        directionId: paymentDirection,
         notes: '',
       });
 
@@ -808,7 +808,7 @@ export function RentalsPage() {
     <div className="staff-dashboard">
       <section className="stats-grid">
         <StatCard label="Усього оренд" value={scheduleRentals.length} accent="blue" />
-        <StatCard label="Активні" value={scheduleRentals.filter((item) => item.status === 'Active').length} accent="mint" />
+        <StatCard label="Активні" value={scheduleRentals.filter((item) => item.statusId === 'Active').length} accent="mint" />
         <StatCard label="Очікують оплату" value={scheduleRentals.filter((item) => item.balance > 0).length} accent="amber" />
         <StatCard label="Прострочені" value={overdueReturns.length} accent="red" />
       </section>
@@ -901,7 +901,7 @@ export function RentalsPage() {
                           <strong>{rental.contractNumber}</strong>
                           <p>{rental.clientName}</p>
                         </div>
-                        <span className={`status-pill ${statusClass(rental.status)}`}>{rental.status}</span>
+                        <span className={`status-pill ${statusClass(rental.statusId)}`}>{rental.statusId}</span>
                       </div>
 
                       <div className="kv-grid">
@@ -987,7 +987,7 @@ export function RentalsPage() {
                     <option value="">Оберіть авто</option>
                     {vehicles.map((vehicle) => (
                       <option key={vehicle.id} value={vehicle.id}>
-                        {vehicle.make} {vehicle.model} [{vehicle.licensePlate}]
+                        {vehicle.makeName} {vehicle.modelName} [{vehicle.licensePlate}]
                       </option>
                     ))}
                   </select>
@@ -1198,14 +1198,14 @@ export function RentalsPage() {
                                 <td>{rental.vehicleName}</td>
                                 <td>{formatDate(rental.startDate)} - {formatDate(rental.endDate)}</td>
                                 <td>
-                                  <span className={`status-pill ${statusClass(rental.status)}`}>
-                                    {rental.status}
+                                  <span className={`status-pill ${statusClass(rental.statusId)}`}>
+                                    {rental.statusId}
                                   </span>
                                 </td>
                                 <td>{formatCurrency(rental.totalAmount)}</td>
                                 <td>{formatCurrency(rental.paidAmount)}</td>
                                 <td>{formatCurrency(rental.balance)}</td>
-                                <td>{rental.employeeName}</td>
+                                <td>{rental.createdByEmployeeName ?? '-'}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -1247,7 +1247,7 @@ export function RentalsPage() {
                     <strong>Період</strong>
                     <span>{formatDate(selectedRental.startDate)} - {formatDate(selectedRental.endDate)}</span>
                     <strong>Статус</strong>
-                    <span>{selectedRental.status}</span>
+                    <span>{selectedRental.statusId}</span>
                     <strong>Баланс</strong>
                     <span>{formatCurrency(selectedRental.balance)}</span>
                     <strong>Створено</strong>
@@ -1341,7 +1341,7 @@ export function RentalsPage() {
                     Зафіксувати видачу
                   </button>
                   <p className="muted">
-                    {selectedRental.status === 'Booked'
+                    {selectedRental.statusId === 'Booked'
                       ? pickupInspectionMissed
                         ? 'Час видачі за цим бронюванням уже минув. Перенесіть або скасуйте бронювання.'
                         : 'Огляд видачі доступний лише до часу початку бронювання.'
@@ -1371,7 +1371,7 @@ export function RentalsPage() {
                         <input
                           type="date"
                           value={closeDate}
-                          disabled={selectedRental.status !== 'Active'}
+                          disabled={selectedRental.statusId !== 'Active'}
                           onChange={(event) => setCloseDate(event.target.value)}
                         />
                       </label>
@@ -1380,7 +1380,7 @@ export function RentalsPage() {
                         Кінцевий пробіг
                         <input
                           value={closeMileage}
-                          disabled={selectedRental.status !== 'Active'}
+                          disabled={selectedRental.statusId !== 'Active'}
                           onChange={(event) => setCloseMileage(event.target.value)}
                           placeholder="Наприклад 45120"
                         />
@@ -1391,7 +1391,7 @@ export function RentalsPage() {
                       Пальне при поверненні, %
                       <input
                         value={returnFuelPercent}
-                        disabled={selectedRental.status !== 'Active'}
+                        disabled={selectedRental.statusId !== 'Active'}
                         onChange={(event) => setReturnFuelPercent(event.target.value)}
                         placeholder="100"
                       />
@@ -1401,14 +1401,14 @@ export function RentalsPage() {
                       Нотатки повернення
                       <textarea
                         value={returnInspectionNotes}
-                        disabled={selectedRental.status !== 'Active'}
+                        disabled={selectedRental.statusId !== 'Active'}
                         onChange={(event) => setReturnInspectionNotes(event.target.value)}
                         placeholder="Пальне, пошкодження, салон, комплектність"
                       />
                     </label>
 
                     <p className="muted">
-                      {selectedRental.status === 'Active'
+                      {selectedRental.statusId === 'Active'
                         ? 'Перевірте фактичну дату та пробіг перед закриттям.'
                         : 'Щоб закрити оренду, спочатку оберіть активний договір.'}
                     </p>
@@ -1416,7 +1416,7 @@ export function RentalsPage() {
                     <button
                       type="button"
                       className="btn primary"
-                      disabled={selectedRental.status !== 'Active'}
+                      disabled={selectedRental.statusId !== 'Active'}
                       onClick={() => void closeRental()}
                     >
                       Закрити оренду
@@ -1444,14 +1444,14 @@ export function RentalsPage() {
                       Причина
                       <textarea
                         value={cancelReason}
-                        disabled={selectedRental.status !== 'Booked'}
+                        disabled={selectedRental.statusId !== 'Booked'}
                         onChange={(event) => setCancelReason(event.target.value)}
                         placeholder="Опишіть причину скасування"
                       />
                     </label>
 
                     <p className="muted">
-                      {selectedRental.status === 'Booked'
+                      {selectedRental.statusId === 'Booked'
                         ? 'Після скасування договір перейде в історію.'
                         : 'Щоб скасувати оренду, оберіть запис зі статусом Booked.'}
                     </p>
@@ -1459,7 +1459,7 @@ export function RentalsPage() {
                     <button
                       type="button"
                       className="btn danger"
-                      disabled={selectedRental.status !== 'Booked'}
+                      disabled={selectedRental.statusId !== 'Booked'}
                       onClick={() => void cancelRental()}
                     >
                       Скасувати оренду
@@ -1501,7 +1501,7 @@ export function RentalsPage() {
                     <strong>Авто</strong>
                     <span>{selectedRental.vehicleName}</span>
                     <strong>Статус</strong>
-                    <span>{selectedRental.status}</span>
+                    <span>{selectedRental.statusId}</span>
                     <strong>Баланс</strong>
                     <span>{formatCurrency(selectedRental.balance)}</span>
                   </div>
@@ -1562,8 +1562,8 @@ export function RentalsPage() {
                         {payments.map((payment) => (
                           <tr key={payment.id}>
                             <td>{formatDate(payment.createdAtUtc)}</td>
-                            <td>{payment.method}</td>
-                            <td>{payment.direction}</td>
+                            <td>{payment.methodId}</td>
+                            <td>{payment.directionId}</td>
                             <td>{formatCurrency(payment.amount)}</td>
                             <td>{payment.notes || '-'}</td>
                           </tr>

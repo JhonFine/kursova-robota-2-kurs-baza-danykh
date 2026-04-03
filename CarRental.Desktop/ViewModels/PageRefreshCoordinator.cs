@@ -1,9 +1,9 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 
 namespace CarRental.Desktop.ViewModels;
 
-// Координатор refresh розриває прямі залежності між сторінками:
-// зміна в одному модулі лише інвалідовує area, а фактичне перезавантаження відбувається при відкритті сторінки.
+// РљРѕРѕСЂРґРёРЅР°С‚РѕСЂ refresh СЂРѕР·СЂРёРІР°С” РїСЂСЏРјС– Р·Р°Р»РµР¶РЅРѕСЃС‚С– РјС–Р¶ СЃС‚РѕСЂС–РЅРєР°РјРё:
+// Р·РјС–РЅР° РІ РѕРґРЅРѕРјСѓ РјРѕРґСѓР»С– Р»РёС€Рµ С–РЅРІР°Р»С–РґРѕРІСѓС” area, Р° С„Р°РєС‚РёС‡РЅРµ РїРµСЂРµР·Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ РІС–РґР±СѓРІР°С”С‚СЊСЃСЏ РїСЂРё РІС–РґРєСЂРёС‚С‚С– СЃС‚РѕСЂС–РЅРєРё.
 public sealed class PageRefreshCoordinator(Func<CancellationToken, Task> refreshRentalStatusesAsync)
 {
     private readonly ConcurrentDictionary<PageRefreshArea, IPageDataLifecycle> _pages = new();
@@ -20,7 +20,7 @@ public sealed class PageRefreshCoordinator(Func<CancellationToken, Task> refresh
         IPageDataLifecycle page,
         CancellationToken cancellationToken = default)
     {
-        // Орендні статуси впливають одразу на staff rentals, self-service каталог і історію клієнта.
+        // РћСЂРµРЅРґРЅС– СЃС‚Р°С‚СѓСЃРё РІРїР»РёРІР°СЋС‚СЊ РѕРґСЂР°Р·Сѓ РЅР° staff rentals, self-service РєР°С‚Р°Р»РѕРі С– С–СЃС‚РѕСЂС–СЋ РєР»С–С”РЅС‚Р°.
         if ((area & (PageRefreshArea.Rentals | PageRefreshArea.Prokat | PageRefreshArea.UserRentals)) != 0)
         {
             await EnsureRentalStatusesAsync(cancellationToken);
@@ -52,7 +52,7 @@ public sealed class PageRefreshCoordinator(Func<CancellationToken, Task> refresh
             return;
         }
 
-        // Перший виклик прогріває стан availability; усі наступні проходять без дублювання важкого sync.
+        // РџРµСЂС€РёР№ РІРёРєР»РёРє РїСЂРѕРіСЂС–РІР°С” СЃС‚Р°РЅ availability; СѓСЃС– РЅР°СЃС‚СѓРїРЅС– РїСЂРѕС…РѕРґСЏС‚СЊ Р±РµР· РґСѓР±Р»СЋРІР°РЅРЅСЏ РІР°Р¶РєРѕРіРѕ sync.
         await _rentalStatusLock.WaitAsync(cancellationToken);
         try
         {
@@ -70,3 +70,4 @@ public sealed class PageRefreshCoordinator(Func<CancellationToken, Task> refresh
         }
     }
 }
+

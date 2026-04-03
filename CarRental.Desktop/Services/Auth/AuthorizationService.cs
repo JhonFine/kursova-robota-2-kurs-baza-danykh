@@ -1,4 +1,4 @@
-using CarRental.Desktop.Models;
+﻿using CarRental.Desktop.Models;
 
 namespace CarRental.Desktop.Services.Auth;
 
@@ -20,7 +20,7 @@ public sealed class AuthorizationService : IAuthorizationService
 
     public bool HasPermission(Employee employee, EmployeePermission permission)
     {
-        var permissions = employee.Role switch
+        var permissions = employee.RoleId switch
         {
             UserRole.Admin => EmployeePermission.All,
             UserRole.Manager => ManagerPermissions,
@@ -31,3 +31,4 @@ public sealed class AuthorizationService : IAuthorizationService
         return (permissions & permission) == permission;
     }
 }
+

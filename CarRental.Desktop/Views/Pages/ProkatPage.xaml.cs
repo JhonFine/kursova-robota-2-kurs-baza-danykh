@@ -1,4 +1,4 @@
-using CarRental.Desktop.ViewModels;
+﻿using CarRental.Desktop.ViewModels;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -24,7 +24,7 @@ public partial class ProkatPage : UserControl
 
     private void CityPickerButton_OnClick(object sender, RoutedEventArgs e)
     {
-        // City picker навмисно відкривається як context menu від кнопки, щоб не дублювати окремий popup-контрол.
+        // City picker РЅР°РІРјРёСЃРЅРѕ РІС–РґРєСЂРёРІР°С”С‚СЊСЃСЏ СЏРє context menu РІС–Рґ РєРЅРѕРїРєРё, С‰РѕР± РЅРµ РґСѓР±Р»СЋРІР°С‚Рё РѕРєСЂРµРјРёР№ popup-РєРѕРЅС‚СЂРѕР».
         if (sender is Button { ContextMenu: { } contextMenu } button)
         {
             contextMenu.PlacementTarget = button;
@@ -48,7 +48,8 @@ public partial class ProkatPage : UserControl
 
     private void ProkatPage_OnUnloaded(object sender, RoutedEventArgs e)
     {
-        // При виході зі сторінки змиваємо тільки transient UI-стан, не чіпаючи кешовані дані каталогу.
+        // РџСЂРё РІРёС…РѕРґС– Р·С– СЃС‚РѕСЂС–РЅРєРё Р·РјРёРІР°С”РјРѕ С‚С–Р»СЊРєРё transient UI-СЃС‚Р°РЅ, РЅРµ С‡С–РїР°СЋС‡Рё РєРµС€РѕРІР°РЅС– РґР°РЅС– РєР°С‚Р°Р»РѕРіСѓ.
         PageLifecycleUtilities.ReleaseTransientState(DataContext);
     }
 }
+

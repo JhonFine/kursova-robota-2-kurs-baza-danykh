@@ -1,4 +1,4 @@
-using System.ComponentModel.DataAnnotations.Schema;
+﻿using System.ComponentModel.DataAnnotations.Schema;
 using CarRental.Shared.ReferenceData;
 
 namespace CarRental.Desktop.Models;
@@ -18,6 +18,8 @@ public sealed class Client : IAuditableEntity, ISoftDeletableEntity
     public string? BlacklistReason { get; set; }
 
     public DateTime? BlacklistedAtUtc { get; set; }
+
+    public int? BlacklistedByEmployeeId { get; set; }
 
     public bool IsDeleted { get; set; }
 
@@ -67,26 +69,9 @@ public sealed class Client : IAuditableEntity, ISoftDeletableEntity
         set => UpsertDocument(ClientDocumentTypes.DriverLicense).StoredPath = value;
     }
 
-    [NotMapped]
-    public bool Blacklisted
-    {
-        get => IsBlacklisted;
-        set
-        {
-            IsBlacklisted = value;
-            if (!value)
-            {
-                BlacklistReason = null;
-                BlacklistedAtUtc = null;
-            }
-            else if (!BlacklistedAtUtc.HasValue)
-            {
-                BlacklistedAtUtc = DateTime.UtcNow;
-            }
-        }
-    }
-
     public Account? Account { get; set; }
+
+    public Employee? BlacklistedByEmployee { get; set; }
 
     public ICollection<ClientDocument> Documents { get; set; } = new List<ClientDocument>();
 
@@ -112,3 +97,4 @@ public sealed class Client : IAuditableEntity, ISoftDeletableEntity
         return document;
     }
 }
+

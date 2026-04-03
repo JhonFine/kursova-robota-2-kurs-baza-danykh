@@ -191,13 +191,19 @@ public sealed class LoginViewModel : ViewModelBase
         try
         {
             var result = await _authService.AuthenticateAsync(Login, Password);
-            if (!result.Success || result.Employee is null)
+            if (!result.Success)
             {
                 ErrorMessage = result.Message;
                 return;
             }
 
-            AuthenticatedEmployee = result.Employee;
+            AuthenticatedEmployee = BuildSessionEmployee(result.Account, result.Employee, result.Client, result.Role);
+            if (AuthenticatedEmployee is null)
+            {
+                ErrorMessage = "Не вдалося підготувати профіль користувача для сесії.";
+                return;
+            }
+
             RequestClose?.Invoke(true);
         }
         finally
@@ -253,13 +259,19 @@ public sealed class LoginViewModel : ViewModelBase
         try
         {
             var result = await _authService.RegisterAsync(fullName, Login, Phone, Password);
-            if (!result.Success || result.Employee is null)
+            if (!result.Success)
             {
                 ErrorMessage = result.Message;
                 return;
             }
 
-            AuthenticatedEmployee = result.Employee;
+            AuthenticatedEmployee = BuildSessionEmployee(result.Account, result.Employee, result.Client, result.Role);
+            if (AuthenticatedEmployee is null)
+            {
+                ErrorMessage = "Не вдалося підготувати профіль користувача для сесії.";
+                return;
+            }
+
             RequestClose?.Invoke(true);
         }
         finally
@@ -269,4 +281,30 @@ public sealed class LoginViewModel : ViewModelBase
     }
 
     private bool CanLogin() => !IsBusy && !IsRegistrationMode;
+
+    private static Employee? BuildSessionEmployee(Account? account, Employee? employee, Client? client, UserRole role)
+    {
+        if (employee is not null)
+        {
+            return employee;
+        }
+
+        if (account is null)
+        {
+            return null;
+        }
+
+        var fullName = !string.IsNullOrWhiteSpace(client?.FullName)
+            ? client.FullName
+            : account.Login;
+
+        return new Employee
+        {
+            Account = account,
+            AccountId = account.Id,
+            FullName = fullName,
+            RoleId = role
+        };
+    }
 }
+

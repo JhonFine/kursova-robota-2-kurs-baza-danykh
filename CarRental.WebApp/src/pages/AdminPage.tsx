@@ -13,7 +13,7 @@ import { StatCardSkeletons, TableSkeleton } from '../components/Skeleton';
 import { StatCard } from '../components/StatCard';
 import { formatDate } from '../utils/format';
 
-function roleDisplay(role: Employee['role']): string {
+function roleDisplay(role: Employee['roleId']): string {
   if (role === 'Admin') {
     return 'Адміністратор';
   }
@@ -52,7 +52,7 @@ export function AdminPage() {
     }
 
     return employees.filter((item) => {
-      const text = `${item.fullName} ${item.login} ${roleDisplay(item.role)}`.toLowerCase();
+      const text = `${item.fullName} ${item.login} ${roleDisplay(item.roleId)}`.toLowerCase();
       return text.includes(query);
     });
   }, [employees, filterQuery]);
@@ -256,7 +256,7 @@ export function AdminPage() {
         <section className="stats-grid">
           <StatCard label="Всього працівників" value={employees.length} accent="blue" />
           <StatCard label="Активні" value={employees.filter((item) => item.isActive).length} accent="mint" />
-          <StatCard label="Менеджери" value={employees.filter((item) => item.role === 'Manager').length} accent="amber" />
+          <StatCard label="Менеджери" value={employees.filter((item) => item.roleId === 'Manager').length} accent="amber" />
           <StatCard label="Заблоковані" value={lockedEmployees} accent="red" />
         </section>
 
@@ -302,7 +302,7 @@ export function AdminPage() {
                           >
                             <td>{employee.fullName}</td>
                             <td>{employee.login}</td>
-                            <td>{roleDisplay(employee.role)}</td>
+                            <td>{roleDisplay(employee.roleId)}</td>
                             <td>
                               <span className={`status-pill ${employee.isActive ? 'ok' : 'bad'}`}>
                                 {employee.isActive ? 'Активний' : 'Вимкнений'}
@@ -335,14 +335,14 @@ export function AdminPage() {
                 <>
                   <div className="panel-intro">
                     <strong>{selectedEmployee.fullName}</strong>
-                    <p>{selectedEmployee.login} • {roleDisplay(selectedEmployee.role)} • {selectedEmployee.isActive ? 'Активний доступ' : 'Доступ вимкнено'}</p>
+                    <p>{selectedEmployee.login} • {roleDisplay(selectedEmployee.roleId)} • {selectedEmployee.isActive ? 'Активний доступ' : 'Доступ вимкнено'}</p>
                   </div>
 
                   <div className="kv-grid">
                     <strong>Працівник:</strong>
                     <span>{selectedEmployee.fullName}</span>
                     <strong>Роль:</strong>
-                    <span>{roleDisplay(selectedEmployee.role)}</span>
+                    <span>{roleDisplay(selectedEmployee.roleId)}</span>
                     <strong>Стан:</strong>
                     <span>{selectedEmployee.isActive ? 'Активний' : 'Вимкнений'}</span>
                     <strong>Блокування:</strong>
@@ -380,21 +380,21 @@ export function AdminPage() {
                     <button
                       type="button"
                       className="btn ghost"
-                      disabled={!canMutate || selectedEmployee.role === 'Admin'}
+                      disabled={!canMutate || selectedEmployee.roleId === 'Admin'}
                       onClick={() => {
                         promptAction(
                           'Змінити роль працівника?',
-                          selectedEmployee.role === 'Manager'
+                          selectedEmployee.roleId === 'Manager'
                             ? `Працівника "${selectedEmployee.fullName}" буде переведено в роль користувача.`
                             : `Працівника "${selectedEmployee.fullName}" буде переведено в роль менеджера.`,
-                          selectedEmployee.role === 'Manager' ? 'Зробити користувачем' : 'Зробити менеджером',
+                          selectedEmployee.roleId === 'Manager' ? 'Зробити користувачем' : 'Зробити менеджером',
                           toggleRole,
                         );
                       }}
                     >
-                      {selectedEmployee.role === 'Admin'
+                      {selectedEmployee.roleId === 'Admin'
                         ? 'Роль адміністратора не змінюється'
-                        : selectedEmployee.role === 'Manager'
+                        : selectedEmployee.roleId === 'Manager'
                           ? 'Зробити користувачем'
                           : 'Зробити менеджером'}
                     </button>

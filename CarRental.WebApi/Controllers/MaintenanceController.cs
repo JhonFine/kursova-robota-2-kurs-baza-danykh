@@ -50,7 +50,9 @@ public sealed class MaintenanceController(
             item.Vehicle,
             item.CurrentMileage,
             item.NextServiceMileage,
-            item.OverdueByKm)).ToList());
+            item.NextServiceDate,
+            item.OverdueByKm,
+            item.OverdueByDays)).ToList());
     }
 
     [HttpPost("records")]
@@ -68,12 +70,13 @@ public sealed class MaintenanceController(
         var result = await maintenanceService.AddRecordAsync(
             new MaintenanceRequest(
                 request.VehicleId,
-                employeeId.Value,
+                string.IsNullOrWhiteSpace(request.ServiceProviderName) ? employeeId.Value : null,
                 request.ServiceDate,
                 request.MileageAtService,
                 request.Description,
                 request.Cost,
                 request.NextServiceMileage,
+                request.NextServiceDate,
                 request.MaintenanceTypeCode,
                 request.ServiceProviderName),
             cancellationToken);

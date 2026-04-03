@@ -1,6 +1,7 @@
 using CarRental.WebApi.Data;
 using CarRental.WebApi.Models;
 using CarRental.WebApi.Services.Security;
+using CarRental.Shared.ReferenceData;
 using CarRental.Shared.Security;
 using Microsoft.EntityFrameworkCore;
 
@@ -81,7 +82,7 @@ public sealed class AuthService(RentalDbContext dbContext) : IAuthService
         account.LockoutUntilUtc = null;
         account.LastLoginUtc = lastLoginTime;
 
-        var role = account.Employee?.Role ?? UserRole.User;
+        var role = account.Employee?.RoleId ?? UserRole.User;
         return new AuthResult(true, "Успішний вхід.", account, account.Employee, account.Client, role);
     }
 
@@ -109,7 +110,7 @@ public sealed class AuthService(RentalDbContext dbContext) : IAuthService
             return new RegistrationResult(false, "Пароль має містити щонайменше 8 символів.");
         }
 
-        var normalizedPhone = TryNormalizePhone(phone);
+        var normalizedPhone = ClientProfileConventions.TryNormalizePhone(phone);
         if (normalizedPhone is null)
         {
             return new RegistrationResult(false, "Вкажіть коректний телефон (10-15 цифр).");
@@ -179,21 +180,4 @@ public sealed class AuthService(RentalDbContext dbContext) : IAuthService
         return new PasswordChangeResult(true, "Пароль оновлено.");
     }
 
-    private static string? TryNormalizePhone(string? phone)
-    {
-        // Телефон зводимо до єдиного "+digits" формату ще до перевірки унікальності,
-        // щоб різні варіанти запису одного номера не проходили як різні значення.
-        if (string.IsNullOrWhiteSpace(phone))
-        {
-            return null;
-        }
-
-        var digits = new string(phone.Where(char.IsDigit).ToArray());
-        if (digits.Length is < 10 or > 15)
-        {
-            return null;
-        }
-
-        return "+" + digits;
-    }
 }

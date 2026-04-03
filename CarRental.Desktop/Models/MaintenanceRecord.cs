@@ -1,4 +1,4 @@
-using CarRental.Shared.ReferenceData;
+﻿using CarRental.Shared.ReferenceData;
 
 namespace CarRental.Desktop.Models;
 
@@ -18,7 +18,9 @@ public sealed class MaintenanceRecord
 
     public decimal Cost { get; set; }
 
-    public int NextServiceMileage { get; set; }
+    public int? NextServiceMileage { get; set; }
+
+    public DateTime? NextServiceDate { get; set; }
 
     public string MaintenanceTypeCode { get; set; } = MaintenanceTypes.Scheduled;
 
@@ -30,3 +32,4 @@ public sealed class MaintenanceRecord
 
     public MaintenanceTypeLookup? MaintenanceType { get; set; }
 }
+

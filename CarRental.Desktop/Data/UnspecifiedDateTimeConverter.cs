@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+﻿using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace CarRental.Desktop.Data;
 
@@ -15,3 +15,4 @@ internal sealed class NullableUnspecifiedDateTimeConverter()
         value => value.HasValue
             ? DateTime.SpecifyKind(value.Value, DateTimeKind.Unspecified)
             : value);
+

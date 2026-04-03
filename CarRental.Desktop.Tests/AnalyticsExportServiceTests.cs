@@ -31,7 +31,7 @@ public sealed class AnalyticsExportServiceTests
             bytes.Take(3).Should().Equal((byte)0xEF, (byte)0xBB, (byte)0xBF);
 
             var text = await File.ReadAllTextAsync(path);
-            text.Should().StartWith("НомерДоговору,ДатаПочатку,ДатаКінця,Клієнт,Авто,Менеджер,Статус,Сума");
+            text.Should().StartWith("РќРѕРјРµСЂР”РѕРіРѕРІРѕСЂСѓ,Р”Р°С‚Р°РџРѕС‡Р°С‚РєСѓ,Р”Р°С‚Р°РљС–РЅС†СЏ,РљР»С–С”РЅС‚,РђРІС‚Рѕ,РњРµРЅРµРґР¶РµСЂ,РЎС‚Р°С‚СѓСЃ,РЎСѓРјР°");
         }
         finally
         {
@@ -63,15 +63,15 @@ public sealed class AnalyticsExportServiceTests
 
             using var workbook = new XLWorkbook(path);
             var worksheet = workbook.Worksheets.Single();
-            worksheet.Name.Should().Be("Оренди");
-            worksheet.Cell(1, 1).GetString().Should().Be("Договір");
-            worksheet.Cell(1, 2).GetString().Should().Be("Початок");
-            worksheet.Cell(1, 3).GetString().Should().Be("Кінець");
-            worksheet.Cell(1, 4).GetString().Should().Be("Клієнт");
-            worksheet.Cell(1, 5).GetString().Should().Be("Авто");
-            worksheet.Cell(1, 6).GetString().Should().Be("Менеджер");
-            worksheet.Cell(1, 7).GetString().Should().Be("Статус");
-            worksheet.Cell(1, 8).GetString().Should().Be("Сума");
+            worksheet.Name.Should().Be("РћСЂРµРЅРґРё");
+            worksheet.Cell(1, 1).GetString().Should().Be("Р”РѕРіРѕРІС–СЂ");
+            worksheet.Cell(1, 2).GetString().Should().Be("РџРѕС‡Р°С‚РѕРє");
+            worksheet.Cell(1, 3).GetString().Should().Be("РљС–РЅРµС†СЊ");
+            worksheet.Cell(1, 4).GetString().Should().Be("РљР»С–С”РЅС‚");
+            worksheet.Cell(1, 5).GetString().Should().Be("РђРІС‚Рѕ");
+            worksheet.Cell(1, 6).GetString().Should().Be("РњРµРЅРµРґР¶РµСЂ");
+            worksheet.Cell(1, 7).GetString().Should().Be("РЎС‚Р°С‚СѓСЃ");
+            worksheet.Cell(1, 8).GetString().Should().Be("РЎСѓРјР°");
         }
         finally
         {
@@ -99,7 +99,7 @@ public sealed class AnalyticsExportServiceTests
         {
             Id = 501,
             FullName = "Manager Export",
-            Role = UserRole.Manager,
+            RoleId = UserRole.Manager,
             Account = account
         });
         dbContext.Clients.Add(new Client
@@ -111,27 +111,21 @@ public sealed class AnalyticsExportServiceTests
             PassportExpirationDate = DateTime.UtcNow.AddYears(5),
             DriverLicenseExpirationDate = DateTime.UtcNow.AddYears(5),
             Phone = "+380500006001",
-            Blacklisted = false
+            IsBlacklisted = false
         });
-        dbContext.Vehicles.Add(new Vehicle
-        {
-            Id = 701,
-            Make = "Audi",
-            Model = "A4",
-            FuelType = "Бензин",
-            TransmissionType = "Автомат",
-            PowertrainCapacityValue = 2m,
-            PowertrainCapacityUnit = "L",
-            CargoCapacityValue = 480m,
-            CargoCapacityUnit = "L",
-            ConsumptionValue = 7m,
-            ConsumptionUnit = "L_PER_100KM",
-            LicensePlate = "AA0701AA",
-            Mileage = 1000,
-            DailyRate = 100m,
-            IsAvailable = true,
-            ServiceIntervalKm = 10000
-        });
+        dbContext.Vehicles.Add(TestLookupSeed.CreateVehicle(
+            dbContext,
+            "Audi",
+            "A4",
+            "AA0701AA",
+            "PETROL",
+            "AUTO",
+            2m,
+            480m,
+            7m,
+            1000,
+            100m,
+            id: 701));
         var rentalStartDate = AsUnspecified(DateTime.Today.AddDays(-1));
         var rentalEndDate = AsUnspecified(DateTime.Today);
 
@@ -140,14 +134,14 @@ public sealed class AnalyticsExportServiceTests
             Id = 801,
             ClientId = 601,
             VehicleId = 701,
-            EmployeeId = 501,
+            CreatedByEmployeeId = 501,
+            ClosedByEmployeeId = 501,
             ContractNumber = "CR-2026-000801",
             StartDate = rentalStartDate,
             EndDate = rentalEndDate,
             StartMileage = 1000,
             TotalAmount = 100m,
-            Status = RentalStatus.Closed,
-            IsClosed = true,
+            StatusId = RentalStatus.Closed,
             ClosedAtUtc = DateTime.UtcNow,
             CreatedAtUtc = DateTime.UtcNow
         });

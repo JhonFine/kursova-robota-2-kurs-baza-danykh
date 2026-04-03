@@ -8,7 +8,7 @@ using CarRental.WebApi.Services.Rentals;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
+
 using ApiCancelRentalRequest = CarRental.WebApi.Contracts.CancelRentalRequest;
 
 namespace CarRental.WebApi.Tests;
@@ -27,18 +27,18 @@ public sealed class RentalsControllerAccessTests
             Id = 100,
             ClientId = 10,
             VehicleId = 20,
-            EmployeeId = 1,
+            CreatedByEmployeeId = 1,
             ContractNumber = "CR-2026-100000",
             StartDate = DateTime.UtcNow.AddDays(1),
             EndDate = DateTime.UtcNow.AddDays(2),
             StartMileage = 12000,
             TotalAmount = 140m,
-            Status = RentalStatus.Booked,
+            StatusId = RentalStatus.Booked,
             CreatedAtUtc = DateTime.UtcNow
         });
         await dbContext.SaveChangesAsync();
 
-        var controller = CreateController(dbContext, employeeId: 2, role: UserRole.User);
+        var controller = CreateController(dbContext, accountId: 2, role: UserRole.User, clientId: 10);
 
         var actionResult = await controller.GetAll(
             status: null,
@@ -68,31 +68,32 @@ public sealed class RentalsControllerAccessTests
             Id = 101,
             ClientId = 10,
             VehicleId = 20,
-            EmployeeId = 1,
+            CreatedByEmployeeId = 1,
             ContractNumber = "CR-2026-100001",
             StartDate = DateTime.UtcNow.AddDays(1),
             EndDate = DateTime.UtcNow.AddDays(2),
             StartMileage = 12000,
             TotalAmount = 140m,
-            Status = RentalStatus.Booked,
+            StatusId = RentalStatus.Booked,
             CreatedAtUtc = DateTime.UtcNow
         });
         await dbContext.SaveChangesAsync();
 
-        var controller = CreateController(dbContext, employeeId: 2, role: UserRole.User);
+        var controller = CreateController(dbContext, accountId: 2, role: UserRole.User, clientId: 10);
 
         var result = await controller.Cancel(
             101,
-            new ApiCancelRentalRequest { Reason = "Скасовано клієнтом через web" },
+            new ApiCancelRentalRequest { Reason = "РЎРєР°СЃРѕРІР°РЅРѕ РєР»С–С”РЅС‚РѕРј С‡РµСЂРµР· web" },
             CancellationToken.None);
 
         var ok = result.Should().BeOfType<OkObjectResult>().Subject;
         var rental = ok.Value.Should().BeOfType<RentalDto>().Subject;
-        rental.Status.Should().Be(RentalStatus.Canceled);
+        rental.StatusId.Should().Be(RentalStatus.Canceled);
 
         var persisted = await dbContext.Rentals.AsNoTracking().SingleAsync(item => item.Id == 101);
-        persisted.Status.Should().Be(RentalStatus.Canceled);
-        persisted.CancellationReason.Should().Be("Скасовано клієнтом через web");
+        persisted.StatusId.Should().Be(RentalStatus.Canceled);
+        persisted.CancellationReason.Should().Be("РЎРєР°СЃРѕРІР°РЅРѕ РєР»С–С”РЅС‚РѕРј С‡РµСЂРµР· web");
+        persisted.CanceledByEmployeeId.Should().BeNull();
     }
 
     [Fact]
@@ -107,22 +108,22 @@ public sealed class RentalsControllerAccessTests
             Id = 102,
             ClientId = 11,
             VehicleId = 20,
-            EmployeeId = 1,
+            CreatedByEmployeeId = 1,
             ContractNumber = "CR-2026-100002",
             StartDate = DateTime.UtcNow.AddDays(1),
             EndDate = DateTime.UtcNow.AddDays(2),
             StartMileage = 12000,
             TotalAmount = 140m,
-            Status = RentalStatus.Booked,
+            StatusId = RentalStatus.Booked,
             CreatedAtUtc = DateTime.UtcNow
         });
         await dbContext.SaveChangesAsync();
 
-        var controller = CreateController(dbContext, employeeId: 2, role: UserRole.User);
+        var controller = CreateController(dbContext, accountId: 2, role: UserRole.User, clientId: 10);
 
         var result = await controller.Cancel(
             102,
-            new ApiCancelRentalRequest { Reason = "Скасовано клієнтом через web" },
+            new ApiCancelRentalRequest { Reason = "РЎРєР°СЃРѕРІР°РЅРѕ РєР»С–С”РЅС‚РѕРј С‡РµСЂРµР· web" },
             CancellationToken.None);
 
         result.Should().BeOfType<ForbidResult>();
@@ -143,33 +144,33 @@ public sealed class RentalsControllerAccessTests
             Id = 103,
             ClientId = 10,
             VehicleId = 20,
-            EmployeeId = 1,
+            CreatedByEmployeeId = 1,
             ContractNumber = "CR-2026-100003",
             StartDate = DateTime.UtcNow.AddDays(-1),
             EndDate = DateTime.UtcNow.AddDays(1),
             StartMileage = 12000,
             TotalAmount = 140m,
-            Status = status,
+            StatusId = status,
             IsClosed = status == RentalStatus.Closed,
             ClosedAtUtc = status == RentalStatus.Closed ? DateTime.UtcNow : null,
             CanceledAtUtc = status == RentalStatus.Canceled ? DateTime.UtcNow : null,
-            CancellationReason = status == RentalStatus.Canceled ? "Попередня причина" : null,
+            CancellationReason = status == RentalStatus.Canceled ? "РџРѕРїРµСЂРµРґРЅСЏ РїСЂРёС‡РёРЅР°" : null,
             CreatedAtUtc = DateTime.UtcNow
         });
         await dbContext.SaveChangesAsync();
 
-        var controller = CreateController(dbContext, employeeId: 2, role: UserRole.User);
+        var controller = CreateController(dbContext, accountId: 2, role: UserRole.User, clientId: 10);
 
         var result = await controller.Cancel(
             103,
-            new ApiCancelRentalRequest { Reason = "Скасовано клієнтом через web" },
+            new ApiCancelRentalRequest { Reason = "РЎРєР°СЃРѕРІР°РЅРѕ РєР»С–С”РЅС‚РѕРј С‡РµСЂРµР· web" },
             CancellationToken.None);
 
         var badRequest = result.Should().BeOfType<BadRequestObjectResult>().Subject;
         badRequest.Value.Should().NotBeNull();
 
         var persisted = await dbContext.Rentals.AsNoTracking().SingleAsync(item => item.Id == 103);
-        persisted.Status.Should().Be(status);
+        persisted.StatusId.Should().Be(status);
     }
 
     [Fact]
@@ -179,7 +180,7 @@ public sealed class RentalsControllerAccessTests
         await using var dbContext = testDatabase.CreateDbContext();
         SeedControllerData(dbContext);
 
-        var controller = CreateController(dbContext, employeeId: 2, role: UserRole.User);
+        var controller = CreateController(dbContext, accountId: 2, role: UserRole.User, clientId: 10);
 
         var result = await controller.Create(
             new CarRental.WebApi.Contracts.CreateRentalRequest
@@ -188,8 +189,8 @@ public sealed class RentalsControllerAccessTests
                 VehicleId = 20,
                 StartDate = DateTime.UtcNow.AddHours(-2),
                 EndDate = DateTime.UtcNow.AddHours(2),
-                PickupLocation = "Київ",
-                ReturnLocation = "Київ"
+                PickupLocation = "РљРёС—РІ",
+                ReturnLocation = "РљРёС—РІ"
             },
             CancellationToken.None);
 
@@ -203,7 +204,7 @@ public sealed class RentalsControllerAccessTests
         await using var dbContext = testDatabase.CreateDbContext();
         SeedControllerData(dbContext);
 
-        var controller = CreateController(dbContext, employeeId: 2, role: UserRole.User);
+        var controller = CreateController(dbContext, accountId: 2, role: UserRole.User, clientId: 10);
 
         var result = await controller.Create(
             new CarRental.WebApi.Contracts.CreateRentalRequest
@@ -212,26 +213,44 @@ public sealed class RentalsControllerAccessTests
                 VehicleId = 20,
                 StartDate = DateTime.UtcNow.AddDays(1),
                 EndDate = DateTime.UtcNow.AddDays(2),
-                PickupLocation = "Київ",
-                ReturnLocation = "Київ"
+                PickupLocation = "РљРёС—РІ",
+                ReturnLocation = "РљРёС—РІ"
             },
             CancellationToken.None);
 
         result.Should().BeOfType<BadRequestObjectResult>();
     }
 
-    private static RentalsController CreateController(RentalDbContext dbContext, int employeeId, UserRole role)
+    private static RentalsController CreateController(
+        RentalDbContext dbContext,
+        int accountId,
+        UserRole role,
+        int? employeeId = null,
+        int? clientId = null)
     {
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.NameIdentifier, accountId.ToString()),
+            new("account_id", accountId.ToString()),
+            new(ClaimTypes.Role, role.ToString())
+        };
+
+        if (employeeId.HasValue)
+        {
+            claims.Add(new Claim("employee_id", employeeId.Value.ToString()));
+        }
+
+        if (clientId.HasValue)
+        {
+            claims.Add(new Claim("client_id", clientId.Value.ToString()));
+        }
+
         var controller = new RentalsController(dbContext, new RentalService(dbContext, new StubContractNumberService()));
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new DefaultHttpContext
             {
-                User = new ClaimsPrincipal(new ClaimsIdentity(
-                [
-                    new Claim(ClaimTypes.NameIdentifier, employeeId.ToString()),
-                    new Claim(ClaimTypes.Role, role.ToString())
-                ], "TestAuth"))
+                User = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"))
             }
         };
 
@@ -242,36 +261,42 @@ public sealed class RentalsControllerAccessTests
     {
         TestLookupSeed.SeedVehicleLookups(dbContext);
 
-        dbContext.Employees.AddRange(
-            new Employee
-            {
-                Id = 1,
-                FullName = "Manager",
-                Login = "manager",
-                PasswordHash = "x",
-                Role = UserRole.Manager,
-                IsActive = true
-            },
-            new Employee
-            {
-                Id = 2,
-                FullName = "Client User",
-                Login = "client_user",
-                PasswordHash = "x",
-                Role = UserRole.User,
-                IsActive = true,
-                PortalClientId = 10
-            });
+        var managerAccount = new Account
+        {
+            Id = 1,
+            Login = "manager",
+            PasswordHash = "x",
+            IsActive = true,
+            PasswordChangedAtUtc = DateTime.UtcNow
+        };
+        var clientAccount = new Account
+        {
+            Id = 2,
+            Login = "client_user",
+            PasswordHash = "x",
+            IsActive = true,
+            PasswordChangedAtUtc = DateTime.UtcNow
+        };
+
+        dbContext.Accounts.AddRange(managerAccount, clientAccount);
+        dbContext.Employees.Add(new Employee
+        {
+            Id = 1,
+            FullName = "Manager",
+            RoleId = UserRole.Manager,
+            Account = managerAccount
+        });
 
         dbContext.Clients.AddRange(
             new Client
             {
                 Id = 10,
                 FullName = "Client User",
+                Account = clientAccount,
                 PassportData = "EMP-000002",
                 DriverLicense = "USR-000002",
                 Phone = "+380000000001",
-                Blacklisted = false
+                IsBlacklisted = false
             },
             new Client
             {
@@ -280,28 +305,22 @@ public sealed class RentalsControllerAccessTests
                 PassportData = "PP-OTHER",
                 DriverLicense = "DL-OTHER",
                 Phone = "+380000000002",
-                Blacklisted = false
+                IsBlacklisted = false
             });
 
-        dbContext.Vehicles.Add(new Vehicle
-        {
-            Id = 20,
-            Make = "Toyota",
-            Model = "Camry",
-            FuelType = "Бензин",
-            TransmissionType = "Автомат",
-            PowertrainCapacityValue = 2m,
-            PowertrainCapacityUnit = "L",
-            CargoCapacityValue = 500m,
-            CargoCapacityUnit = "L",
-            ConsumptionValue = 7m,
-            ConsumptionUnit = "L_PER_100KM",
-            LicensePlate = "AA2020AA",
-            Mileage = 12000,
-            DailyRate = 70m,
-            IsAvailable = true,
-            ServiceIntervalKm = 10000
-        });
+        dbContext.Vehicles.Add(TestLookupSeed.CreateVehicle(
+            dbContext,
+            make: "Toyota",
+            model: "Camry",
+            licensePlate: "AA2020AA",
+            fuelTypeCode: "Р‘РµРЅР·РёРЅ",
+            transmissionTypeCode: "РђРІС‚РѕРјР°С‚",
+            powertrainCapacityValue: 2m,
+            cargoCapacityValue: 500m,
+            consumptionValue: 7m,
+            mileage: 12000,
+            dailyRate: 70m,
+            id: 20));
 
         dbContext.SaveChanges();
     }

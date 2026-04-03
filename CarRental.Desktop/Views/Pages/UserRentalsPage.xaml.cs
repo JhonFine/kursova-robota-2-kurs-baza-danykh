@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 
 namespace CarRental.Desktop.Views.Pages;
@@ -16,3 +16,4 @@ public partial class UserRentalsPage : UserControl
         PageLifecycleUtilities.ReleaseTransientState(DataContext);
     }
 }
+

@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Text;
 
 namespace CarRental.Desktop.Services.Logging;
@@ -30,3 +30,4 @@ public sealed class FileAppLogger(string logDirectoryPath) : IAppLogger
         }
     }
 }
+

@@ -1,4 +1,4 @@
-namespace CarRental.Desktop.Models;
+﻿namespace CarRental.Desktop.Models;
 
 public sealed class InspectionTypeLookup
 {
@@ -8,3 +8,4 @@ public sealed class InspectionTypeLookup
 
     public ICollection<RentalInspection> Inspections { get; set; } = new List<RentalInspection>();
 }
+

@@ -1,4 +1,4 @@
-using CarRental.Desktop.Infrastructure;
+﻿using CarRental.Desktop.Infrastructure;
 using CarRental.Shared.ReferenceData;
 
 namespace CarRental.Desktop.Data;
@@ -241,3 +241,4 @@ internal static class VehicleCatalogSeeds
         return (parsedValue, unit);
     }
 }
+

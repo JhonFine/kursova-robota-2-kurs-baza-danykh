@@ -1,4 +1,4 @@
-namespace CarRental.Desktop.Models;
+﻿namespace CarRental.Desktop.Models;
 
 public sealed class RentalInspection : IAuditableEntity
 {
@@ -8,7 +8,7 @@ public sealed class RentalInspection : IAuditableEntity
 
     public int PerformedByEmployeeId { get; set; }
 
-    public RentalInspectionType Type { get; set; }
+    public RentalInspectionType TypeId { get; set; }
 
     public DateTime CompletedAtUtc { get; set; } = DateTime.UtcNow;
 
@@ -26,3 +26,4 @@ public sealed class RentalInspection : IAuditableEntity
 
     public InspectionTypeLookup? TypeLookup { get; set; }
 }
+

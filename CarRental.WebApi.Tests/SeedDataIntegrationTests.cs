@@ -43,12 +43,12 @@ public sealed class SeedDataIntegrationTests
             rental.StartDate <= today.AddHours(23) &&
             rental.EndDate <= today.AddHours(23));
 
-        rentals.Count(rental => rental.Status == RentalStatus.Closed).Should().Be(288);
-        rentals.Count(rental => rental.Status == RentalStatus.Active).Should().Be(8);
-        rentals.Count(rental => rental.Status == RentalStatus.Canceled).Should().Be(4);
+        rentals.Count(rental => rental.StatusId == RentalStatus.Closed).Should().Be(288);
+        rentals.Count(rental => rental.StatusId == RentalStatus.Active).Should().Be(8);
+        rentals.Count(rental => rental.StatusId == RentalStatus.Canceled).Should().Be(4);
 
         var groupedRentals = rentals
-            .Where(rental => rental.Status != RentalStatus.Canceled)
+            .Where(rental => rental.StatusId != RentalStatus.Canceled)
             .GroupBy(rental => rental.VehicleId);
         foreach (var group in groupedRentals)
         {
@@ -60,7 +60,7 @@ public sealed class SeedDataIntegrationTests
         }
 
         var totalRevenue = rentals
-            .Where(rental => rental.Status == RentalStatus.Closed)
+            .Where(rental => rental.StatusId == RentalStatus.Closed)
             .Sum(rental => rental.TotalAmount);
         var totalDamageCost = damages.Sum(damage => damage.RepairCost);
         var damageRatio = totalDamageCost / totalRevenue;

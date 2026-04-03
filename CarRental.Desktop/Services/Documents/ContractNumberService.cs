@@ -1,4 +1,4 @@
-using CarRental.Desktop.Data;
+﻿using CarRental.Desktop.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using System.Data;
@@ -6,15 +6,15 @@ using System.Globalization;
 
 namespace CarRental.Desktop.Services.Documents;
 
-// Номер договору резервується прямо в БД по роках,
-// щоб паралельні створення оренд не породжували дублікати в desktop і web потоках.
+// РќРѕРјРµСЂ РґРѕРіРѕРІРѕСЂСѓ СЂРµР·РµСЂРІСѓС”С‚СЊСЃСЏ РїСЂСЏРјРѕ РІ Р‘Р” РїРѕ СЂРѕРєР°С…,
+// С‰РѕР± РїР°СЂР°Р»РµР»СЊРЅС– СЃС‚РІРѕСЂРµРЅРЅСЏ РѕСЂРµРЅРґ РЅРµ РїРѕСЂРѕРґР¶СѓРІР°Р»Рё РґСѓР±Р»С–РєР°С‚Рё РІ desktop С– web РїРѕС‚РѕРєР°С….
 public sealed class ContractNumberService(RentalDbContext dbContext) : IContractNumberService
 {
     public async Task<string> NextNumberAsync(CancellationToken cancellationToken = default)
     {
         var year = DateTime.UtcNow.Year;
 
-        // Рядок sequence створюється ідемпотентно, після чого той самий запис атомарно інкрементується через SQL.
+        // Р СЏРґРѕРє sequence СЃС‚РІРѕСЂСЋС”С‚СЊСЃСЏ С–РґРµРјРїРѕС‚РµРЅС‚РЅРѕ, РїС–СЃР»СЏ С‡РѕРіРѕ С‚РѕР№ СЃР°РјРёР№ Р·Р°РїРёСЃ Р°С‚РѕРјР°СЂРЅРѕ С–РЅРєСЂРµРјРµРЅС‚СѓС”С‚СЊСЃСЏ С‡РµСЂРµР· SQL.
         await dbContext.Database.ExecuteSqlInterpolatedAsync(
             $"""INSERT INTO "ContractSequences" ("Year", "LastNumber") VALUES ({year}, 0) ON CONFLICT("Year") DO NOTHING;""",
             cancellationToken);
@@ -30,7 +30,7 @@ public sealed class ContractNumberService(RentalDbContext dbContext) : IContract
     private async Task<int> ExecuteScalarIntAsync(string sql, int year, CancellationToken cancellationToken)
     {
         var connection = dbContext.Database.GetDbConnection();
-        // Використовуємо поточну EF-транзакцію, якщо вона вже відкрита навколо створення оренди.
+        // Р’РёРєРѕСЂРёСЃС‚РѕРІСѓС”РјРѕ РїРѕС‚РѕС‡РЅСѓ EF-С‚СЂР°РЅР·Р°РєС†С–СЋ, СЏРєС‰Рѕ РІРѕРЅР° РІР¶Рµ РІС–РґРєСЂРёС‚Р° РЅР°РІРєРѕР»Рѕ СЃС‚РІРѕСЂРµРЅРЅСЏ РѕСЂРµРЅРґРё.
         var shouldCloseConnection = connection.State != ConnectionState.Open;
         if (shouldCloseConnection)
         {
@@ -65,3 +65,4 @@ public sealed class ContractNumberService(RentalDbContext dbContext) : IContract
         }
     }
 }
+

@@ -1,4 +1,4 @@
-namespace CarRental.Desktop.Models;
+﻿namespace CarRental.Desktop.Models;
 
 public sealed class VehicleStatusLookup
 {
@@ -8,3 +8,4 @@ public sealed class VehicleStatusLookup
 
     public ICollection<Vehicle> Vehicles { get; set; } = new List<Vehicle>();
 }
+

@@ -13,12 +13,12 @@ public interface IPaymentService
 
 public sealed record PaymentRequest(
     int RentalId,
-    int EmployeeId,
+    int? RecordedByEmployeeId,
     decimal Amount,
-    PaymentMethod Method,
-    PaymentDirection Direction,
+    PaymentMethod MethodId,
+    PaymentDirection DirectionId,
     string Notes = "",
-    PaymentStatus Status = PaymentStatus.Completed,
+    PaymentStatus StatusId = PaymentStatus.Completed,
     string? ExternalTransactionId = null);
 
 public sealed record PaymentResult(bool Success, string Message, int PaymentId = 0);

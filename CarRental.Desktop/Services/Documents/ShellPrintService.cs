@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
 
 namespace CarRental.Desktop.Services.Documents;
@@ -33,3 +33,4 @@ public sealed class ShellPrintService : IPrintService
         }
     }
 }
+

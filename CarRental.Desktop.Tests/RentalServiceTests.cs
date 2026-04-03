@@ -7,8 +7,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CarRental.Desktop.Tests;
 
-// Regression-набір для desktop rental service:
-// перевіряє критичні сценарії життєвого циклу без UI-шару й без залежності від demo-seed.
 public sealed class RentalServiceTests
 {
     [Fact]
@@ -25,20 +23,20 @@ public sealed class RentalServiceTests
         var result = await service.CreateRentalAsync(new CreateRentalRequest(
             ClientId: 1,
             VehicleId: 1,
-            EmployeeId: 1,
+            CreatedByEmployeeId: 1,
             StartDate: start,
             EndDate: end,
-            PickupLocation: "Київ"));
+            PickupLocation: "Kyiv"));
 
         result.Success.Should().BeTrue();
         result.ContractNumber.Should().Be("CR-2026-000001");
         var rental = await dbContext.Rentals.FirstAsync();
-        rental.Status.Should().Be(RentalStatus.Booked);
+        rental.StatusId.Should().Be(RentalStatus.Booked);
         rental.ContractNumber.Should().Be("CR-2026-000001");
     }
 
     [Fact]
-    public async Task CreateRentalWithPaymentAsync_ShouldCreateRentalAndPayment()
+    public async Task CreateRentalWithPaymentAsync_ShouldCreateRentalAndPayment_WithRequestedAmount()
     {
         await using var testDatabase = await DesktopPostgresTestDatabase.CreateAsync();
         await using var dbContext = testDatabase.CreateDbContext();
@@ -51,13 +49,14 @@ public sealed class RentalServiceTests
         var result = await service.CreateRentalWithPaymentAsync(new CreateRentalWithPaymentRequest(
             ClientId: 1,
             VehicleId: 1,
-            EmployeeId: 1,
+            CreatedByEmployeeId: 1,
             StartDate: start,
             EndDate: end,
-            PickupLocation: "Київ",
-            Method: PaymentMethod.Card,
-            Direction: PaymentDirection.Incoming,
-            Notes: "Оплата карткою"));
+            PickupLocation: "Kyiv",
+            Amount: 90m,
+            MethodId: PaymentMethod.Card,
+            DirectionId: PaymentDirection.Incoming,
+            Notes: "Initial payment"));
 
         result.Success.Should().BeTrue();
         var rental = await dbContext.Rentals.FirstAsync();
@@ -65,10 +64,40 @@ public sealed class RentalServiceTests
 
         rental.ContractNumber.Should().Be("CR-2026-000010");
         payment.RentalId.Should().Be(rental.Id);
-        payment.EmployeeId.Should().Be(1);
-        payment.Amount.Should().Be(rental.TotalAmount);
-        payment.Method.Should().Be(PaymentMethod.Card);
-        payment.Direction.Should().Be(PaymentDirection.Incoming);
+        payment.RecordedByEmployeeId.Should().Be(1);
+        payment.Amount.Should().Be(90m);
+        payment.MethodId.Should().Be(PaymentMethod.Card);
+        payment.DirectionId.Should().Be(PaymentDirection.Incoming);
+        payment.Notes.Should().Be("Initial payment");
+    }
+
+    [Fact]
+    public async Task CreateRentalWithPaymentAsync_ShouldRejectPaymentAmount_WhenItExceedsRentalTotal()
+    {
+        await using var testDatabase = await DesktopPostgresTestDatabase.CreateAsync();
+        await using var dbContext = testDatabase.CreateDbContext();
+        SeedMinimalData(dbContext);
+        var service = new RentalService(dbContext, new StubContractNumberService("CR-2026-000015"));
+
+        var start = DateTime.UtcNow.AddDays(2);
+        var end = start.AddDays(1);
+
+        var result = await service.CreateRentalWithPaymentAsync(new CreateRentalWithPaymentRequest(
+            ClientId: 1,
+            VehicleId: 1,
+            CreatedByEmployeeId: 1,
+            StartDate: start,
+            EndDate: end,
+            PickupLocation: "Kyiv",
+            Amount: 1000m,
+            MethodId: PaymentMethod.Card,
+            DirectionId: PaymentDirection.Incoming,
+            Notes: "Too much"));
+
+        result.Success.Should().BeFalse();
+        result.Message.Should().Contain("Початковий платіж");
+        (await dbContext.Rentals.CountAsync()).Should().Be(0);
+        (await dbContext.Payments.CountAsync()).Should().Be(0);
     }
 
     [Fact]
@@ -88,7 +117,7 @@ public sealed class RentalServiceTests
         var result = await service.CreateRentalAsync(new CreateRentalRequest(
             ClientId: 1,
             VehicleId: 1,
-            EmployeeId: 1,
+            CreatedByEmployeeId: 1,
             StartDate: start,
             EndDate: start.AddDays(1),
             PickupLocation: "Kyiv"));
@@ -108,21 +137,22 @@ public sealed class RentalServiceTests
         await service.CreateRentalAsync(new CreateRentalRequest(
             ClientId: 1,
             VehicleId: 1,
-            EmployeeId: 1,
+            CreatedByEmployeeId: 1,
             StartDate: DateTime.UtcNow.AddDays(2),
             EndDate: DateTime.UtcNow.AddDays(4),
-            PickupLocation: "Київ"));
+            PickupLocation: "Kyiv"));
 
         var result = await service.CreateRentalWithPaymentAsync(new CreateRentalWithPaymentRequest(
             ClientId: 1,
             VehicleId: 1,
-            EmployeeId: 1,
+            CreatedByEmployeeId: 1,
             StartDate: DateTime.UtcNow.AddDays(3),
             EndDate: DateTime.UtcNow.AddDays(5),
-            PickupLocation: "Київ",
-            Method: PaymentMethod.Card,
-            Direction: PaymentDirection.Incoming,
-            Notes: "Оплата карткою"));
+            PickupLocation: "Kyiv",
+            Amount: 90m,
+            MethodId: PaymentMethod.Card,
+            DirectionId: PaymentDirection.Incoming,
+            Notes: "Initial payment"));
 
         result.Success.Should().BeFalse();
         (await dbContext.Rentals.CountAsync()).Should().Be(1);
@@ -140,10 +170,10 @@ public sealed class RentalServiceTests
         var createResult = await service.CreateRentalAsync(new CreateRentalRequest(
             ClientId: 1,
             VehicleId: 1,
-            EmployeeId: 1,
+            CreatedByEmployeeId: 1,
             StartDate: start,
             EndDate: start.AddDays(1),
-            PickupLocation: "Київ"));
+            PickupLocation: "Kyiv"));
 
         var closeResult = await service.CloseRentalAsync(new CloseRentalRequest(
             RentalId: createResult.RentalId,
@@ -152,7 +182,7 @@ public sealed class RentalServiceTests
 
         closeResult.Success.Should().BeTrue();
         var rental = await dbContext.Rentals.Include(item => item.Vehicle).FirstAsync();
-        rental.Status.Should().Be(RentalStatus.Closed);
+        rental.StatusId.Should().Be(RentalStatus.Closed);
         rental.IsClosed.Should().BeTrue();
         rental.Vehicle!.Mileage.Should().Be(56550);
         rental.OverageFee.Should().Be(0m);
@@ -160,7 +190,7 @@ public sealed class RentalServiceTests
     }
 
     [Fact]
-    public async Task CloseRentalAsync_ShouldKeepDateRangeValid_WhenStartDateHasTimeComponent()
+    public async Task CloseRentalAsync_ShouldKeepDateRangeStrictlyValid_WhenStartDateHasTimeComponent()
     {
         await using var testDatabase = await DesktopPostgresTestDatabase.CreateAsync();
         await using var dbContext = testDatabase.CreateDbContext();
@@ -171,10 +201,10 @@ public sealed class RentalServiceTests
         var createResult = await service.CreateRentalAsync(new CreateRentalRequest(
             ClientId: 1,
             VehicleId: 1,
-            EmployeeId: 1,
+            CreatedByEmployeeId: 1,
             StartDate: start,
             EndDate: start.AddDays(2),
-            PickupLocation: "Київ"));
+            PickupLocation: "Kyiv"));
 
         createResult.Success.Should().BeTrue();
 
@@ -185,7 +215,7 @@ public sealed class RentalServiceTests
 
         closeResult.Success.Should().BeTrue();
         var rental = await dbContext.Rentals.AsNoTracking().SingleAsync(item => item.Id == createResult.RentalId);
-        rental.EndDate.Should().BeOnOrAfter(rental.StartDate);
+        rental.EndDate.Should().BeAfter(rental.StartDate);
     }
 
     [Fact]
@@ -199,10 +229,10 @@ public sealed class RentalServiceTests
         await service.CreateRentalAsync(new CreateRentalRequest(
             ClientId: 1,
             VehicleId: 1,
-            EmployeeId: 1,
+            CreatedByEmployeeId: 1,
             StartDate: DateTime.UtcNow.Date.AddDays(1),
             EndDate: DateTime.UtcNow.Date.AddDays(3),
-            PickupLocation: "Київ"));
+            PickupLocation: "Kyiv"));
 
         var hasConflict = await service.HasDateConflictAsync(
             vehicleId: 1,
@@ -214,17 +244,23 @@ public sealed class RentalServiceTests
 
     private static void SeedMinimalData(RentalDbContext dbContext)
     {
-        // Мінімальний seed лишає під контролем лише ті інваріанти, які потрібні конкретним тестам сервісу.
         TestLookupSeed.SeedVehicleLookups(dbContext);
 
+        var account = new Account
+        {
+            Id = 1,
+            Login = "admin",
+            PasswordHash = "x",
+            IsActive = true
+        };
+
+        dbContext.Accounts.Add(account);
         dbContext.Employees.Add(new Employee
         {
             Id = 1,
             FullName = "Admin",
-            Login = "admin",
-            PasswordHash = "x",
-            Role = UserRole.Admin,
-            IsActive = true
+            RoleId = UserRole.Admin,
+            Account = account
         });
         dbContext.Clients.Add(new Client
         {
@@ -235,28 +271,21 @@ public sealed class RentalServiceTests
             PassportExpirationDate = DateTime.UtcNow.AddYears(5),
             DriverLicenseExpirationDate = DateTime.UtcNow.AddYears(5),
             Phone = "123",
-            Blacklisted = false
+            IsBlacklisted = false
         });
-        dbContext.Vehicles.Add(new Vehicle
-        {
-            Id = 1,
-            Make = "Toyota",
-            Model = "Camry",
-            FuelType = "Бензин",
-            TransmissionType = "Автомат",
-            PowertrainCapacityValue = 2m,
-            PowertrainCapacityUnit = "L",
-            CargoCapacityValue = 500m,
-            CargoCapacityUnit = "L",
-            ConsumptionValue = 7m,
-            ConsumptionUnit = "L_PER_100KM",
-            LicensePlate = "AA0011AA",
-            Mileage = 56000,
-            DailyRate = 70m,
-            IsBookable = true,
-            IsAvailable = true,
-            ServiceIntervalKm = 10000
-        });
+        dbContext.Vehicles.Add(TestLookupSeed.CreateVehicle(
+            dbContext,
+            "Toyota",
+            "Camry",
+            "AA0011AA",
+            "PETROL",
+            "AUTO",
+            2m,
+            500m,
+            7m,
+            56000,
+            70m,
+            id: 1));
         dbContext.SaveChanges();
     }
 

@@ -30,10 +30,14 @@ public sealed class SoftDeleteAndDocumentSecurityTests
         {
             Id = 1,
             FullName = "Manager User",
-            Login = "manager",
-            PasswordHash = "x",
-            Role = UserRole.Manager,
-            IsActive = true
+            RoleId = UserRole.Manager,
+            Account = new Account
+            {
+                Login = "manager",
+                PasswordHash = "x",
+                IsActive = true,
+                PasswordChangedAtUtc = DateTime.UtcNow
+            }
         });
         dbContext.Clients.Add(new Client
         {
@@ -44,39 +48,33 @@ public sealed class SoftDeleteAndDocumentSecurityTests
             PassportExpirationDate = DateTime.UtcNow.AddYears(5),
             DriverLicenseExpirationDate = DateTime.UtcNow.AddYears(5),
             Phone = "+380500000010",
-            Blacklisted = false
+            IsBlacklisted = false
         });
-        dbContext.Vehicles.Add(new Vehicle
-        {
-            Id = 20,
-            Make = "Tesla",
-            Model = "Model 3",
-            FuelType = "Електро",
-            TransmissionType = "Автомат",
-            PowertrainCapacityValue = 75m,
-            PowertrainCapacityUnit = "KWH",
-            CargoCapacityValue = 425m,
-            CargoCapacityUnit = "L",
-            ConsumptionValue = 16m,
-            ConsumptionUnit = "KWH_PER_100KM",
-            LicensePlate = "AA2020AA",
-            Mileage = 12000,
-            DailyRate = 3000m,
-            IsAvailable = true,
-            ServiceIntervalKm = 10000
-        });
+        dbContext.Vehicles.Add(TestLookupSeed.CreateVehicle(
+            dbContext,
+            make: "Tesla",
+            model: "Model 3",
+            licensePlate: "AA2020AA",
+            fuelTypeCode: "Електро",
+            transmissionTypeCode: "Автомат",
+            powertrainCapacityValue: 75m,
+            cargoCapacityValue: 425m,
+            consumptionValue: 16m,
+            mileage: 12000,
+            dailyRate: 3000m,
+            id: 20));
         dbContext.Rentals.Add(new Rental
         {
             Id = 100,
             ClientId = 10,
             VehicleId = 20,
-            EmployeeId = 1,
+            CreatedByEmployeeId = 1,
             ContractNumber = "CR-2026-500001",
             StartDate = DateTime.UtcNow.AddDays(-2),
             EndDate = DateTime.UtcNow.AddDays(-1),
             StartMileage = 12000,
             TotalAmount = 3000m,
-            Status = RentalStatus.Closed,
+            StatusId = RentalStatus.Closed,
             IsClosed = true,
             ClosedAtUtc = DateTime.UtcNow,
             CreatedAtUtc = DateTime.UtcNow
@@ -129,7 +127,7 @@ public sealed class SoftDeleteAndDocumentSecurityTests
                 DriverLicense = "DL-111",
                 DriverLicensePhotoPath = "/images/vehicles/car.jpg",
                 Phone = "+380500000111",
-                Blacklisted = false
+                IsBlacklisted = false
             },
             CancellationToken.None);
 
@@ -159,7 +157,7 @@ public sealed class SoftDeleteAndDocumentSecurityTests
                 PassportExpirationDate = DateTime.UtcNow.AddYears(5),
                 DriverLicenseExpirationDate = DateTime.UtcNow.AddYears(5),
                 Phone = "+380500000001",
-                Blacklisted = false
+                IsBlacklisted = false
             });
             await dbContext.SaveChangesAsync();
 
@@ -307,32 +305,25 @@ public sealed class SoftDeleteAndDocumentSecurityTests
             await using var dbContext = testDatabase.CreateDbContext();
             SeedDamageScenario(dbContext);
 
-            dbContext.Vehicles.Add(new Vehicle
-            {
-                Id = 2,
-                Make = "BMW",
-                Model = "M5",
-                FuelType = "Бензин",
-                TransmissionType = "Автомат",
-                PowertrainCapacityValue = 4.4m,
-                PowertrainCapacityUnit = "L",
-                CargoCapacityValue = 530m,
-                CargoCapacityUnit = "L",
-                ConsumptionValue = 11m,
-                ConsumptionUnit = "L_PER_100KM",
-                LicensePlate = "AA0022AA",
-                Mileage = 1500,
-                DailyRate = 120m,
-                IsBookable = true,
-                IsAvailable = true,
-                ServiceIntervalKm = 10000
-            });
+            dbContext.Vehicles.Add(TestLookupSeed.CreateVehicle(
+                dbContext,
+                make: "BMW",
+                model: "M5",
+                licensePlate: "AA0022AA",
+                fuelTypeCode: "Бензин",
+                transmissionTypeCode: "Автомат",
+                powertrainCapacityValue: 4.4m,
+                cargoCapacityValue: 530m,
+                consumptionValue: 11m,
+                mileage: 1500,
+                dailyRate: 120m,
+                id: 2));
             dbContext.Rentals.Add(new Rental
             {
                 Id = 50,
                 ClientId = 1,
                 VehicleId = 2,
-                EmployeeId = 1,
+                CreatedByEmployeeId = 1,
                 ContractNumber = "CR-2026-000079",
                 StartDate = DateTime.UtcNow.AddDays(-1),
                 EndDate = DateTime.UtcNow.AddDays(1),
@@ -340,7 +331,7 @@ public sealed class SoftDeleteAndDocumentSecurityTests
                 ReturnLocation = "Kyiv",
                 StartMileage = 1500,
                 TotalAmount = 500m,
-                Status = RentalStatus.Active,
+                StatusId = RentalStatus.Active,
                 IsClosed = false,
                 CreatedAtUtc = DateTime.UtcNow
             });
@@ -489,9 +480,9 @@ public sealed class SoftDeleteAndDocumentSecurityTests
                 ReportedByEmployeeId = 1,
                 Description = "Existing damage",
                 RepairCost = 900m,
-                ActNumber = "ACT-20260331000000000-100000",
+                DamageActNumber = "ACT-20260331000000000-100000",
                 ChargedAmount = 0m,
-                Status = DamageStatus.Open,
+                StatusId = DamageStatus.Open,
                 Photos =
                 [
                     new DamagePhoto
@@ -582,10 +573,14 @@ public sealed class SoftDeleteAndDocumentSecurityTests
         {
             Id = 1,
             FullName = "Manager User",
-            Login = "manager",
-            PasswordHash = "x",
-            Role = UserRole.Manager,
-            IsActive = true
+            RoleId = UserRole.Manager,
+            Account = new Account
+            {
+                Login = "manager",
+                PasswordHash = "x",
+                IsActive = true,
+                PasswordChangedAtUtc = DateTime.UtcNow
+            }
         });
         dbContext.Clients.Add(new Client
         {
@@ -596,28 +591,21 @@ public sealed class SoftDeleteAndDocumentSecurityTests
             PassportExpirationDate = DateTime.UtcNow.AddYears(5),
             DriverLicenseExpirationDate = DateTime.UtcNow.AddYears(5),
             Phone = "+380500000001",
-            Blacklisted = false
+            IsBlacklisted = false
         });
-        dbContext.Vehicles.Add(new Vehicle
-        {
-            Id = 1,
-            Make = "Ford",
-            Model = "Focus",
-            FuelType = "Бензин",
-            TransmissionType = "Автомат",
-            PowertrainCapacityValue = 2m,
-            PowertrainCapacityUnit = "L",
-            CargoCapacityValue = 500m,
-            CargoCapacityUnit = "L",
-            ConsumptionValue = 7m,
-            ConsumptionUnit = "L_PER_100KM",
-            LicensePlate = "AA0011AA",
-            Mileage = 1000,
-            DailyRate = 70m,
-            IsBookable = true,
-            IsAvailable = true,
-            ServiceIntervalKm = 10000
-        });
+        dbContext.Vehicles.Add(TestLookupSeed.CreateVehicle(
+            dbContext,
+            make: "Ford",
+            model: "Focus",
+            licensePlate: "AA0011AA",
+            fuelTypeCode: "Бензин",
+            transmissionTypeCode: "Автомат",
+            powertrainCapacityValue: 2m,
+            cargoCapacityValue: 500m,
+            consumptionValue: 7m,
+            mileage: 1000,
+            dailyRate: 70m,
+            id: 1));
         dbContext.SaveChanges();
     }
 
@@ -627,3 +615,5 @@ public sealed class SoftDeleteAndDocumentSecurityTests
             => Task.FromResult("CR-2026-999997");
     }
 }
+
+

@@ -1,6 +1,35 @@
-﻿<UserControl x:Class="CarRental.Desktop.Views.Pages.MaintenancePage"
+<UserControl x:Class="CarRental.Desktop.Views.Pages.MaintenancePage"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:infra="clr-namespace:CarRental.Desktop.Infrastructure">
+    <UserControl.Resources>
+        <Style x:Key="MaintenanceLinkButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Foreground" Value="{StaticResource AccentDarkBrush}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <ContentPresenter />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                    <Setter Property="Cursor" Value="Arrow" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
     <Grid x:Name="MaintenanceRoot" Margin="8">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -9,41 +38,49 @@
         </Grid.RowDefinitions>
 
         <GroupBox x:Name="MaintenanceRecordGroup" Grid.Row="0" Header="Запис про техобслуговування">
-            <Grid>
+            <Grid Margin="0,4,0,0">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="2*" />
+                    <ColumnDefinition Width="2.2*" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="1.5*" />
+                    <ColumnDefinition Width="1.6*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                <StackPanel Grid.Column="0" Margin="0,0,10,0">
                     <TextBlock Style="{StaticResource FormLabelStyle}" Text="Авто" />
                     <ComboBox ItemsSource="{Binding Vehicles}"
                               DisplayMemberPath="Display"
                               SelectedItem="{Binding SelectedVehicle}" />
                 </StackPanel>
-                <StackPanel Grid.Column="1" Margin="0,0,8,0">
+
+                <StackPanel Grid.Column="1" Margin="0,0,10,0">
                     <TextBlock Style="{StaticResource FormLabelStyle}" Text="Пробіг на ТО" />
-                    <TextBox Text="{Binding MileageInput}" />
+                    <TextBox Text="{Binding MileageInput, UpdateSourceTrigger=PropertyChanged}"
+                             infra:TextBoxWatermarkService.Watermark="км" />
                 </StackPanel>
-                <StackPanel Grid.Column="2" Margin="0,0,8,0">
+
+                <StackPanel Grid.Column="2" Margin="0,0,10,0">
                     <TextBlock Style="{StaticResource FormLabelStyle}" Text="Наступне ТО" />
-                    <TextBox Text="{Binding NextMileageInput}" />
+                    <TextBox Text="{Binding NextMileageInput, UpdateSourceTrigger=PropertyChanged}"
+                             infra:TextBoxWatermarkService.Watermark="км" />
                 </StackPanel>
-                <StackPanel Grid.Column="3" Margin="0,0,8,0">
+
+                <StackPanel Grid.Column="3" Margin="0,0,10,0">
                     <TextBlock Style="{StaticResource FormLabelStyle}" Text="Вартість" />
-                    <TextBox Text="{Binding CostInput}" />
+                    <TextBox Text="{Binding CostInput, UpdateSourceTrigger=PropertyChanged}"
+                             infra:TextBoxWatermarkService.Watermark="грн" />
                 </StackPanel>
-                <StackPanel Grid.Column="4" Margin="0,0,8,0">
+
+                <StackPanel Grid.Column="4" Margin="0,0,10,0">
                     <TextBlock Style="{StaticResource FormLabelStyle}" Text="Опис робіт" />
-                    <TextBox Text="{Binding Description}" />
+                    <TextBox Text="{Binding Description, UpdateSourceTrigger=PropertyChanged}" />
                 </StackPanel>
+
                 <Button x:Name="AddRecordButton"
                         Grid.Column="5"
-                        Width="100"
+                        Width="120"
                         Margin="0,20,0,0"
                         Content="Додати"
                         Style="{StaticResource PrimaryButtonStyle}"
@@ -53,35 +90,149 @@
 
         <TabControl x:Name="MaintenanceTabControl" Grid.Row="1" Margin="0,12,0,0">
             <TabItem x:Name="HistoryTab" Header="Історія техобслуговування">
-                <DataGrid x:Name="RecordsGrid"
-                          Margin="0,12,0,0"
-                          ItemsSource="{Binding Records}"
-                          AutoGenerateColumns="False"
-                          IsReadOnly="True">
-                    <DataGrid.Columns>
-                        <DataGridTextColumn Header="Авто" Binding="{Binding Vehicle}" Width="220" />
-                        <DataGridTextColumn Header="Дата" Binding="{Binding ServiceDate, StringFormat=dd.MM.yyyy}" Width="120" />
-                        <DataGridTextColumn Header="Пробіг" Binding="{Binding MileageAtService}" Width="110" />
-                        <DataGridTextColumn Header="Наступне ТО" Binding="{Binding NextServiceMileage}" Width="130" />
-                        <DataGridTextColumn Header="Вартість" Binding="{Binding Cost}" Width="120" />
-                        <DataGridTextColumn Header="Опис" Binding="{Binding Description}" Width="*" />
-                    </DataGrid.Columns>
-                </DataGrid>
+                <Grid Margin="0,12,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Border Style="{StaticResource CardSurfaceStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="1.4*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="1.1*" />
+                                <ColumnDefinition Width="1.2*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                                <TextBlock Style="{StaticResource FormLabelStyle}" Text="Авто" />
+                                <ComboBox ItemsSource="{Binding HistoryVehicleOptions}"
+                                          DisplayMemberPath="Display"
+                                          SelectedValuePath="Id"
+                                          SelectedValue="{Binding SelectedHistoryVehicleId}" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Margin="0,0,10,0">
+                                <TextBlock Style="{StaticResource FormLabelStyle}" Text="Період з" />
+                                <DatePicker SelectedDate="{Binding HistoryDateFrom}" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="2" Margin="0,0,10,0">
+                                <TextBlock Style="{StaticResource FormLabelStyle}" Text="Період до" />
+                                <DatePicker SelectedDate="{Binding HistoryDateTo}" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="3" Margin="0,0,10,0">
+                                <TextBlock Style="{StaticResource FormLabelStyle}" Text="Тип робіт" />
+                                <ComboBox ItemsSource="{Binding HistoryMaintenanceTypeOptions}"
+                                          DisplayMemberPath="Display"
+                                          SelectedValuePath="Code"
+                                          SelectedValue="{Binding SelectedHistoryMaintenanceType}" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="4" Margin="0,0,10,0">
+                                <TextBlock Style="{StaticResource FormLabelStyle}" Text="Пошук" />
+                                <TextBox Text="{Binding HistorySearchText, UpdateSourceTrigger=PropertyChanged}"
+                                         infra:TextBoxWatermarkService.Watermark="авто, номер або опис" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="5"
+                                        Orientation="Horizontal"
+                                        VerticalAlignment="Bottom">
+                                <Button Margin="0,0,8,0"
+                                        Content="Застосувати"
+                                        Style="{StaticResource PrimaryButtonStyle}"
+                                        Command="{Binding ApplyHistoryFiltersCommand}" />
+                                <Button Content="Скинути"
+                                        Command="{Binding ClearHistoryFiltersCommand}" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <DataGrid x:Name="RecordsGrid"
+                              Grid.Row="1"
+                              Margin="0,12,0,0"
+                              ItemsSource="{Binding Records}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn Header="Авто" Width="260">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Style="{StaticResource MaintenanceLinkButtonStyle}"
+                                                Command="{Binding DataContext.OpenVehicleFromMaintenanceCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                CommandParameter="{Binding VehicleId}">
+                                            <TextBlock Text="{Binding Vehicle}"
+                                                       TextWrapping="Wrap"
+                                                       TextDecorations="Underline" />
+                                        </Button>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Дата" Binding="{Binding ServiceDate, StringFormat=dd.MM.yyyy}" Width="120" />
+                            <DataGridTextColumn Header="Пробіг" Binding="{Binding MileageDisplay}" Width="120" />
+                            <DataGridTextColumn Header="Наступне ТО" Binding="{Binding NextServiceMileageDisplay}" Width="130" />
+                            <DataGridTextColumn Header="Вартість" Binding="{Binding CostDisplay}" Width="130" />
+                            <DataGridTextColumn Header="Тип робіт" Binding="{Binding MaintenanceTypeDisplay}" Width="140" />
+                            <DataGridTextColumn Header="Опис" Binding="{Binding Description}" Width="*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
             </TabItem>
 
             <TabItem x:Name="DueTab" Header="Планове ТО за регламентом">
-                <DataGrid x:Name="DueItemsGrid"
-                          Margin="0,12,0,0"
-                          ItemsSource="{Binding DueItems}"
-                          AutoGenerateColumns="False"
-                          IsReadOnly="True">
-                    <DataGrid.Columns>
-                        <DataGridTextColumn Header="Авто" Binding="{Binding Vehicle}" Width="260" />
-                        <DataGridTextColumn Header="Поточний пробіг" Binding="{Binding CurrentMileage}" Width="150" />
-                        <DataGridTextColumn Header="Наступне ТО" Binding="{Binding NextServiceMileage}" Width="130" />
-                        <DataGridTextColumn Header="Прострочено (км)" Binding="{Binding OverdueByKm}" Width="140" />
-                    </DataGrid.Columns>
-                </DataGrid>
+                <Grid Margin="0,12,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Style="{StaticResource SectionHintStyle}"
+                               Text="Тут показані лише автомобілі, для яких ТО вже прострочене або наближається за пробігом чи датою."
+                               Margin="0,0,0,12" />
+
+                    <DataGrid x:Name="DueItemsGrid"
+                              Grid.Row="1"
+                              ItemsSource="{Binding DueItems}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn Header="Авто" Width="260">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Style="{StaticResource MaintenanceLinkButtonStyle}"
+                                                Command="{Binding DataContext.OpenVehicleFromMaintenanceCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                CommandParameter="{Binding VehicleId}">
+                                            <TextBlock Text="{Binding Vehicle}"
+                                                       TextWrapping="Wrap"
+                                                       TextDecorations="Underline" />
+                                        </Button>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Поточний пробіг" Binding="{Binding CurrentMileageDisplay}" Width="140" />
+                            <DataGridTextColumn Header="Наступне ТО" Binding="{Binding NextServiceMileageDisplay}" Width="130" />
+                            <DataGridTextColumn Header="До наступного ТО" Binding="{Binding DistanceToNextServiceDisplay}" Width="170" />
+                            <DataGridTextColumn Header="Залишилось днів" Binding="{Binding DaysToNextServiceDisplay}" Width="150" />
+                            <DataGridTemplateColumn Header="Статус" Width="130">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource StatusBadgeBorderStyle}"
+                                                Background="{Binding ForecastStatusDisplay, Converter={StaticResource StatusBadgeBackgroundConverter}}">
+                                            <TextBlock Style="{StaticResource StatusBadgeTextStyle}"
+                                                       Text="{Binding ForecastStatusDisplay}"
+                                                       Foreground="{Binding ForecastStatusDisplay, Converter={StaticResource StatusBadgeForegroundConverter}}" />
+                                        </Border>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Планові роботи" Binding="{Binding ForecastNotes}" Width="*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
             </TabItem>
         </TabControl>
 

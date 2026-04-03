@@ -1,6 +1,10 @@
 <UserControl x:Class="CarRental.Desktop.Views.Pages.ClientsPage"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+    </UserControl.Resources>
+
     <Grid x:Name="ClientsRoot" Margin="8">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -12,17 +16,24 @@
                 Grid.Row="0"
                 Margin="0,0,0,12"
                 Style="{StaticResource CardSurfaceStyle}">
-            <DockPanel>
-                <StackPanel DockPanel.Dock="Left">
+            <DockPanel LastChildFill="False">
+                <StackPanel DockPanel.Dock="Left" Margin="0,0,18,0">
                     <TextBlock Text="База клієнтів (CRM)" Style="{StaticResource SectionTitleStyle}" />
-                    <TextBlock Text="Оберіть клієнта в таблиці, щоб переглянути деталі та виконати дії справа."
+                    <TextBlock Text="Створюйте локальні профілі клієнтів, перевіряйте документи та переходьте до оформлення оренди."
                                Style="{StaticResource SectionHintStyle}" />
                 </StackPanel>
-                <Button x:Name="ClientsRefreshButton"
-                        DockPanel.Dock="Right"
-                        Content="Оновити"
-                        Style="{StaticResource PrimaryButtonStyle}"
-                        Command="{Binding RefreshCommand}" />
+                <StackPanel DockPanel.Dock="Right"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right">
+                    <Button x:Name="CreateClientButton"
+                            Margin="0,0,8,0"
+                            Content="Додати клієнта"
+                            Command="{Binding StartCreateClientCommand}" />
+                    <Button x:Name="ClientsRefreshButton"
+                            Content="Оновити"
+                            Style="{StaticResource PrimaryButtonStyle}"
+                            Command="{Binding RefreshCommand}" />
+                </StackPanel>
             </DockPanel>
         </Border>
 
@@ -38,12 +49,45 @@
                       Header="Список клієнтів">
                 <Grid>
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
+                    <StackPanel Grid.Row="0" Margin="0,0,0,10">
+                        <TextBlock Text="Швидкий пошук"
+                                   Style="{StaticResource FormLabelStyle}" />
+                        <TextBox x:Name="ClientSearchTextBox"
+                                 Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Text="Пошук працює за ПІБ, телефоном, паспортом і номером посвідчення."
+                                   Style="{StaticResource SectionHintStyle}" />
+                    </StackPanel>
+
+                    <Border x:Name="QuickCreateFromSearchBanner"
+                            Grid.Row="1"
+                            Margin="0,0,0,10"
+                            Padding="12"
+                            Background="#F0FDF4"
+                            BorderBrush="#BBF7D0"
+                            BorderThickness="1"
+                            CornerRadius="10"
+                            Visibility="{Binding ShowQuickCreateFromSearch, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <DockPanel LastChildFill="False">
+                            <TextBlock VerticalAlignment="Center"
+                                       Foreground="#166534"
+                                       Text="{Binding QuickCreateFromSearchText}" />
+                            <Button x:Name="QuickCreateFromSearchButton"
+                                    DockPanel.Dock="Right"
+                                    Margin="12,0,0,0"
+                                    Content="Створити профіль"
+                                    Style="{StaticResource PrimaryButtonStyle}"
+                                    Command="{Binding QuickCreateFromSearchCommand}" />
+                        </DockPanel>
+                    </Border>
+
                     <DataGrid x:Name="ClientsGrid"
-                              Grid.Row="0"
+                              Grid.Row="2"
                               ItemsSource="{Binding Clients}"
                               SelectedItem="{Binding SelectedClient}"
                               AutoGenerateColumns="False"
@@ -52,7 +96,7 @@
                             <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="60" />
                             <DataGridTextColumn Header="ПІБ" Binding="{Binding FullName}" Width="240" />
                             <DataGridTextColumn Header="Телефон" Binding="{Binding Phone}" Width="160" />
-                            <DataGridTextColumn Header="Посвідчення" Binding="{Binding DriverLicense}" Width="150" />
+                            <DataGridTextColumn Header="Посвідчення" Binding="{Binding DriverLicenseDisplay}" Width="150" />
                             <DataGridTemplateColumn Header="Статус" Width="170">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
@@ -61,20 +105,18 @@
                                                 <Style TargetType="Border" BasedOn="{StaticResource StatusBadgeBorderStyle}">
                                                     <Setter Property="Background" Value="#DCFCE7" />
                                                     <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding Blacklisted}" Value="True">
+                                                        <DataTrigger Binding="{Binding IsBlacklisted}" Value="True">
                                                             <Setter Property="Background" Value="#FEE2E2" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
                                             </Border.Style>
-                                            <TextBlock>
+                                            <TextBlock Text="{Binding StatusText}">
                                                 <TextBlock.Style>
                                                     <Style TargetType="TextBlock" BasedOn="{StaticResource StatusBadgeTextStyle}">
-                                                        <Setter Property="Text" Value="Активний" />
                                                         <Setter Property="Foreground" Value="#166534" />
                                                         <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding Blacklisted}" Value="True">
-                                                                <Setter Property="Text" Value="У чорному списку" />
+                                                            <DataTrigger Binding="{Binding IsBlacklisted}" Value="True">
                                                                 <Setter Property="Foreground" Value="#991B1B" />
                                                             </DataTrigger>
                                                         </Style.Triggers>
@@ -88,7 +130,7 @@
                         </DataGrid.Columns>
                     </DataGrid>
 
-                    <DockPanel Grid.Row="1" Margin="0,10,0,0">
+                    <DockPanel Grid.Row="3" Margin="0,10,0,0">
                         <TextBlock DockPanel.Dock="Left"
                                    VerticalAlignment="Center"
                                    Foreground="#64748B"
@@ -104,46 +146,168 @@
                 </Grid>
             </GroupBox>
 
-            <GroupBox x:Name="ClientDetailsGroup" Grid.Column="1" Header="Картка клієнта">
-                <StackPanel x:Name="ClientDetailsPanel">
-                    <Grid Margin="0,0,0,12">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
+            <GroupBox x:Name="ClientDetailsGroup"
+                      Grid.Column="1"
+                      Header="{Binding RightPanelHeader}">
+                <Grid>
+                    <ScrollViewer x:Name="ClientEditorPanel"
+                                  Visibility="{Binding ShowEditorPanel, Converter={StaticResource BoolToVisibilityConverter}}"
+                                  VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <TextBlock Text="{Binding EditorHint}"
+                                       Style="{StaticResource SectionHintStyle}"
+                                       Margin="0,0,0,14" />
 
-                        <TextBlock Grid.Row="0" Grid.Column="0" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="ID:" />
-                        <TextBlock Grid.Row="0" Grid.Column="1" Margin="0,0,0,6" Text="{Binding SelectedClient.Id, TargetNullValue=—}" />
+                            <TextBlock Text="ПІБ" Style="{StaticResource FormLabelStyle}" />
+                            <TextBox Text="{Binding Editor.FullName, UpdateSourceTrigger=PropertyChanged}" />
 
-                        <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="ПІБ:" />
-                        <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,0,0,6" Text="{Binding SelectedClient.FullName, TargetNullValue=—}" />
+                            <TextBlock Margin="0,12,0,0" Text="Телефон" Style="{StaticResource FormLabelStyle}" />
+                            <TextBox Text="{Binding Editor.Phone, UpdateSourceTrigger=PropertyChanged}" />
 
-                        <TextBlock Grid.Row="2" Grid.Column="0" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="Телефон:" />
-                        <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,0,0,6" Text="{Binding SelectedClient.Phone, TargetNullValue=—}" />
+                            <Border Margin="0,16,0,0"
+                                    Padding="12"
+                                    Background="#F8FAFC"
+                                    BorderBrush="#D9E2EC"
+                                    BorderThickness="1"
+                                    CornerRadius="10">
+                                <StackPanel>
+                                    <TextBlock Text="Паспорт"
+                                               Style="{StaticResource SectionTitleStyle}"
+                                               FontSize="15" />
+                                    <TextBlock Margin="0,10,0,0"
+                                               Text="Номер паспорта"
+                                               Style="{StaticResource FormLabelStyle}" />
+                                    <TextBox Text="{Binding Editor.PassportData, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Margin="0,10,0,0"
+                                               Text="Дійсний до"
+                                               Style="{StaticResource FormLabelStyle}" />
+                                    <DatePicker SelectedDate="{Binding Editor.PassportExpirationDate, Mode=TwoWay}" />
+                                    <TextBlock Margin="0,10,0,0"
+                                               Text="Файл паспорта"
+                                               Style="{StaticResource FormLabelStyle}" />
+                                    <TextBlock Foreground="#475569"
+                                               TextWrapping="Wrap"
+                                               Text="{Binding Editor.PassportAttachmentSummary}" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                        <Button x:Name="ChoosePassportFileButton"
+                                                Margin="0,0,8,0"
+                                                Content="Обрати файл"
+                                                Click="ChoosePassportFileButton_OnClick" />
+                                        <Button Content="Очистити вибір"
+                                                Command="{Binding ClearPassportSelectionCommand}" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
 
-                        <TextBlock Grid.Row="3" Grid.Column="0" Margin="0,0,8,0" Style="{StaticResource FormLabelStyle}" Text="Посвідчення:" />
-                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedClient.DriverLicense, TargetNullValue=—}" />
-                    </Grid>
+                            <Border Margin="0,12,0,0"
+                                    Padding="12"
+                                    Background="#F8FAFC"
+                                    BorderBrush="#D9E2EC"
+                                    BorderThickness="1"
+                                    CornerRadius="10">
+                                <StackPanel>
+                                    <TextBlock Text="Посвідчення водія"
+                                               Style="{StaticResource SectionTitleStyle}"
+                                               FontSize="15" />
+                                    <TextBlock Margin="0,10,0,0"
+                                               Text="Номер посвідчення"
+                                               Style="{StaticResource FormLabelStyle}" />
+                                    <TextBox Text="{Binding Editor.DriverLicense, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Margin="0,10,0,0"
+                                               Text="Дійсне до"
+                                               Style="{StaticResource FormLabelStyle}" />
+                                    <DatePicker SelectedDate="{Binding Editor.DriverLicenseExpirationDate, Mode=TwoWay}" />
+                                    <TextBlock Margin="0,10,0,0"
+                                               Text="Файл посвідчення"
+                                               Style="{StaticResource FormLabelStyle}" />
+                                    <TextBlock Foreground="#475569"
+                                               TextWrapping="Wrap"
+                                               Text="{Binding Editor.DriverLicenseAttachmentSummary}" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                        <Button x:Name="ChooseDriverLicenseFileButton"
+                                                Margin="0,0,8,0"
+                                                Content="Обрати файл"
+                                                Click="ChooseDriverLicenseFileButton_OnClick" />
+                                        <Button Content="Очистити вибір"
+                                                Command="{Binding ClearDriverLicenseSelectionCommand}" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
 
-                    <TextBlock Text="Дії"
-                               Style="{StaticResource SectionTitleStyle}"
-                               FontSize="15"
-                               Margin="0,0,0,10" />
-                    <Button x:Name="ToggleBlacklistButton"
-                            Content="Додати/прибрати зі списку"
-                            Margin="0,0,0,8"
-                            Command="{Binding ToggleBlacklistCommand}" />
-                    <Button x:Name="DeleteClientButton"
-                            Content="Видалити клієнта"
-                            Style="{StaticResource DangerButtonStyle}"
-                            Command="{Binding DeleteClientCommand}" />
-                </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                                <Button x:Name="SaveClientButton"
+                                        Margin="0,0,8,0"
+                                        Content="{Binding SaveButtonText}"
+                                        Style="{StaticResource PrimaryButtonStyle}"
+                                        Command="{Binding SaveClientCommand}" />
+                                <Button Content="Скасувати"
+                                        Command="{Binding CancelEditorCommand}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <StackPanel x:Name="ClientDetailsPanel"
+                                Visibility="{Binding ShowClientDetails, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Grid.Column="0" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="ID:" />
+                            <TextBlock Grid.Row="0" Grid.Column="1" Margin="0,0,0,6" Text="{Binding SelectedClient.Id}" />
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="ПІБ:" />
+                            <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,0,0,6" Text="{Binding SelectedClient.FullName}" />
+
+                            <TextBlock Grid.Row="2" Grid.Column="0" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="Телефон:" />
+                            <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,0,0,6" Text="{Binding SelectedClient.Phone}" />
+
+                            <TextBlock Grid.Row="3" Grid.Column="0" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="Паспорт:" />
+                            <TextBlock Grid.Row="3" Grid.Column="1" Margin="0,0,0,6" Text="{Binding SelectedClient.PassportDataDisplay}" />
+
+                            <TextBlock Grid.Row="4" Grid.Column="0" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="Паспорт файл:" />
+                            <TextBlock Grid.Row="4" Grid.Column="1" Margin="0,0,0,6" Text="{Binding SelectedClient.PassportAttachmentText}" />
+
+                            <TextBlock Grid.Row="5" Grid.Column="0" Margin="0,0,8,6" Style="{StaticResource FormLabelStyle}" Text="Посвідчення:" />
+                            <TextBlock Grid.Row="5" Grid.Column="1" Margin="0,0,0,6" Text="{Binding SelectedClient.DriverLicenseDisplay}" />
+
+                            <TextBlock Grid.Row="6" Grid.Column="0" Margin="0,0,8,0" Style="{StaticResource FormLabelStyle}" Text="Доступ:" />
+                            <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding SelectedClient.AccessModeText}" />
+                        </Grid>
+
+                        <TextBlock Text="Дії"
+                                   Style="{StaticResource SectionTitleStyle}"
+                                   FontSize="15"
+                                   Margin="0,0,0,10" />
+                        <Button x:Name="EditClientButton"
+                                Margin="0,0,0,8"
+                                Content="Редагувати картку"
+                                Command="{Binding EditClientCommand}" />
+                        <Button x:Name="OpenRentalsButton"
+                                Margin="0,0,0,8"
+                                Content="Оформити оренду"
+                                Style="{StaticResource PrimaryButtonStyle}"
+                                Command="{Binding OpenRentalsCommand}" />
+                        <Button x:Name="ToggleBlacklistButton"
+                                Margin="0,0,0,8"
+                                Content="{Binding BlacklistButtonText}"
+                                Command="{Binding ToggleBlacklistCommand}" />
+                        <Button x:Name="DeleteClientButton"
+                                Content="Видалити клієнта"
+                                Style="{StaticResource DangerButtonStyle}"
+                                Command="{Binding DeleteClientCommand}" />
+                    </StackPanel>
+                </Grid>
             </GroupBox>
         </Grid>
 

@@ -18,11 +18,11 @@ public sealed class Damage : IAuditableEntity
 
     public decimal RepairCost { get; set; }
 
-    public string ActNumber { get; set; } = string.Empty;
+    public string DamageActNumber { get; set; } = string.Empty;
 
     public decimal ChargedAmount { get; set; }
 
-    public DamageStatus Status { get; set; } = DamageStatus.Open;
+    public DamageStatus StatusId { get; set; } = DamageStatus.Open;
 
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
@@ -37,18 +37,18 @@ public sealed class Damage : IAuditableEntity
             if (value)
             {
                 ChargedAmount = ChargedAmount > 0m ? ChargedAmount : RepairCost;
-                if (Status == DamageStatus.Open)
+                if (StatusId == DamageStatus.Open)
                 {
-                    Status = DamageStatus.Charged;
+                    StatusId = DamageStatus.Charged;
                 }
 
                 return;
             }
 
             ChargedAmount = 0m;
-            if (Status == DamageStatus.Charged)
+            if (StatusId == DamageStatus.Charged)
             {
-                Status = DamageStatus.Open;
+                StatusId = DamageStatus.Open;
             }
         }
     }
@@ -56,21 +56,17 @@ public sealed class Damage : IAuditableEntity
     [NotMapped]
     public string? PhotoPath
     {
-        get => Photos.OrderBy(item => item.SortOrder).Select(item => item.StoredPath).FirstOrDefault();
+        get => Photos
+            .Where(item => !item.IsDeleted)
+            .OrderBy(item => item.SortOrder)
+            .Select(item => item.StoredPath)
+            .FirstOrDefault();
         set
         {
-            Photos.Clear();
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                return;
-            }
-
-            Photos.Add(new DamagePhoto
-            {
-                DamageId = Id,
-                StoredPath = value,
-                SortOrder = 0
-            });
+            var nextPath = value?.Trim();
+            ReconcilePhotos(string.IsNullOrWhiteSpace(nextPath)
+                ? Array.Empty<(string StoredPath, int SortOrder)>()
+                : [(nextPath!, 0)]);
         }
     }
 
@@ -82,5 +78,46 @@ public sealed class Damage : IAuditableEntity
 
     public DamageStatusLookup? StatusLookup { get; set; }
 
+    public ICollection<DamageStatusHistory> StatusHistory { get; set; } = new List<DamageStatusHistory>();
+
     public ICollection<DamagePhoto> Photos { get; set; } = new List<DamagePhoto>();
+
+    public void ReconcilePhotos(IEnumerable<(string StoredPath, int SortOrder)> desiredPhotos)
+    {
+        var utcNow = DateTime.UtcNow;
+        var desired = desiredPhotos
+            .Where(item => !string.IsNullOrWhiteSpace(item.StoredPath))
+            .Select(item => (StoredPath: item.StoredPath.Trim(), item.SortOrder))
+            .ToList();
+
+        foreach (var existing in Photos)
+        {
+            var match = desired.FirstOrDefault(item =>
+                string.Equals(item.StoredPath, existing.StoredPath, StringComparison.OrdinalIgnoreCase));
+
+            if (string.IsNullOrWhiteSpace(match.StoredPath))
+            {
+                existing.IsDeleted = true;
+                existing.UpdatedAtUtc = utcNow;
+                continue;
+            }
+
+            existing.SortOrder = match.SortOrder;
+            existing.IsDeleted = false;
+            existing.UpdatedAtUtc = utcNow;
+        }
+
+        foreach (var missing in desired.Where(item =>
+                     Photos.All(existing => !string.Equals(existing.StoredPath, item.StoredPath, StringComparison.OrdinalIgnoreCase))))
+        {
+            Photos.Add(new DamagePhoto
+            {
+                DamageId = Id,
+                StoredPath = missing.StoredPath,
+                SortOrder = missing.SortOrder,
+                CreatedAtUtc = utcNow,
+                UpdatedAtUtc = utcNow
+            });
+        }
+    }
 }

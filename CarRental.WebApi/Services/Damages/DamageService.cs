@@ -1,4 +1,4 @@
-using CarRental.WebApi.Data;
+﻿using CarRental.WebApi.Data;
 using CarRental.WebApi.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -13,19 +13,19 @@ public sealed class DamageService(RentalDbContext dbContext, ILogger<DamageServi
     private readonly ILogger<DamageService> logger = logger ?? NullLogger<DamageService>.Instance;
     private const int MaxActNumberSaveAttempts = 3;
 
-    // Акт пошкодження може існувати як сам по собі, так і в прив'язці до оренди.
-    // Якщо ввімкнено autoCharge, тут же переносимо суму в баланс договору.
+    // РђРєС‚ РїРѕС€РєРѕРґР¶РµРЅРЅСЏ РјРѕР¶Рµ С–СЃРЅСѓРІР°С‚Рё СЏРє СЃР°Рј РїРѕ СЃРѕР±С–, С‚Р°Рє С– РІ РїСЂРёРІ'СЏР·С†С– РґРѕ РѕСЂРµРЅРґРё.
+    // РЇРєС‰Рѕ РІРІС–РјРєРЅРµРЅРѕ autoCharge, С‚СѓС‚ Р¶Рµ РїРµСЂРµРЅРѕСЃРёРјРѕ СЃСѓРјСѓ РІ Р±Р°Р»Р°РЅСЃ РґРѕРіРѕРІРѕСЂСѓ.
     public async Task<DamageResult> AddDamageAsync(DamageRequest request, CancellationToken cancellationToken = default)
     {
         if (request.RepairCost <= 0)
         {
-            return new DamageResult(false, "Вартість ремонту має бути більшою за нуль.");
+            return new DamageResult(false, "Р’Р°СЂС‚С–СЃС‚СЊ СЂРµРјРѕРЅС‚Сѓ РјР°С” Р±СѓС‚Рё Р±С–Р»СЊС€РѕСЋ Р·Р° РЅСѓР»СЊ.");
         }
 
         var vehicle = await dbContext.Vehicles.FirstOrDefaultAsync(item => item.Id == request.VehicleId, cancellationToken);
         if (vehicle is null)
         {
-            return new DamageResult(false, "Авто не знайдено.");
+            return new DamageResult(false, "РђРІС‚Рѕ РЅРµ Р·РЅР°Р№РґРµРЅРѕ.");
         }
 
         Rental? rental = null;
@@ -34,18 +34,18 @@ public sealed class DamageService(RentalDbContext dbContext, ILogger<DamageServi
             rental = await dbContext.Rentals.FirstOrDefaultAsync(item => item.Id == request.RentalId.Value, cancellationToken);
             if (rental is null)
             {
-                return new DamageResult(false, "Оренду не знайдено.");
+                return new DamageResult(false, "РћСЂРµРЅРґСѓ РЅРµ Р·РЅР°Р№РґРµРЅРѕ.");
             }
 
             if (rental.VehicleId != request.VehicleId)
             {
-                return new DamageResult(false, "Обрана оренда не відповідає цьому авто.");
+                return new DamageResult(false, "РћР±СЂР°РЅР° РѕСЂРµРЅРґР° РЅРµ РІС–РґРїРѕРІС–РґР°С” С†СЊРѕРјСѓ Р°РІС‚Рѕ.");
             }
         }
 
         if (!await dbContext.Employees.AnyAsync(item => item.Id == request.ReportedByEmployeeId, cancellationToken))
         {
-            return new DamageResult(false, "Працівника не знайдено.");
+            return new DamageResult(false, "РџСЂР°С†С–РІРЅРёРєР° РЅРµ Р·РЅР°Р№РґРµРЅРѕ.");
         }
 
         var normalizedPhotoPaths = request.ResolvedPhotoPaths
@@ -61,9 +61,9 @@ public sealed class DamageService(RentalDbContext dbContext, ILogger<DamageServi
             Description = request.Description.Trim(),
             DateReported = DateTime.UtcNow,
             RepairCost = request.RepairCost,
-            ActNumber = GenerateActNumber(),
+            DamageActNumber = GenerateActNumber(),
             ChargedAmount = 0m,
-            Status = DamageStatus.Open,
+            StatusId = DamageStatus.Open,
             Photos = normalizedPhotoPaths
                 .Select((path, index) => new DamagePhoto
                 {
@@ -77,29 +77,29 @@ public sealed class DamageService(RentalDbContext dbContext, ILogger<DamageServi
         {
             rental.TotalAmount += request.RepairCost;
             damage.ChargedAmount = request.RepairCost;
-            damage.Status = DamageStatus.Charged;
+            damage.StatusId = DamageStatus.Charged;
         }
 
         dbContext.Damages.Add(damage);
 
-        // Номер акту має бути унікальним, але генерація спеціально лишається
-        // випадковою, тому колізії переживаємо тут локальним retry замість падіння всієї операції.
+        // РќРѕРјРµСЂ Р°РєС‚Сѓ РјР°С” Р±СѓС‚Рё СѓРЅС–РєР°Р»СЊРЅРёРј, Р°Р»Рµ РіРµРЅРµСЂР°С†С–СЏ СЃРїРµС†С–Р°Р»СЊРЅРѕ Р»РёС€Р°С”С‚СЊСЃСЏ
+        // РІРёРїР°РґРєРѕРІРѕСЋ, С‚РѕРјСѓ РєРѕР»С–Р·С–С— РїРµСЂРµР¶РёРІР°С”РјРѕ С‚СѓС‚ Р»РѕРєР°Р»СЊРЅРёРј retry Р·Р°РјС–СЃС‚СЊ РїР°РґС–РЅРЅСЏ РІСЃС–С”С— РѕРїРµСЂР°С†С–С—.
         for (var attempt = 1; attempt <= MaxActNumberSaveAttempts; attempt++)
         {
             try
             {
                 logger.LogInformation(
-                    "Persisting damage act. VehicleId={VehicleId} RentalId={RentalId} ReportedByEmployeeId={ReportedByEmployeeId} AutoChargeToRental={AutoChargeToRental} PhotoCount={PhotoCount} ActNumber={ActNumber} Attempt={Attempt}",
+                    "Persisting damage act. VehicleId={VehicleId} RentalId={RentalId} ReportedByEmployeeId={ReportedByEmployeeId} AutoChargeToRental={AutoChargeToRental} PhotoCount={PhotoCount} DamageActNumber ={ActNumber} Attempt={Attempt}",
                     request.VehicleId,
                     request.RentalId,
                     request.ReportedByEmployeeId,
                     request.AutoChargeToRental,
                     normalizedPhotoPaths.Count,
-                    damage.ActNumber,
+                    damage.DamageActNumber,
                     attempt);
 
                 await dbContext.SaveChangesAsync(cancellationToken);
-                return new DamageResult(true, $"Пошкодження зафіксовано, акт №{damage.ActNumber}.", damage.Id);
+                return new DamageResult(true, $"РџРѕС€РєРѕРґР¶РµРЅРЅСЏ Р·Р°С„С–РєСЃРѕРІР°РЅРѕ, Р°РєС‚ в„–{damage.DamageActNumber}.", damage.Id);
             }
             catch (DbUpdateException exception) when (IsActNumberConflict(exception) && attempt < MaxActNumberSaveAttempts)
             {
@@ -108,23 +108,23 @@ public sealed class DamageService(RentalDbContext dbContext, ILogger<DamageServi
                     "Damage act number collision. VehicleId={VehicleId} RentalId={RentalId} PreviousActNumber={ActNumber} Attempt={Attempt}",
                     request.VehicleId,
                     request.RentalId,
-                    damage.ActNumber,
+                    damage.DamageActNumber,
                     attempt);
 
-                damage.ActNumber = GenerateActNumber();
+                damage.DamageActNumber = GenerateActNumber();
             }
             catch (DbUpdateException exception) when (TryMapPersistenceFailure(exception, out var errorMessage))
             {
                 var postgresException = exception.InnerException as PostgresException;
                 logger.LogWarning(
                     exception,
-                    "Failed to persist damage act. VehicleId={VehicleId} RentalId={RentalId} ReportedByEmployeeId={ReportedByEmployeeId} AutoChargeToRental={AutoChargeToRental} PhotoCount={PhotoCount} ActNumber={ActNumber} SqlState={SqlState} ConstraintName={ConstraintName}",
+                    "Failed to persist damage act. VehicleId={VehicleId} RentalId={RentalId} ReportedByEmployeeId={ReportedByEmployeeId} AutoChargeToRental={AutoChargeToRental} PhotoCount={PhotoCount} DamageActNumber ={ActNumber} SqlState={SqlState} ConstraintName={ConstraintName}",
                     request.VehicleId,
                     request.RentalId,
                     request.ReportedByEmployeeId,
                     request.AutoChargeToRental,
                     normalizedPhotoPaths.Count,
-                    damage.ActNumber,
+                    damage.DamageActNumber,
                     postgresException?.SqlState,
                     postgresException?.ConstraintName);
 
@@ -138,7 +138,7 @@ public sealed class DamageService(RentalDbContext dbContext, ILogger<DamageServi
             request.VehicleId,
             request.RentalId,
             request.ReportedByEmployeeId);
-        return new DamageResult(false, "Не вдалося згенерувати унікальний номер акту. Спробуйте ще раз.");
+        return new DamageResult(false, "РќРµ РІРґР°Р»РѕСЃСЏ Р·РіРµРЅРµСЂСѓРІР°С‚Рё СѓРЅС–РєР°Р»СЊРЅРёР№ РЅРѕРјРµСЂ Р°РєС‚Сѓ. РЎРїСЂРѕР±СѓР№С‚Рµ С‰Рµ СЂР°Р·.");
     }
 
     private static string GenerateActNumber()
@@ -154,8 +154,8 @@ public sealed class DamageService(RentalDbContext dbContext, ILogger<DamageServi
 
     private static bool TryMapPersistenceFailure(DbUpdateException exception, out string errorMessage)
     {
-        // Конвертуємо низькорівневі PostgreSQL constraint errors у повідомлення,
-        // які можна безпечно віддати UI без прив'язки до внутрішніх назв таблиць.
+        // РљРѕРЅРІРµСЂС‚СѓС”РјРѕ РЅРёР·СЊРєРѕСЂС–РІРЅРµРІС– PostgreSQL constraint errors Сѓ РїРѕРІС–РґРѕРјР»РµРЅРЅСЏ,
+        // СЏРєС– РјРѕР¶РЅР° Р±РµР·РїРµС‡РЅРѕ РІС–РґРґР°С‚Рё UI Р±РµР· РїСЂРёРІ'СЏР·РєРё РґРѕ РІРЅСѓС‚СЂС–С€РЅС–С… РЅР°Р·РІ С‚Р°Р±Р»РёС†СЊ.
         if (exception.InnerException is not PostgresException postgresException)
         {
             errorMessage = string.Empty;
@@ -166,18 +166,18 @@ public sealed class DamageService(RentalDbContext dbContext, ILogger<DamageServi
         {
             case PostgresErrorCodes.ForeignKeyViolation:
                 errorMessage = string.Equals(postgresException.ConstraintName, "FK_Damages_DamageStatuses_Status", StringComparison.OrdinalIgnoreCase)
-                    ? "Не вдалося зберегти акт через неузгоджені довідники статусів пошкоджень. Перезапустіть API та спробуйте ще раз."
-                    : "Не вдалося зберегти акт через неузгоджені дані авто, оренди або співробітника. Оновіть сторінку та спробуйте ще раз.";
+                    ? "РќРµ РІРґР°Р»РѕСЃСЏ Р·Р±РµСЂРµРіС‚Рё Р°РєС‚ С‡РµСЂРµР· РЅРµСѓР·РіРѕРґР¶РµРЅС– РґРѕРІС–РґРЅРёРєРё СЃС‚Р°С‚СѓСЃС–РІ РїРѕС€РєРѕРґР¶РµРЅСЊ. РџРµСЂРµР·Р°РїСѓСЃС‚С–С‚СЊ API С‚Р° СЃРїСЂРѕР±СѓР№С‚Рµ С‰Рµ СЂР°Р·."
+                    : "РќРµ РІРґР°Р»РѕСЃСЏ Р·Р±РµСЂРµРіС‚Рё Р°РєС‚ С‡РµСЂРµР· РЅРµСѓР·РіРѕРґР¶РµРЅС– РґР°РЅС– Р°РІС‚Рѕ, РѕСЂРµРЅРґРё Р°Р±Рѕ СЃРїС–РІСЂРѕР±С–С‚РЅРёРєР°. РћРЅРѕРІС–С‚СЊ СЃС‚РѕСЂС–РЅРєСѓ С‚Р° СЃРїСЂРѕР±СѓР№С‚Рµ С‰Рµ СЂР°Р·.";
                 return true;
 
             case PostgresErrorCodes.CheckViolation:
-                errorMessage = "Не вдалося зберегти акт через некоректні значення вартості ремонту або статусу.";
+                errorMessage = "РќРµ РІРґР°Р»РѕСЃСЏ Р·Р±РµСЂРµРіС‚Рё Р°РєС‚ С‡РµСЂРµР· РЅРµРєРѕСЂРµРєС‚РЅС– Р·РЅР°С‡РµРЅРЅСЏ РІР°СЂС‚РѕСЃС‚С– СЂРµРјРѕРЅС‚Сѓ Р°Р±Рѕ СЃС‚Р°С‚СѓСЃСѓ.";
                 return true;
 
             case PostgresErrorCodes.UniqueViolation:
                 errorMessage = IsActNumberConflict(exception)
-                    ? "Не вдалося згенерувати унікальний номер акту. Спробуйте ще раз."
-                    : "Не вдалося зберегти акт через конфлікт даних. Спробуйте ще раз.";
+                    ? "РќРµ РІРґР°Р»РѕСЃСЏ Р·РіРµРЅРµСЂСѓРІР°С‚Рё СѓРЅС–РєР°Р»СЊРЅРёР№ РЅРѕРјРµСЂ Р°РєС‚Сѓ. РЎРїСЂРѕР±СѓР№С‚Рµ С‰Рµ СЂР°Р·."
+                    : "РќРµ РІРґР°Р»РѕСЃСЏ Р·Р±РµСЂРµРіС‚Рё Р°РєС‚ С‡РµСЂРµР· РєРѕРЅС„Р»С–РєС‚ РґР°РЅРёС…. РЎРїСЂРѕР±СѓР№С‚Рµ С‰Рµ СЂР°Р·.";
                 return true;
 
             default:
@@ -186,3 +186,5 @@ public sealed class DamageService(RentalDbContext dbContext, ILogger<DamageServi
         }
     }
 }
+
+

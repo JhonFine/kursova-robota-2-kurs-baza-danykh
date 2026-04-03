@@ -56,7 +56,7 @@ public sealed record AccountDto(
 public sealed record EmployeeDto(
     int Id,
     string FullName,
-    UserRole Role,
+    UserRole RoleId,
     AccountDto Account,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc)
@@ -139,12 +139,6 @@ public sealed class ClientUpsertRequest
     [MaxLength(500)]
     public string? DriverLicensePhotoPath { get; set; }
 
-    public bool Blacklisted
-    {
-        get => IsBlacklisted;
-        set => IsBlacklisted = value;
-    }
-
     public IReadOnlyList<ClientDocumentUpsertRequest> ResolveDocuments()
     {
         if (Documents.Count > 0)
@@ -186,11 +180,6 @@ public sealed class SetBlacklistRequest
     [MaxLength(400)]
     public string? BlacklistReason { get; set; }
 
-    public bool Blacklisted
-    {
-        get => IsBlacklisted;
-        set => IsBlacklisted = value;
-    }
 }
 
 public sealed record ClientDto(
@@ -200,6 +189,7 @@ public sealed record ClientDto(
     bool IsBlacklisted,
     string? BlacklistReason,
     DateTime? BlacklistedAtUtc,
+    int? BlacklistedByEmployeeId,
     int? AccountId,
     IReadOnlyList<ClientDocumentDto> Documents)
 {
@@ -214,8 +204,6 @@ public sealed record ClientDto(
     public DateTime? DriverLicenseExpirationDate => Documents.FirstOrDefault(item => item.DocumentTypeCode == ClientDocumentTypes.DriverLicense)?.ExpirationDate;
 
     public string? DriverLicensePhotoPath => Documents.FirstOrDefault(item => item.DocumentTypeCode == ClientDocumentTypes.DriverLicense)?.StoredPath;
-
-    public bool Blacklisted => IsBlacklisted;
 }
 
 public sealed class UpdateClientProfileRequest
@@ -266,6 +254,7 @@ public sealed record ClientProfileDto(
     bool IsBlacklisted,
     string? BlacklistReason,
     DateTime? BlacklistedAtUtc,
+    int? BlacklistedByEmployeeId,
     int? AccountId,
     IReadOnlyList<ClientDocumentDto> Documents,
     bool IsComplete)
@@ -281,8 +270,6 @@ public sealed record ClientProfileDto(
     public DateTime? DriverLicenseExpirationDate => Documents.FirstOrDefault(item => item.DocumentTypeCode == ClientDocumentTypes.DriverLicense)?.ExpirationDate;
 
     public string? DriverLicensePhotoPath => Documents.FirstOrDefault(item => item.DocumentTypeCode == ClientDocumentTypes.DriverLicense)?.StoredPath;
-
-    public bool Blacklisted => IsBlacklisted;
 }
 
 public sealed record MediaAssetDto(
@@ -290,7 +277,8 @@ public sealed record MediaAssetDto(
     string StoredPath,
     int SortOrder,
     bool IsPrimary = false,
-    DateTime? CreatedAtUtc = null);
+    DateTime? CreatedAtUtc = null,
+    DateTime? UpdatedAtUtc = null);
 
 public sealed class MediaAssetUpsertRequest
 {
@@ -304,11 +292,11 @@ public sealed class MediaAssetUpsertRequest
 
 public sealed class VehicleUpsertRequest
 {
-    [Required, MaxLength(60)]
-    public string Make { get; set; } = string.Empty;
+    [Range(1, int.MaxValue)]
+    public int MakeId { get; set; }
 
-    [Required, MaxLength(80)]
-    public string Model { get; set; } = string.Empty;
+    [Range(1, int.MaxValue)]
+    public int ModelId { get; set; }
 
     [DecimalRangeInvariant("0.01", "1000000")]
     public decimal PowertrainCapacityValue { get; set; }
@@ -420,8 +408,10 @@ public sealed class UpdateVehicleRateRequest
 
 public sealed record VehicleDto(
     int Id,
-    string Make,
-    string Model,
+    int MakeId,
+    string MakeName,
+    int ModelId,
+    string ModelName,
     decimal PowertrainCapacityValue,
     string PowertrainCapacityUnit,
     string FuelTypeCode,
@@ -510,8 +500,8 @@ public sealed record RentalDto(
     string ClientName,
     int VehicleId,
     string VehicleName,
-    int CreatedByEmployeeId,
-    string CreatedByEmployeeName,
+    int? CreatedByEmployeeId,
+    string? CreatedByEmployeeName,
     int? ClosedByEmployeeId,
     string? ClosedByEmployeeName,
     int? CanceledByEmployeeId,
@@ -522,7 +512,7 @@ public sealed record RentalDto(
     string ReturnLocation,
     int StartMileage,
     int? EndMileage,
-    RentalStatus Status,
+    RentalStatus StatusId,
     decimal TotalAmount,
     decimal OverageFee,
     decimal PaidAmount,
@@ -540,12 +530,7 @@ public sealed record RentalDto(
     int? ReturnFuelPercent,
     string? ReturnInspectionNotes,
     int? ReturnInspectionPerformedByEmployeeId,
-    string? ReturnInspectionPerformedByEmployeeName)
-{
-    public int EmployeeId => CreatedByEmployeeId;
-
-    public string EmployeeName => CreatedByEmployeeName;
-}
+    string? ReturnInspectionPerformedByEmployeeName);
 
 public sealed class RescheduleRentalRequest
 {
@@ -578,13 +563,13 @@ public sealed class AddPaymentRequest
     public decimal Amount { get; set; }
 
     [EnumDataType(typeof(PaymentMethod))]
-    public PaymentMethod Method { get; set; } = PaymentMethod.Cash;
+    public PaymentMethod MethodId { get; set; } = PaymentMethod.Cash;
 
     [EnumDataType(typeof(PaymentDirection))]
-    public PaymentDirection Direction { get; set; } = PaymentDirection.Incoming;
+    public PaymentDirection DirectionId { get; set; } = PaymentDirection.Incoming;
 
     [EnumDataType(typeof(PaymentStatus))]
-    public PaymentStatus Status { get; set; } = PaymentStatus.Completed;
+    public PaymentStatus StatusId { get; set; } = PaymentStatus.Completed;
 
     [MaxLength(120)]
     public string? ExternalTransactionId { get; set; }
@@ -596,12 +581,12 @@ public sealed class AddPaymentRequest
 public sealed record PaymentDto(
     int Id,
     int RentalId,
-    int EmployeeId,
-    string EmployeeName,
+    int? RecordedByEmployeeId,
+    string? RecordedByEmployeeName,
     decimal Amount,
-    PaymentMethod Method,
-    PaymentDirection Direction,
-    PaymentStatus Status,
+    PaymentMethod MethodId,
+    PaymentDirection DirectionId,
+    PaymentStatus StatusId,
     string? ExternalTransactionId,
     DateTime CreatedAtUtc,
     string Notes);
@@ -663,9 +648,9 @@ public sealed record DamageDto(
     string Description,
     DateTime DateReported,
     decimal RepairCost,
-    string ActNumber,
+    string DamageActNumber,
     decimal ChargedAmount,
-    DamageStatus Status,
+    DamageStatus StatusId,
     IReadOnlyList<MediaAssetDto> Photos)
 {
     public bool IsChargedToClient => ChargedAmount > 0m;
@@ -693,7 +678,9 @@ public sealed class AddMaintenanceRecordRequest
     public decimal Cost { get; set; }
 
     [Range(1, int.MaxValue)]
-    public int NextServiceMileage { get; set; }
+    public int? NextServiceMileage { get; set; }
+
+    public DateTime? NextServiceDate { get; set; }
 
     [Required, MaxLength(30)]
     public string MaintenanceTypeCode { get; set; } = MaintenanceTypes.Scheduled;
@@ -712,16 +699,23 @@ public sealed record MaintenanceRecordDto(
     int MileageAtService,
     string Description,
     decimal Cost,
-    int NextServiceMileage,
+    int? NextServiceMileage,
+    DateTime? NextServiceDate,
     string MaintenanceTypeCode,
     string? ServiceProviderName);
+
+public sealed record VehicleMakeDto(int Id, string Name);
+
+public sealed record VehicleModelDto(int Id, int MakeId, string Name);
 
 public sealed record MaintenanceDueDto(
     int VehicleId,
     string Vehicle,
     int CurrentMileage,
-    int NextServiceMileage,
-    int OverdueByKm);
+    int? NextServiceMileage,
+    DateTime? NextServiceDate,
+    int OverdueByKm,
+    int OverdueByDays);
 
 public sealed class ResetEmployeePasswordRequest
 {

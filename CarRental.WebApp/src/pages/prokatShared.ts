@@ -45,7 +45,7 @@ export interface CatalogVehicleCard {
 }
 
 export function classifyVehicle(vehicle: Vehicle): string {
-  return resolveCatalogVehicleClassLabel(vehicle.make, vehicle.model, vehicle.dailyRate);
+  return resolveCatalogVehicleClassLabel(vehicle.makeName, vehicle.modelName, vehicle.dailyRate);
 }
 
 export function classifyVehicleBySpec(make: string, model: string, dailyRate: number): string {
@@ -59,7 +59,7 @@ function normalizeAlphaNumeric(value: string): string {
 // Для каталогу групуємо автомобілі за моделлю, а не за окремим екземпляром,
 // щоб клієнт бачив одну картку "Toyota Corolla" замість десятків однакових записів.
 function buildCatalogGroupKey(vehicle: Vehicle): string {
-  return `${normalizeAlphaNumeric(vehicle.make)}|${normalizeAlphaNumeric(vehicle.model)}`;
+  return `${normalizeAlphaNumeric(vehicle.makeName)}|${normalizeAlphaNumeric(vehicle.modelName)}`;
 }
 
 function isVehicleAvailable(
@@ -153,7 +153,16 @@ export function formatDoors(doorsCount: number): string {
 }
 
 export function localImage(vehicle: Vehicle): string | null {
-  const path = vehicle.photoPath;
+  const path = vehicle.photos
+    .slice()
+    .sort((left, right) => {
+      if (left.isPrimary === right.isPrimary) {
+        return left.sortOrder - right.sortOrder;
+      }
+
+      return left.isPrimary ? -1 : 1;
+    })
+    .map((item) => item.storedPath)[0] ?? null;
   if (!path) {
     return null;
   }
@@ -172,7 +181,7 @@ export function localImage(vehicle: Vehicle): string | null {
 }
 
 export function overlaps(requestStart: Date, requestEnd: Date, rentalStart: Date, rentalEnd: Date): boolean {
-  return requestStart <= rentalEnd && rentalStart <= requestEnd;
+  return requestStart < rentalEnd && rentalStart < requestEnd;
 }
 
 export function parseDateTime(date: string, time: string): Date {
@@ -507,7 +516,7 @@ export function buildAvailabilityMap(
 
     const conflict = slots.find((slot) => (
       slot.vehicleId === vehicle.id
-      && (slot.status === 'Booked' || slot.status === 'Active')
+      && (slot.statusId === 'Booked' || slot.statusId === 'Active')
       && overlaps(requestStart, requestEnd, new Date(slot.startDate), new Date(slot.endDate))
     ));
 
@@ -519,7 +528,7 @@ export function buildAvailabilityMap(
       return;
     }
 
-    if (!vehicle.isBookable) {
+    if (vehicle.vehicleStatusCode !== 'READY') {
       map.set(vehicle.id, {
         state: 'busy',
         note: 'Авто тимчасово недоступне для видачі в системі.',

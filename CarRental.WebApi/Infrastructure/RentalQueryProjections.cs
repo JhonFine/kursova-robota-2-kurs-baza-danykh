@@ -28,13 +28,13 @@ public static class RentalQueryProjections
                 item.VehicleId,
                 VehicleName = vehicles
                     .Where(vehicle => vehicle.Id == item.VehicleId)
-                    .Select(vehicle => vehicle.Make + " " + vehicle.Model + " [" + vehicle.LicensePlate + "]")
+                    .Select(vehicle => vehicle.MakeLookup!.Name + " " + vehicle.ModelLookup!.Name + " [" + vehicle.LicensePlate + "]")
                     .FirstOrDefault() ?? string.Empty,
                 item.CreatedByEmployeeId,
                 CreatedByEmployeeName = employees
                     .Where(employee => employee.Id == item.CreatedByEmployeeId)
                     .Select(employee => employee.FullName)
-                    .FirstOrDefault() ?? string.Empty,
+                    .FirstOrDefault(),
                 item.ClosedByEmployeeId,
                 ClosedByEmployeeName = employees
                     .Where(employee => employee.Id == item.ClosedByEmployeeId)
@@ -51,15 +51,15 @@ public static class RentalQueryProjections
                 item.ReturnLocation,
                 item.StartMileage,
                 item.EndMileage,
-                item.Status,
+                item.StatusId,
                 item.TotalAmount,
                 item.OverageFee,
                 PaidAmount = item.Payments
-                    .Where(payment => payment.Status == PaymentStatus.Completed)
+                    .Where(payment => payment.StatusId == PaymentStatus.Completed)
                     .Sum(payment => (decimal?)(
-                        payment.Direction == PaymentDirection.Incoming
+                        payment.DirectionId == PaymentDirection.Incoming
                             ? payment.Amount
-                            : payment.Direction == PaymentDirection.Refund
+                            : payment.DirectionId == PaymentDirection.Refund
                                 ? -payment.Amount
                                 : 0m)) ?? 0m,
                 item.CreatedAtUtc,
@@ -67,43 +67,43 @@ public static class RentalQueryProjections
                 item.CanceledAtUtc,
                 item.CancellationReason,
                 PickupInspectionCompletedAtUtc = item.Inspections
-                    .Where(inspection => inspection.Type == RentalInspectionType.Pickup)
+                    .Where(inspection => inspection.TypeId == RentalInspectionType.Pickup)
                     .Select(inspection => (DateTime?)inspection.CompletedAtUtc)
                     .FirstOrDefault(),
                 PickupFuelPercent = item.Inspections
-                    .Where(inspection => inspection.Type == RentalInspectionType.Pickup)
+                    .Where(inspection => inspection.TypeId == RentalInspectionType.Pickup)
                     .Select(inspection => inspection.FuelPercent)
                     .FirstOrDefault(),
                 PickupInspectionNotes = item.Inspections
-                    .Where(inspection => inspection.Type == RentalInspectionType.Pickup)
+                    .Where(inspection => inspection.TypeId == RentalInspectionType.Pickup)
                     .Select(inspection => inspection.Notes)
                     .FirstOrDefault(),
                 PickupInspectionPerformedByEmployeeId = item.Inspections
-                    .Where(inspection => inspection.Type == RentalInspectionType.Pickup)
+                    .Where(inspection => inspection.TypeId == RentalInspectionType.Pickup)
                     .Select(inspection => (int?)inspection.PerformedByEmployeeId)
                     .FirstOrDefault(),
                 PickupInspectionPerformedByEmployeeName = item.Inspections
-                    .Where(inspection => inspection.Type == RentalInspectionType.Pickup)
+                    .Where(inspection => inspection.TypeId == RentalInspectionType.Pickup)
                     .Select(inspection => inspection.PerformedByEmployee!.FullName)
                     .FirstOrDefault(),
                 ReturnInspectionCompletedAtUtc = item.Inspections
-                    .Where(inspection => inspection.Type == RentalInspectionType.Return)
+                    .Where(inspection => inspection.TypeId == RentalInspectionType.Return)
                     .Select(inspection => (DateTime?)inspection.CompletedAtUtc)
                     .FirstOrDefault(),
                 ReturnFuelPercent = item.Inspections
-                    .Where(inspection => inspection.Type == RentalInspectionType.Return)
+                    .Where(inspection => inspection.TypeId == RentalInspectionType.Return)
                     .Select(inspection => inspection.FuelPercent)
                     .FirstOrDefault(),
                 ReturnInspectionNotes = item.Inspections
-                    .Where(inspection => inspection.Type == RentalInspectionType.Return)
+                    .Where(inspection => inspection.TypeId == RentalInspectionType.Return)
                     .Select(inspection => inspection.Notes)
                     .FirstOrDefault(),
                 ReturnInspectionPerformedByEmployeeId = item.Inspections
-                    .Where(inspection => inspection.Type == RentalInspectionType.Return)
+                    .Where(inspection => inspection.TypeId == RentalInspectionType.Return)
                     .Select(inspection => (int?)inspection.PerformedByEmployeeId)
                     .FirstOrDefault(),
                 ReturnInspectionPerformedByEmployeeName = item.Inspections
-                    .Where(inspection => inspection.Type == RentalInspectionType.Return)
+                    .Where(inspection => inspection.TypeId == RentalInspectionType.Return)
                     .Select(inspection => inspection.PerformedByEmployee!.FullName)
                     .FirstOrDefault()
             })
@@ -126,7 +126,7 @@ public static class RentalQueryProjections
                 item.ReturnLocation,
                 item.StartMileage,
                 item.EndMileage,
-                item.Status,
+                item.StatusId,
                 item.TotalAmount,
                 item.OverageFee,
                 item.PaidAmount,

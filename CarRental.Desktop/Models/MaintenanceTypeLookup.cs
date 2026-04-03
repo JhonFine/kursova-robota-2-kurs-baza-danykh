@@ -1,4 +1,4 @@
-namespace CarRental.Desktop.Models;
+﻿namespace CarRental.Desktop.Models;
 
 public sealed class MaintenanceTypeLookup
 {
@@ -8,3 +8,4 @@ public sealed class MaintenanceTypeLookup
 
     public ICollection<MaintenanceRecord> Records { get; set; } = new List<MaintenanceRecord>();
 }
+

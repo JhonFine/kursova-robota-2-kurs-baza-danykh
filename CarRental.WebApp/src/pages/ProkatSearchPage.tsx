@@ -10,6 +10,7 @@ import { InlineSpinner } from '../components/LoadingView';
 import { PaginationControls } from '../components/PaginationControls';
 import { CardSkeletonGrid, TableSkeleton } from '../components/Skeleton';
 import { formatCurrency, formatVehicleCargoCapacity, formatVehicleConsumption } from '../utils/format';
+import { formatFuelTypeLabel, formatTransmissionTypeLabel } from '../utils/referenceData';
 import {
   parseBooleanParam,
   parseCsvParam,
@@ -78,33 +79,33 @@ function resolveMoneyParam(value: string | null, fallback: string): string {
 const filterSectionTabs = [
   {
     id: 'period',
-    label: 'Період',
+    label: 'РџРµСЂС–РѕРґ',
     panelId: 'client-period-section',
-    heading: 'Період оренди',
-    kicker: 'Крок 1',
+    heading: 'РџРµСЂС–РѕРґ РѕСЂРµРЅРґРё',
+    kicker: 'РљСЂРѕРє 1',
   },
   {
     id: 'filters',
-    label: 'Фільтри',
+    label: 'Р¤С–Р»СЊС‚СЂРё',
     panelId: 'client-filters-section',
-    heading: 'Пошук і фільтри',
-    kicker: 'Крок 2',
+    heading: 'РџРѕС€СѓРє С– С„С–Р»СЊС‚СЂРё',
+    kicker: 'РљСЂРѕРє 2',
   },
   {
     id: 'classes',
-    label: 'Клас авто',
+    label: 'РљР»Р°СЃ Р°РІС‚Рѕ',
     panelId: 'client-classes-section',
-    heading: 'Клас авто',
-    kicker: 'Крок 3',
+    heading: 'РљР»Р°СЃ Р°РІС‚Рѕ',
+    kicker: 'РљСЂРѕРє 3',
   },
 ] as const;
 
 type FilterSection = (typeof filterSectionTabs)[number]['id'];
 
 const sortOptionLabels: Record<SortOption, string> = {
-  popular: 'Спочатку доступні',
-  priceAsc: 'Дешевші спочатку',
-  priceDesc: 'Дорожчі спочатку',
+  popular: 'РЎРїРѕС‡Р°С‚РєСѓ РґРѕСЃС‚СѓРїРЅС–',
+  priceAsc: 'Р”РµС€РµРІС€С– СЃРїРѕС‡Р°С‚РєСѓ',
+  priceDesc: 'Р”РѕСЂРѕР¶С‡С– СЃРїРѕС‡Р°С‚РєСѓ',
 };
 
 export function ProkatSearchPage() {
@@ -137,8 +138,8 @@ export function ProkatSearchPage() {
   const defaultStartDate = useMemo(() => toDateInputValue(new Date()), []);
   const defaultEndDate = useMemo(() => toDateInputValue(new Date(Date.now() + 24 * 3_600_000)), []);
 
-  // У URL живе весь стан каталогу: період, сортування, фільтри й вибраний екземпляр.
-  // Це дозволяє оновлювати сторінку без втрати контексту і ділитися готовим пошуком.
+  // РЈ URL Р¶РёРІРµ РІРµСЃСЊ СЃС‚Р°РЅ РєР°С‚Р°Р»РѕРіСѓ: РїРµСЂС–РѕРґ, СЃРѕСЂС‚СѓРІР°РЅРЅСЏ, С„С–Р»СЊС‚СЂРё Р№ РІРёР±СЂР°РЅРёР№ РµРєР·РµРјРїР»СЏСЂ.
+  // Р¦Рµ РґРѕР·РІРѕР»СЏС” РѕРЅРѕРІР»СЋРІР°С‚Рё СЃС‚РѕСЂС–РЅРєСѓ Р±РµР· РІС‚СЂР°С‚Рё РєРѕРЅС‚РµРєСЃС‚Сѓ С– РґС–Р»РёС‚РёСЃСЏ РіРѕС‚РѕРІРёРј РїРѕС€СѓРєРѕРј.
   const startDate = resolveDateParam(searchParams.get('start'), defaultStartDate);
   const endDate = resolveDateParam(searchParams.get('end'), defaultEndDate);
   const pickupTime = parseEnumParam(searchParams.get('pickup'), timeOptions, '10:00');
@@ -154,8 +155,8 @@ export function ProkatSearchPage() {
 
   const currentMoment = new Date();
   const todayDateValue = toDateInputValue(currentMoment);
-  // Весь derived state сторінки спирається на один обраний часовий проміжок:
-  // від нього залежать доступні години, попередження і фактична доступність авто.
+  // Р’РµСЃСЊ derived state СЃС‚РѕСЂС–РЅРєРё СЃРїРёСЂР°С”С‚СЊСЃСЏ РЅР° РѕРґРёРЅ РѕР±СЂР°РЅРёР№ С‡Р°СЃРѕРІРёР№ РїСЂРѕРјС–Р¶РѕРє:
+  // РІС–Рґ РЅСЊРѕРіРѕ Р·Р°Р»РµР¶Р°С‚СЊ РґРѕСЃС‚СѓРїРЅС– РіРѕРґРёРЅРё, РїРѕРїРµСЂРµРґР¶РµРЅРЅСЏ С– С„Р°РєС‚РёС‡РЅР° РґРѕСЃС‚СѓРїРЅС–СЃС‚СЊ Р°РІС‚Рѕ.
   const requestStart = useMemo(() => parseDateTime(startDate, pickupTime), [pickupTime, startDate]);
   const requestEnd = useMemo(() => parseDateTime(endDate, returnTime), [endDate, returnTime]);
   const pickupTimeOptions = getAvailableTimeOptionsForDate(startDate, currentMoment);
@@ -175,21 +176,21 @@ export function ProkatSearchPage() {
 
   const requestWindowValid = requestEnd > requestStart;
   const periodError = !requestWindowValid
-    ? 'Дата та час повернення мають бути пізнішими за початок оренди.'
+    ? 'Р”Р°С‚Р° С‚Р° С‡Р°СЃ РїРѕРІРµСЂРЅРµРЅРЅСЏ РјР°СЋС‚СЊ Р±СѓС‚Рё РїС–Р·РЅС–С€РёРјРё Р·Р° РїРѕС‡Р°С‚РѕРє РѕСЂРµРЅРґРё.'
     : pickupTimeOptions.length === 0
-      ? 'На обрану дату вже немає доступного часу початку. Оберіть іншу дату.'
+      ? 'РќР° РѕР±СЂР°РЅСѓ РґР°С‚Сѓ РІР¶Рµ РЅРµРјР°С” РґРѕСЃС‚СѓРїРЅРѕРіРѕ С‡Р°СЃСѓ РїРѕС‡Р°С‚РєСѓ. РћР±РµСЂС–С‚СЊ С–РЅС€Сѓ РґР°С‚Сѓ.'
       : returnTimeOptions.length === 0
-        ? 'На обрану дату вже немає доступного часу повернення. Оберіть іншу дату.'
+        ? 'РќР° РѕР±СЂР°РЅСѓ РґР°С‚Сѓ РІР¶Рµ РЅРµРјР°С” РґРѕСЃС‚СѓРїРЅРѕРіРѕ С‡Р°СЃСѓ РїРѕРІРµСЂРЅРµРЅРЅСЏ. РћР±РµСЂС–С‚СЊ С–РЅС€Сѓ РґР°С‚Сѓ.'
         : requestStartInPast
-          ? 'Початок оренди не може бути в минулому.'
+          ? 'РџРѕС‡Р°С‚РѕРє РѕСЂРµРЅРґРё РЅРµ РјРѕР¶Рµ Р±СѓС‚Рё РІ РјРёРЅСѓР»РѕРјСѓ.'
           : null;
   const startDateError = pickupTimeOptions.length === 0 || requestStartInPast
     ? periodError
     : null;
   const endDateError = endDate < startDate
-    ? 'Дата повернення не може бути раніше дати подачі.'
+    ? 'Р”Р°С‚Р° РїРѕРІРµСЂРЅРµРЅРЅСЏ РЅРµ РјРѕР¶Рµ Р±СѓС‚Рё СЂР°РЅС–С€Рµ РґР°С‚Рё РїРѕРґР°С‡С–.'
     : endDate < todayDateValue
-      ? 'Дата повернення не може бути в минулому.'
+      ? 'Р”Р°С‚Р° РїРѕРІРµСЂРЅРµРЅРЅСЏ РЅРµ РјРѕР¶Рµ Р±СѓС‚Рё РІ РјРёРЅСѓР»РѕРјСѓ.'
       : startDateError
         ? null
         : periodError;
@@ -203,8 +204,8 @@ export function ProkatSearchPage() {
   const loadCatalog = useCallback(async (softRefresh = false): Promise<void> => {
     const requestId = ++requestIdRef.current;
 
-    // requestIdRef відсікає застарілі відповіді, якщо користувач швидко змінює
-    // параметри пошуку і попередній запит завершується пізніше за новий.
+    // requestIdRef РІС–РґСЃС–РєР°С” Р·Р°СЃС‚Р°СЂС–Р»С– РІС–РґРїРѕРІС–РґС–, СЏРєС‰Рѕ РєРѕСЂРёСЃС‚СѓРІР°С‡ С€РІРёРґРєРѕ Р·РјС–РЅСЋС”
+    // РїР°СЂР°РјРµС‚СЂРё РїРѕС€СѓРєСѓ С– РїРѕРїРµСЂРµРґРЅС–Р№ Р·Р°РїРёС‚ Р·Р°РІРµСЂС€СѓС”С‚СЊСЃСЏ РїС–Р·РЅС–С€Рµ Р·Р° РЅРѕРІРёР№.
     try {
       if (!softRefresh) {
         setLoading(true);
@@ -274,8 +275,8 @@ export function ProkatSearchPage() {
     setCardCvv(formatCardCvvInput(value));
   };
 
-  // Карта доступності і картки каталогу будуються окремо, щоб UI міг одночасно
-  // показати групу моделей і точну причину, чому конкретний екземпляр недоступний.
+  // РљР°СЂС‚Р° РґРѕСЃС‚СѓРїРЅРѕСЃС‚С– С– РєР°СЂС‚РєРё РєР°С‚Р°Р»РѕРіСѓ Р±СѓРґСѓСЋС‚СЊСЃСЏ РѕРєСЂРµРјРѕ, С‰РѕР± UI РјС–Рі РѕРґРЅРѕС‡Р°СЃРЅРѕ
+  // РїРѕРєР°Р·Р°С‚Рё РіСЂСѓРїСѓ РјРѕРґРµР»РµР№ С– С‚РѕС‡РЅСѓ РїСЂРёС‡РёРЅСѓ, С‡РѕРјСѓ РєРѕРЅРєСЂРµС‚РЅРёР№ РµРєР·РµРјРїР»СЏСЂ РЅРµРґРѕСЃС‚СѓРїРЅРёР№.
   const availabilityByVehicleId = useMemo(
     () => buildAvailabilityMap(vehicles, availabilitySlots, requestStart, requestEnd),
     [availabilitySlots, requestEnd, requestStart, vehicles],
@@ -289,8 +290,8 @@ export function ProkatSearchPage() {
   const classes = useMemo(() => {
     const values = Array.from(new Set(catalogCards.map((card) => (
       classifyVehicleBySpec(
-        card.representativeVehicle.make,
-        card.representativeVehicle.model,
+        card.representativeVehicle.makeName,
+        card.representativeVehicle.modelName,
         card.minDailyRate,
       )
     ))));
@@ -302,8 +303,8 @@ export function ProkatSearchPage() {
 
     catalogCards.forEach((card) => {
       const className = classifyVehicleBySpec(
-        card.representativeVehicle.make,
-        card.representativeVehicle.model,
+        card.representativeVehicle.makeName,
+        card.representativeVehicle.modelName,
         card.minDailyRate,
       );
       const current = stats.get(className) ?? { total: 0, available: 0 };
@@ -325,8 +326,8 @@ export function ProkatSearchPage() {
 
     const result = catalogCards.filter((card) => {
       const cardClass = classifyVehicleBySpec(
-        card.representativeVehicle.make,
-        card.representativeVehicle.model,
+        card.representativeVehicle.makeName,
+        card.representativeVehicle.modelName,
         card.minDailyRate,
       );
       if (showAvailableOnly && card.availableVehicleCount === 0) {
@@ -350,7 +351,7 @@ export function ProkatSearchPage() {
       }
 
       const text = card.vehicles
-        .map((vehicle) => `${vehicle.make} ${vehicle.model} ${vehicle.licensePlate}`)
+        .map((vehicle) => `${vehicle.makeName} ${vehicle.modelName} ${vehicle.licensePlate}`)
         .join(' ')
         .toLowerCase();
       return text.includes(query);
@@ -406,17 +407,17 @@ export function ProkatSearchPage() {
   const summaryChips = useMemo<ActiveFilterChipItem[]>(() => ([
     {
       key: 'period',
-      label: `Період: ${periodLabel}`,
+      label: `РџРµСЂС–РѕРґ: ${periodLabel}`,
       tone: 'accent',
     },
     {
       key: 'duration',
-      label: `Тривалість: ${durationLabel}`,
+      label: `РўСЂРёРІР°Р»С–СЃС‚СЊ: ${durationLabel}`,
       tone: 'accent',
     },
     {
       key: 'models',
-      label: `Моделі: ${filteredCards.length}`,
+      label: `РњРѕРґРµР»С–: ${filteredCards.length}`,
     },
   ]), [durationLabel, filteredCards.length, periodLabel]);
   const activeFilterChips = useMemo(() => {
@@ -425,7 +426,7 @@ export function ProkatSearchPage() {
     if (search.trim()) {
       items.push({
         key: 'search',
-        label: `Пошук: ${search.trim()}`,
+        label: `РџРѕС€СѓРє: ${search.trim()}`,
         onRemove: () => {
           beginInteraction();
           updateSearchState({ q: null, page: 1 });
@@ -436,7 +437,7 @@ export function ProkatSearchPage() {
     if (showAvailableOnly) {
       items.push({
         key: 'availability',
-        label: 'Лише доступні',
+        label: 'Р›РёС€Рµ РґРѕСЃС‚СѓРїРЅС–',
         onRemove: () => {
           beginInteraction();
           updateSearchState({ available: false, page: 1 });
@@ -447,7 +448,7 @@ export function ProkatSearchPage() {
     if (sort !== 'popular') {
       items.push({
         key: 'sort',
-        label: `Сортування: ${sortOptionLabels[sort]}`,
+        label: `РЎРѕСЂС‚СѓРІР°РЅРЅСЏ: ${sortOptionLabels[sort]}`,
         onRemove: () => {
           beginInteraction();
           updateSearchState({ sort: 'popular', page: 1 });
@@ -458,7 +459,7 @@ export function ProkatSearchPage() {
     if (minPrice !== DEFAULT_MIN_PRICE || maxPrice !== DEFAULT_MAX_PRICE) {
       items.push({
         key: 'price',
-        label: `Ціна: ${minPrice} - ${maxPrice} грн`,
+        label: `Р¦С–РЅР°: ${minPrice} - ${maxPrice} РіСЂРЅ`,
         onRemove: () => {
           beginInteraction();
           updateSearchState({ min: DEFAULT_MIN_PRICE, max: DEFAULT_MAX_PRICE, page: 1 });
@@ -718,44 +719,44 @@ export function ProkatSearchPage() {
 
   const getCheckoutValidationMessage = (): string | null => {
     if (!myClient) {
-      return 'Клієнтський профіль не знайдено.';
+      return 'РљР»С–С”РЅС‚СЃСЊРєРёР№ РїСЂРѕС„С–Р»СЊ РЅРµ Р·РЅР°Р№РґРµРЅРѕ.';
     }
 
     if (!selectedVehicle) {
-      return 'Оберіть варіант авто перед оформленням.';
+      return 'РћР±РµСЂС–С‚СЊ РІР°СЂС–Р°РЅС‚ Р°РІС‚Рѕ РїРµСЂРµРґ РѕС„РѕСЂРјР»РµРЅРЅСЏРј.';
     }
 
     if (!requestWindowValid) {
-      return 'Дата та час повернення мають бути пізнішими за початок оренди.';
+      return 'Р”Р°С‚Р° С‚Р° С‡Р°СЃ РїРѕРІРµСЂРЅРµРЅРЅСЏ РјР°СЋС‚СЊ Р±СѓС‚Рё РїС–Р·РЅС–С€РёРјРё Р·Р° РїРѕС‡Р°С‚РѕРє РѕСЂРµРЅРґРё.';
     }
 
     if (selectedVehicleAvailability?.state !== 'available') {
-      return selectedVehicleAvailability?.note ?? 'Обране авто недоступне на цей період.';
+      return selectedVehicleAvailability?.note ?? 'РћР±СЂР°РЅРµ Р°РІС‚Рѕ РЅРµРґРѕСЃС‚СѓРїРЅРµ РЅР° С†РµР№ РїРµСЂС–РѕРґ.';
     }
 
     if (!cardholderName.trim()) {
-      return "Вкажіть ім'я власника картки.";
+      return "Р’РєР°Р¶С–С‚СЊ С–Рј'СЏ РІР»Р°СЃРЅРёРєР° РєР°СЂС‚РєРё.";
     }
 
     const cardDigits = digitsOnly(cardNumber);
     if (cardDigits.length !== CARD_NUMBER_MAX_DIGITS) {
-      return 'Некоректний номер картки.';
+      return 'РќРµРєРѕСЂРµРєС‚РЅРёР№ РЅРѕРјРµСЂ РєР°СЂС‚РєРё.';
     }
 
     const expiryDate = parseCardExpiry(cardExpiry);
     if (!expiryDate) {
-      return 'Вкажіть термін дії картки у форматі MM/YY.';
+      return 'Р’РєР°Р¶С–С‚СЊ С‚РµСЂРјС–РЅ РґС–С— РєР°СЂС‚РєРё Сѓ С„РѕСЂРјР°С‚С– MM/YY.';
     }
 
     const today = new Date();
     const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     if (expiryDate < todayStart) {
-      return 'Термін дії картки минув.';
+      return 'РўРµСЂРјС–РЅ РґС–С— РєР°СЂС‚РєРё РјРёРЅСѓРІ.';
     }
 
     const cvvDigits = digitsOnly(cardCvv);
     if (cvvDigits.length < 3 || cvvDigits.length > 4) {
-      return 'CVV має містити 3 або 4 цифри.';
+      return 'CVV РјР°С” РјС–СЃС‚РёС‚Рё 3 Р°Р±Рѕ 4 С†РёС„СЂРё.';
     }
 
     return null;
@@ -763,56 +764,56 @@ export function ProkatSearchPage() {
 
   const getCheckoutValidationMessageEnhanced = (): string | null => {
     if (!myClient) {
-      return 'Клієнтський профіль не знайдено.';
+      return 'РљР»С–С”РЅС‚СЃСЊРєРёР№ РїСЂРѕС„С–Р»СЊ РЅРµ Р·РЅР°Р№РґРµРЅРѕ.';
     }
 
     if (!myClient.isComplete) {
-      return 'Завершіть профіль клієнта перед оформленням оренди.';
+      return 'Р—Р°РІРµСЂС€С–С‚СЊ РїСЂРѕС„С–Р»СЊ РєР»С–С”РЅС‚Р° РїРµСЂРµРґ РѕС„РѕСЂРјР»РµРЅРЅСЏРј РѕСЂРµРЅРґРё.';
     }
 
     if (!selectedVehicle) {
-      return 'Оберіть варіант авто перед оформленням.';
+      return 'РћР±РµСЂС–С‚СЊ РІР°СЂС–Р°РЅС‚ Р°РІС‚Рѕ РїРµСЂРµРґ РѕС„РѕСЂРјР»РµРЅРЅСЏРј.';
     }
 
     if (!requestWindowValid) {
-      return 'Дата та час повернення мають бути пізнішими за початок оренди.';
+      return 'Р”Р°С‚Р° С‚Р° С‡Р°СЃ РїРѕРІРµСЂРЅРµРЅРЅСЏ РјР°СЋС‚СЊ Р±СѓС‚Рё РїС–Р·РЅС–С€РёРјРё Р·Р° РїРѕС‡Р°С‚РѕРє РѕСЂРµРЅРґРё.';
     }
 
     if (requestStart < new Date()) {
-      return 'Початок оренди не може бути в минулому.';
+      return 'РџРѕС‡Р°С‚РѕРє РѕСЂРµРЅРґРё РЅРµ РјРѕР¶Рµ Р±СѓС‚Рё РІ РјРёРЅСѓР»РѕРјСѓ.';
     }
 
     if (!pickupLocation.trim() || !returnLocation.trim()) {
-      return 'Оберіть локації отримання та повернення.';
+      return 'РћР±РµСЂС–С‚СЊ Р»РѕРєР°С†С–С— РѕС‚СЂРёРјР°РЅРЅСЏ С‚Р° РїРѕРІРµСЂРЅРµРЅРЅСЏ.';
     }
 
     if (selectedVehicleAvailability?.state !== 'available') {
-      return selectedVehicleAvailability?.note ?? 'Обране авто недоступне на цей період.';
+      return selectedVehicleAvailability?.note ?? 'РћР±СЂР°РЅРµ Р°РІС‚Рѕ РЅРµРґРѕСЃС‚СѓРїРЅРµ РЅР° С†РµР№ РїРµСЂС–РѕРґ.';
     }
 
     if (!cardholderName.trim()) {
-      return "Вкажіть ім'я власника картки.";
+      return "Р’РєР°Р¶С–С‚СЊ С–Рј'СЏ РІР»Р°СЃРЅРёРєР° РєР°СЂС‚РєРё.";
     }
 
     const cardDigits = digitsOnly(cardNumber);
     if (cardDigits.length !== CARD_NUMBER_MAX_DIGITS) {
-      return 'Некоректний номер картки.';
+      return 'РќРµРєРѕСЂРµРєС‚РЅРёР№ РЅРѕРјРµСЂ РєР°СЂС‚РєРё.';
     }
 
     const expiryDate = parseCardExpiry(cardExpiry);
     if (!expiryDate) {
-      return 'Вкажіть термін дії картки у форматі MM/YY.';
+      return 'Р’РєР°Р¶С–С‚СЊ С‚РµСЂРјС–РЅ РґС–С— РєР°СЂС‚РєРё Сѓ С„РѕСЂРјР°С‚С– MM/YY.';
     }
 
     const today = new Date();
     const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     if (expiryDate < todayStart) {
-      return 'Термін дії картки минув.';
+      return 'РўРµСЂРјС–РЅ РґС–С— РєР°СЂС‚РєРё РјРёРЅСѓРІ.';
     }
 
     const cvvDigits = digitsOnly(cardCvv);
     if (cvvDigits.length < 3 || cvvDigits.length > 4) {
-      return 'CVV має містити 3 або 4 цифри.';
+      return 'CVV РјР°С” РјС–СЃС‚РёС‚Рё 3 Р°Р±Рѕ 4 С†РёС„СЂРё.';
     }
 
     const legacyValidationMessage = getCheckoutValidationMessage();
@@ -895,9 +896,9 @@ export function ProkatSearchPage() {
       <div className="page-grid prokat-page">
         <section className="prokat-hero">
           <div className="prokat-hero-copy">
-            <span className="topbar-kicker">Пошук авто</span>
-            <h2>Завантажуємо каталог оренди</h2>
-            <p>Готуємо період, доступність, картки авто та фінальний блок оформлення.</p>
+            <span className="topbar-kicker">РџРѕС€СѓРє Р°РІС‚Рѕ</span>
+            <h2>Р—Р°РІР°РЅС‚Р°Р¶СѓС”РјРѕ РєР°С‚Р°Р»РѕРі РѕСЂРµРЅРґРё</h2>
+            <p>Р“РѕС‚СѓС”РјРѕ РїРµСЂС–РѕРґ, РґРѕСЃС‚СѓРїРЅС–СЃС‚СЊ, РєР°СЂС‚РєРё Р°РІС‚Рѕ С‚Р° С„С–РЅР°Р»СЊРЅРёР№ Р±Р»РѕРє РѕС„РѕСЂРјР»РµРЅРЅСЏ.</p>
           </div>
         </section>
 
@@ -915,8 +916,8 @@ export function ProkatSearchPage() {
           <aside className="prokat-summary-panel">
             <section className="status-panel prokat-review-card">
               <div className="prokat-review-heading">
-                <span>Крок 4</span>
-                <strong>Підготовка оформлення</strong>
+                <span>РљСЂРѕРє 4</span>
+                <strong>РџС–РґРіРѕС‚РѕРІРєР° РѕС„РѕСЂРјР»РµРЅРЅСЏ</strong>
               </div>
               <div className="prokat-review-content">
                 <TableSkeleton rows={5} compact />
@@ -931,7 +932,7 @@ export function ProkatSearchPage() {
   return (
     <div className="page-grid prokat-page">
       {error ? (
-        <FeedbackBanner tone="error" title="Не вдалося оновити каталог" onDismiss={() => setError(null)}>
+        <FeedbackBanner tone="error" title="РќРµ РІРґР°Р»РѕСЃСЏ РѕРЅРѕРІРёС‚Рё РєР°С‚Р°Р»РѕРі" onDismiss={() => setError(null)}>
           {error}
         </FeedbackBanner>
       ) : null}
@@ -941,32 +942,32 @@ export function ProkatSearchPage() {
         aria-expanded={isMobileFiltersOpen}
         onClick={() => setIsMobileFiltersOpen((current) => !current)}
       >
-        {isMobileFiltersOpen ? 'Закрити фільтри' : 'Фільтри та період'}
+        {isMobileFiltersOpen ? 'Р—Р°РєСЂРёС‚Рё С„С–Р»СЊС‚СЂРё' : 'Р¤С–Р»СЊС‚СЂРё С‚Р° РїРµСЂС–РѕРґ'}
       </button>
       <button
         type="button"
-        aria-label="Закрити панель фільтрів"
+        aria-label="Р—Р°РєСЂРёС‚Рё РїР°РЅРµР»СЊ С„С–Р»СЊС‚СЂС–РІ"
         className={`prokat-mobile-filter-overlay${isMobileFiltersOpen ? ' open' : ''}`}
         onClick={() => setIsMobileFiltersOpen(false)}
       />
 
       <div className="prokat-layout">
         <aside className={`prokat-filters${isMobileFiltersOpen ? ' is-mobile-open' : ''}`}>
-          <section className="prokat-filter-workbench" aria-label="Період оренди та фільтри">
+          <section className="prokat-filter-workbench" aria-label="РџРµСЂС–РѕРґ РѕСЂРµРЅРґРё С‚Р° С„С–Р»СЊС‚СЂРё">
             <div className="prokat-mobile-filter-header">
               <div>
-                <strong>Фільтри та період</strong>
-                <span>Усі зміни застосовуються одразу до каталогу.</span>
+                <strong>Р¤С–Р»СЊС‚СЂРё С‚Р° РїРµСЂС–РѕРґ</strong>
+                <span>РЈСЃС– Р·РјС–РЅРё Р·Р°СЃС‚РѕСЃРѕРІСѓСЋС‚СЊСЃСЏ РѕРґСЂР°Р·Сѓ РґРѕ РєР°С‚Р°Р»РѕРіСѓ.</span>
               </div>
               <button
                 type="button"
                 className="btn ghost"
                 onClick={() => setIsMobileFiltersOpen(false)}
               >
-                Закрити
+                Р—Р°РєСЂРёС‚Рё
               </button>
             </div>
-            <div className="prokat-filter-tabs" role="tablist" aria-label="Розділи фільтрів">
+            <div className="prokat-filter-tabs" role="tablist" aria-label="Р РѕР·РґС–Р»Рё С„С–Р»СЊС‚СЂС–РІ">
               {filterSectionTabs.map((tab, index) => (
                 <button
                   key={tab.id}
@@ -1001,7 +1002,7 @@ export function ProkatSearchPage() {
               </div>
               <div className="prokat-filter-panel-body">
                 <label>
-                  Початок
+                  РџРѕС‡Р°С‚РѕРє
                   <div className="inline-form prokat-inline-datetime">
                     <input
                       type="date"
@@ -1022,7 +1023,7 @@ export function ProkatSearchPage() {
                       }}
                     >
                       {pickupTimeOptions.length === 0 ? (
-                        <option value="">Немає доступного часу</option>
+                        <option value="">РќРµРјР°С” РґРѕСЃС‚СѓРїРЅРѕРіРѕ С‡Р°СЃСѓ</option>
                       ) : pickupTimeOptions.map((time) => (
                         <option key={time} value={time}>{time}</option>
                       ))}
@@ -1032,7 +1033,7 @@ export function ProkatSearchPage() {
                 </label>
 
                 <label>
-                  Повернення
+                  РџРѕРІРµСЂРЅРµРЅРЅСЏ
                   <div className="inline-form prokat-inline-datetime">
                     <input
                       type="date"
@@ -1053,7 +1054,7 @@ export function ProkatSearchPage() {
                       }}
                     >
                       {returnTimeOptions.length === 0 ? (
-                        <option value="">Немає доступного часу</option>
+                        <option value="">РќРµРјР°С” РґРѕСЃС‚СѓРїРЅРѕРіРѕ С‡Р°СЃСѓ</option>
                       ) : returnTimeOptions.map((time) => (
                         <option key={time} value={time}>{time}</option>
                       ))}
@@ -1063,7 +1064,7 @@ export function ProkatSearchPage() {
                 </label>
 
                 <label>
-                  Локація отримання
+                  Р›РѕРєР°С†С–СЏ РѕС‚СЂРёРјР°РЅРЅСЏ
                   <select
                     value={pickupLocation}
                     onChange={(event) => {
@@ -1078,7 +1079,7 @@ export function ProkatSearchPage() {
                 </label>
 
                 <label>
-                  Локація повернення
+                  Р›РѕРєР°С†С–СЏ РїРѕРІРµСЂРЅРµРЅРЅСЏ
                   <select
                     value={returnLocation}
                     onChange={(event) => {
@@ -1113,19 +1114,19 @@ export function ProkatSearchPage() {
               </div>
               <div className="prokat-filter-panel-body">
                 <label>
-                  Пошук авто
+                  РџРѕС€СѓРє Р°РІС‚Рѕ
                   <input
                     value={search}
                     onChange={(event) => {
                       beginInteraction();
                       updateSearchState({ q: event.target.value || null, page: 1 });
                     }}
-                    placeholder="Марка, модель або номер"
+                    placeholder="РњР°СЂРєР°, РјРѕРґРµР»СЊ Р°Р±Рѕ РЅРѕРјРµСЂ"
                   />
                 </label>
 
                 <label>
-                  Сортування
+                  РЎРѕСЂС‚СѓРІР°РЅРЅСЏ
                   <select
                     value={sort}
                     onChange={(event) => {
@@ -1133,9 +1134,9 @@ export function ProkatSearchPage() {
                       updateSearchState({ sort: event.target.value as SortOption, page: 1 });
                     }}
                   >
-                    <option value="popular">Спочатку доступні</option>
-                    <option value="priceAsc">Дешевші спочатку</option>
-                    <option value="priceDesc">Дорожчі спочатку</option>
+                    <option value="popular">РЎРїРѕС‡Р°С‚РєСѓ РґРѕСЃС‚СѓРїРЅС–</option>
+                    <option value="priceAsc">Р”РµС€РµРІС€С– СЃРїРѕС‡Р°С‚РєСѓ</option>
+                    <option value="priceDesc">Р”РѕСЂРѕР¶С‡С– СЃРїРѕС‡Р°С‚РєСѓ</option>
                   </select>
                 </label>
 
@@ -1148,15 +1149,15 @@ export function ProkatSearchPage() {
                       updateSearchState({ available: event.target.checked, page: 1 });
                     }}
                   />
-                  <span>Лише доступні на цей період</span>
-                  <small>{availableFilteredCount} моделей можна оформити зараз</small>
+                  <span>Р›РёС€Рµ РґРѕСЃС‚СѓРїРЅС– РЅР° С†РµР№ РїРµСЂС–РѕРґ</span>
+                  <small>{availableFilteredCount} РјРѕРґРµР»РµР№ РјРѕР¶РЅР° РѕС„РѕСЂРјРёС‚Рё Р·Р°СЂР°Р·</small>
                 </label>
 
                 <div className="prokat-price-card">
                   <div className="prokat-price-card-head">
                     <div>
-                      <strong>Діапазон ціни</strong>
-                      <span>Каталог оновлюється від {minPrice} грн до {maxPrice} грн за добу.</span>
+                      <strong>Р”С–Р°РїР°Р·РѕРЅ С†С–РЅРё</strong>
+                      <span>РљР°С‚Р°Р»РѕРі РѕРЅРѕРІР»СЋС”С‚СЊСЃСЏ РІС–Рґ {minPrice} РіСЂРЅ РґРѕ {maxPrice} РіСЂРЅ Р·Р° РґРѕР±Сѓ.</span>
                     </div>
                     {minPrice !== DEFAULT_MIN_PRICE || maxPrice !== DEFAULT_MAX_PRICE ? (
                       <button
@@ -1167,14 +1168,14 @@ export function ProkatSearchPage() {
                           updateSearchState({ min: DEFAULT_MIN_PRICE, max: DEFAULT_MAX_PRICE, page: 1 });
                         }}
                       >
-                        Очистити ціну
+                        РћС‡РёСЃС‚РёС‚Рё С†С–РЅСѓ
                       </button>
                     ) : null}
                   </div>
 
                   <div className="inline-form prokat-inline-price">
                     <label>
-                      Від, грн
+                      Р’С–Рґ, РіСЂРЅ
                       <input
                         type="number"
                         min="1000"
@@ -1189,7 +1190,7 @@ export function ProkatSearchPage() {
                     </label>
 
                     <label>
-                      До, грн
+                      Р”Рѕ, РіСЂРЅ
                       <input
                         type="number"
                         min="1000"
@@ -1206,7 +1207,7 @@ export function ProkatSearchPage() {
                 </div>
 
                 <button type="button" className="btn ghost prokat-search-btn" onClick={resetFilters}>
-                  Скинути фільтри
+                  РЎРєРёРЅСѓС‚Рё С„С–Р»СЊС‚СЂРё
                 </button>
               </div>
             </section>
@@ -1220,7 +1221,7 @@ export function ProkatSearchPage() {
             >
               <div className="prokat-filter-heading">
                 <span>{filterSectionTabs[2].kicker}</span>
-                <strong>{selectedClasses.length > 0 ? `${selectedClasses.length} обрано` : 'Усі класи'}</strong>
+                <strong>{selectedClasses.length > 0 ? `${selectedClasses.length} РѕР±СЂР°РЅРѕ` : 'РЈСЃС– РєР»Р°СЃРё'}</strong>
               </div>
               <div className="prokat-filter-panel-body prokat-class-list">
                 {classes.map((className) => (
@@ -1235,7 +1236,7 @@ export function ProkatSearchPage() {
                     />
                     <span>{className}</span>
                     <small>
-                      {classStats.get(className)?.available ?? 0} з {classStats.get(className)?.total ?? 0} доступні
+                      {classStats.get(className)?.available ?? 0} Р· {classStats.get(className)?.total ?? 0} РґРѕСЃС‚СѓРїРЅС–
                     </small>
                   </label>
                 ))}
@@ -1247,22 +1248,22 @@ export function ProkatSearchPage() {
         <section className="prokat-main">
           <section className="prokat-hero">
             <div className="prokat-hero-copy">
-              <span className="topbar-kicker">Пошук авто</span>
-              <h2>Підбір авто та оформлення в одному сценарії</h2>
+              <span className="topbar-kicker">РџРѕС€СѓРє Р°РІС‚Рѕ</span>
+              <h2>РџС–РґР±С–СЂ Р°РІС‚Рѕ С‚Р° РѕС„РѕСЂРјР»РµРЅРЅСЏ РІ РѕРґРЅРѕРјСѓ СЃС†РµРЅР°СЂС–С—</h2>
               <p>
-                Спочатку задайте період, потім відфільтруйте каталог, оберіть конкретний екземпляр авто
-                і завершіть оформлення з оплатою карткою в блоці праворуч.
+                РЎРїРѕС‡Р°С‚РєСѓ Р·Р°РґР°Р№С‚Рµ РїРµСЂС–РѕРґ, РїРѕС‚С–Рј РІС–РґС„С–Р»СЊС‚СЂСѓР№С‚Рµ РєР°С‚Р°Р»РѕРі, РѕР±РµСЂС–С‚СЊ РєРѕРЅРєСЂРµС‚РЅРёР№ РµРєР·РµРјРїР»СЏСЂ Р°РІС‚Рѕ
+                С– Р·Р°РІРµСЂС€С–С‚СЊ РѕС„РѕСЂРјР»РµРЅРЅСЏ Р· РѕРїР»Р°С‚РѕСЋ РєР°СЂС‚РєРѕСЋ РІ Р±Р»РѕС†С– РїСЂР°РІРѕСЂСѓС‡.
               </p>
             </div>
 
             <div className="prokat-hero-side">
               <div className="prokat-hero-stats">
                 <div>
-                  <span>Знайдено</span>
+                  <span>Р—РЅР°Р№РґРµРЅРѕ</span>
                   <strong>{filteredCards.length}</strong>
                 </div>
                 <div>
-                  <span>Доступно</span>
+                  <span>Р”РѕСЃС‚СѓРїРЅРѕ</span>
                   <strong>{availableFilteredCount}</strong>
                 </div>
               </div>
@@ -1273,10 +1274,10 @@ export function ProkatSearchPage() {
                   className="btn primary prokat-hero-filter-btn"
                   onClick={() => setIsMobileFiltersOpen(true)}
                 >
-                  Відкрити фільтри
+                  Р’С–РґРєСЂРёС‚Рё С„С–Р»СЊС‚СЂРё
                 </button>
                 <button type="button" className="btn ghost" onClick={() => navigate('/prokat/bookings')}>
-                  Мої бронювання та оренди
+                  РњРѕС— Р±СЂРѕРЅСЋРІР°РЅРЅСЏ С‚Р° РѕСЂРµРЅРґРё
                 </button>
               </div>
             </div>
@@ -1286,7 +1287,7 @@ export function ProkatSearchPage() {
             <ActiveFilterChips items={summaryChips} className="prokat-summary-chips" />
             {activeFilterChips.length > 0 ? (
               <div className="prokat-active-filter-strip">
-                <span>Активні фільтри</span>
+                <span>РђРєС‚РёРІРЅС– С„С–Р»СЊС‚СЂРё</span>
                 <ActiveFilterChips items={activeFilterChips} className="prokat-active-filter-chips" />
               </div>
             ) : null}
@@ -1300,16 +1301,16 @@ export function ProkatSearchPage() {
             {filteredCards.length === 0 ? (
               <EmptyState
                 icon="AUTO"
-                title="Немає авто під поточний запит."
-                description="Змініть період або скиньте фільтри, щоб повернутись до повного каталогу й знову побачити доступні моделі."
+                title="РќРµРјР°С” Р°РІС‚Рѕ РїС–Рґ РїРѕС‚РѕС‡РЅРёР№ Р·Р°РїРёС‚."
+                description="Р—РјС–РЅС–С‚СЊ РїРµСЂС–РѕРґ Р°Р±Рѕ СЃРєРёРЅСЊС‚Рµ С„С–Р»СЊС‚СЂРё, С‰РѕР± РїРѕРІРµСЂРЅСѓС‚РёСЃСЊ РґРѕ РїРѕРІРЅРѕРіРѕ РєР°С‚Р°Р»РѕРіСѓ Р№ Р·РЅРѕРІСѓ РїРѕР±Р°С‡РёС‚Рё РґРѕСЃС‚СѓРїРЅС– РјРѕРґРµР»С–."
                 actions={(
                   <>
                     <button type="button" className="btn ghost" onClick={resetFilters}>
-                      Скинути фільтри
+                      РЎРєРёРЅСѓС‚Рё С„С–Р»СЊС‚СЂРё
                     </button>
                     {selectedVehicle ? (
                       <button type="button" className="btn primary" onClick={revealSelectedVehicle}>
-                        Показати обране авто
+                        РџРѕРєР°Р·Р°С‚Рё РѕР±СЂР°РЅРµ Р°РІС‚Рѕ
                       </button>
                     ) : null}
                   </>
@@ -1330,15 +1331,17 @@ export function ProkatSearchPage() {
                   const amountDisplay = vehicleAmountMin === vehicleAmountMax
                     ? formatCurrency(vehicleAmountMin)
                     : `${formatCurrency(vehicleAmountMin)} - ${formatCurrency(vehicleAmountMax)}`;
-                  const cardClass = classifyVehicleBySpec(vehicle.make, vehicle.model, card.minDailyRate);
+                  const cardClass = classifyVehicleBySpec(vehicle.makeName, vehicle.modelName, card.minDailyRate);
+                  const fuelTypeLabel = formatFuelTypeLabel(vehicle.fuelTypeCode);
+                  const transmissionTypeLabel = formatTransmissionTypeLabel(vehicle.transmissionTypeCode);
                   const cardSummary = card.vehicleCount === 1
-                    ? `${vehicle.licensePlate} • ${vehicle.fuelType} • ${vehicle.transmissionType}`
-                    : `${card.vehicleCount} авто • доступно ${card.availableVehicleCount} • ${vehicle.fuelType} • ${vehicle.transmissionType}`;
+                    ? `${vehicle.licensePlate} вЂў ${fuelTypeLabel} вЂў ${transmissionTypeLabel}`
+                    : `${card.vehicleCount} Р°РІС‚Рѕ вЂў РґРѕСЃС‚СѓРїРЅРѕ ${card.availableVehicleCount} вЂў ${fuelTypeLabel} вЂў ${transmissionTypeLabel}`;
                   const cardNote = card.vehicleCount === 1
                     ? availabilityByVehicleId.get(vehicle.id)?.note
                     : isAvailable
-                      ? `Доступно ${card.availableVehicleCount} з ${card.vehicleCount} авто цієї моделі на вибраний період.`
-                      : `Усі ${card.vehicleCount} авто цієї моделі недоступні на вибраний період.`;
+                      ? `Р”РѕСЃС‚СѓРїРЅРѕ ${card.availableVehicleCount} Р· ${card.vehicleCount} Р°РІС‚Рѕ С†С–С”С— РјРѕРґРµР»С– РЅР° РІРёР±СЂР°РЅРёР№ РїРµСЂС–РѕРґ.`
+                      : `РЈСЃС– ${card.vehicleCount} Р°РІС‚Рѕ С†С–С”С— РјРѕРґРµР»С– РЅРµРґРѕСЃС‚СѓРїРЅС– РЅР° РІРёР±СЂР°РЅРёР№ РїРµСЂС–РѕРґ.`;
 
                   return (
                     <article
@@ -1367,27 +1370,27 @@ export function ProkatSearchPage() {
                       {image ? (
                         <img
                           src={image}
-                          alt={`${vehicle.make} ${vehicle.model}`}
+                          alt={`${vehicle.makeName} ${vehicle.modelName}`}
                           onError={() => markImageFailed(vehicle.id)}
                         />
                       ) : (
-                        <div className="prokat-card-no-photo">Фото недоступне</div>
+                        <div className="prokat-card-no-photo">Р¤РѕС‚Рѕ РЅРµРґРѕСЃС‚СѓРїРЅРµ</div>
                       )}
 
                       <div className="prokat-card-body">
                         <div className="prokat-card-headline">
                           <div>
                             <span className="prokat-card-class">{cardClass}</span>
-                            <h3>{vehicle.make} {vehicle.model}</h3>
+                            <h3>{vehicle.makeName} {vehicle.modelName}</h3>
                             <p>{cardSummary}</p>
                           </div>
                           <span className={`status-pill ${isAvailable ? 'ok' : 'bad'}`}>
-                            {isAvailable ? 'Доступне' : 'Недоступне'}
+                            {isAvailable ? 'Р”РѕСЃС‚СѓРїРЅРµ' : 'РќРµРґРѕСЃС‚СѓРїРЅРµ'}
                           </span>
                         </div>
 
                         <div className="inline-form prokat-card-meta">
-                          <span>{vehicle.hasAirConditioning ? 'A/C' : 'Без A/C'}</span>
+                          <span>{vehicle.hasAirConditioning ? 'A/C' : 'Р‘РµР· A/C'}</span>
                           <span>{formatDoors(vehicle.doorsCount)}</span>
                           <span>{formatVehicleCargoCapacity(vehicle.cargoCapacityValue, vehicle.cargoCapacityUnit)}</span>
                           <span>{formatVehicleConsumption(vehicle.consumptionValue, vehicle.consumptionUnit)}</span>
@@ -1399,11 +1402,11 @@ export function ProkatSearchPage() {
 
                         <div className="prokat-card-price">
                           <div>
-                            <span>За добу</span>
+                            <span>Р—Р° РґРѕР±Сѓ</span>
                             <strong>{priceDisplay}</strong>
                           </div>
                           <div>
-                            <span>За вибраний період</span>
+                            <span>Р—Р° РІРёР±СЂР°РЅРёР№ РїРµСЂС–РѕРґ</span>
                             <strong>{amountDisplay}</strong>
                           </div>
                         </div>
@@ -1419,10 +1422,10 @@ export function ProkatSearchPage() {
                             }}
                           >
                             {isSelected
-                              ? 'Обрано для оформлення'
+                              ? 'РћР±СЂР°РЅРѕ РґР»СЏ РѕС„РѕСЂРјР»РµРЅРЅСЏ'
                               : card.vehicleCount > 1
-                                ? 'Вибрати варіант'
-                                : 'Перейти до оформлення'}
+                                ? 'Р’РёР±СЂР°С‚Рё РІР°СЂС–Р°РЅС‚'
+                                : 'РџРµСЂРµР№С‚Рё РґРѕ РѕС„РѕСЂРјР»РµРЅРЅСЏ'}
                           </button>
                         </div>
                       </div>
@@ -1454,27 +1457,27 @@ export function ProkatSearchPage() {
 
         <aside className="prokat-summary-panel">
           {createdRental ? (
-            <FeedbackBanner tone="success" title="Оренду оформлено" className="prokat-success-card">
+            <FeedbackBanner tone="success" title="РћСЂРµРЅРґСѓ РѕС„РѕСЂРјР»РµРЅРѕ" className="prokat-success-card">
               <div className="prokat-success-grid">
-                <span>Договір</span>
+                <span>Р”РѕРіРѕРІС–СЂ</span>
                 <strong>{createdRental.contractNumber}</strong>
-                <span>Статус</span>
-                <strong>{rentalStatusLabel(createdRental.status)}</strong>
-                <span>Сплачено</span>
+                <span>РЎС‚Р°С‚СѓСЃ</span>
+                <strong>{rentalStatusLabel(createdRental.statusId)}</strong>
+                <span>РЎРїР»Р°С‡РµРЅРѕ</span>
                 <strong>{formatCurrency(createdRental.paidAmount)}</strong>
-                <span>Залишок</span>
+                <span>Р—Р°Р»РёС€РѕРє</span>
                 <strong>{formatCurrency(createdRental.balance)}</strong>
               </div>
               <p className="muted">
-                Платіж карткою зафіксовано разом із договором. Перевірити статус, історію або повторити
-                оформлення можна у вкладці з вашими орендами.
+                РџР»Р°С‚С–Р¶ РєР°СЂС‚РєРѕСЋ Р·Р°С„С–РєСЃРѕРІР°РЅРѕ СЂР°Р·РѕРј С–Р· РґРѕРіРѕРІРѕСЂРѕРј. РџРµСЂРµРІС–СЂРёС‚Рё СЃС‚Р°С‚СѓСЃ, С–СЃС‚РѕСЂС–СЋ Р°Р±Рѕ РїРѕРІС‚РѕСЂРёС‚Рё
+                РѕС„РѕСЂРјР»РµРЅРЅСЏ РјРѕР¶РЅР° Сѓ РІРєР»Р°РґС†С– Р· РІР°С€РёРјРё РѕСЂРµРЅРґР°РјРё.
               </p>
               <div className="prokat-success-actions">
                 <button type="button" className="btn primary" onClick={() => navigate('/prokat/bookings')}>
-                  Перейти до моїх оренд
+                  РџРµСЂРµР№С‚Рё РґРѕ РјРѕС—С… РѕСЂРµРЅРґ
                 </button>
                 <button type="button" className="btn ghost" onClick={clearFeedback}>
-                  Оформити ще
+                  РћС„РѕСЂРјРёС‚Рё С‰Рµ
                 </button>
               </div>
             </FeedbackBanner>
@@ -1482,31 +1485,31 @@ export function ProkatSearchPage() {
 
           <section id="client-review-section" className="status-panel prokat-review-card">
             <div className="prokat-review-heading">
-              <span>Крок 4</span>
-              <strong>Вибір варіанта та оформлення</strong>
+              <span>РљСЂРѕРє 4</span>
+              <strong>Р’РёР±С–СЂ РІР°СЂС–Р°РЅС‚Р° С‚Р° РѕС„РѕСЂРјР»РµРЅРЅСЏ</strong>
             </div>
             {selectedVehicle ? (
               <div className="prokat-review-content">
                 <div className="prokat-review-vehicle">
                   <div>
-                    <h3>{selectedVehicle.make} {selectedVehicle.model}</h3>
-                    <p>{selectedVehicle.licensePlate} • {classifyVehicleBySpec(selectedVehicle.make, selectedVehicle.model, selectedVehicle.dailyRate)}</p>
+                    <h3>{selectedVehicle.makeName} {selectedVehicle.modelName}</h3>
+                    <p>{selectedVehicle.licensePlate} вЂў {classifyVehicleBySpec(selectedVehicle.makeName, selectedVehicle.modelName, selectedVehicle.dailyRate)}</p>
                   </div>
                   <span className={`status-pill ${selectedVehicleAvailability?.state === 'available' ? 'ok' : 'bad'}`}>
-                    {selectedVehicleAvailability?.state === 'available' ? 'Готове до оформлення' : 'Потребує зміни'}
+                    {selectedVehicleAvailability?.state === 'available' ? 'Р“РѕС‚РѕРІРµ РґРѕ РѕС„РѕСЂРјР»РµРЅРЅСЏ' : 'РџРѕС‚СЂРµР±СѓС” Р·РјС–РЅРё'}
                   </span>
                 </div>
 
                 {!selectedVehicleInFilteredList ? (
                   <div className="prokat-selection-alert">
-                    <strong>Обране авто не входить у поточний список.</strong>
-                    <p>Ви все ще бачите його в блоці перевірки, але в каталозі воно приховане поточними фільтрами.</p>
+                    <strong>РћР±СЂР°РЅРµ Р°РІС‚Рѕ РЅРµ РІС…РѕРґРёС‚СЊ Сѓ РїРѕС‚РѕС‡РЅРёР№ СЃРїРёСЃРѕРє.</strong>
+                    <p>Р’Рё РІСЃРµ С‰Рµ Р±Р°С‡РёС‚Рµ Р№РѕРіРѕ РІ Р±Р»РѕС†С– РїРµСЂРµРІС–СЂРєРё, Р°Р»Рµ РІ РєР°С‚Р°Р»РѕР·С– РІРѕРЅРѕ РїСЂРёС…РѕРІР°РЅРµ РїРѕС‚РѕС‡РЅРёРјРё С„С–Р»СЊС‚СЂР°РјРё.</p>
                     <div className="row-actions">
                       <button type="button" className="btn primary" onClick={revealSelectedVehicle}>
-                        Показати обране
+                        РџРѕРєР°Р·Р°С‚Рё РѕР±СЂР°РЅРµ
                       </button>
                       <button type="button" className="btn ghost" onClick={resetFilters}>
-                        Скинути фільтри
+                        РЎРєРёРЅСѓС‚Рё С„С–Р»СЊС‚СЂРё
                       </button>
                     </div>
                   </div>
@@ -1515,11 +1518,11 @@ export function ProkatSearchPage() {
                 <div className="prokat-variant-picker">
                   <div className="prokat-variant-picker-head">
                     <div>
-                      <strong>{selectedVariants.length > 1 ? 'Оберіть екземпляр автопарку' : 'Екземпляр автопарку'}</strong>
+                      <strong>{selectedVariants.length > 1 ? 'РћР±РµСЂС–С‚СЊ РµРєР·РµРјРїР»СЏСЂ Р°РІС‚РѕРїР°СЂРєСѓ' : 'Р•РєР·РµРјРїР»СЏСЂ Р°РІС‚РѕРїР°СЂРєСѓ'}</strong>
                       <span>
                         {selectedCard?.vehicleCount === 1
-                          ? 'Для цієї моделі доступний один екземпляр.'
-                          : `${selectedVariants.length} варіантів для цієї моделі.`}
+                          ? 'Р”Р»СЏ С†С–С”С— РјРѕРґРµР»С– РґРѕСЃС‚СѓРїРЅРёР№ РѕРґРёРЅ РµРєР·РµРјРїР»СЏСЂ.'
+                          : `${selectedVariants.length} РІР°СЂС–Р°РЅС‚С–РІ РґР»СЏ С†С–С”С— РјРѕРґРµР»С–.`}
                       </span>
                     </div>
                   </div>
@@ -1542,14 +1545,14 @@ export function ProkatSearchPage() {
                             <div>
                               <strong>{vehicle.licensePlate}</strong>
                               <span>
-                                {vehicle.mileage.toLocaleString('uk-UA')} км • {formatCurrency(vehicle.dailyRate)} / доба
+                                {vehicle.mileage.toLocaleString('uk-UA')} РєРј вЂў {formatCurrency(vehicle.dailyRate)} / РґРѕР±Р°
                               </span>
                             </div>
                             <span className={`status-pill ${isAvailable ? 'ok' : 'bad'}`}>
-                              {isAvailable ? 'Доступний' : 'Зайнятий'}
+                              {isAvailable ? 'Р”РѕСЃС‚СѓРїРЅРёР№' : 'Р—Р°Р№РЅСЏС‚РёР№'}
                             </span>
                           </div>
-                          <small>{availability?.note ?? 'Статус уточнюється.'}</small>
+                          <small>{availability?.note ?? 'РЎС‚Р°С‚СѓСЃ СѓС‚РѕС‡РЅСЋС”С‚СЊСЃСЏ.'}</small>
                         </button>
                       );
                     })}
@@ -1558,67 +1561,67 @@ export function ProkatSearchPage() {
 
                 {!myClient?.isComplete ? (
                   <div className="prokat-selection-alert">
-                    <strong>Профіль клієнта ще не завершений.</strong>
-                    <p>Заповніть реальні документи та контакти, після чого поверніться до оформлення.</p>
+                    <strong>РџСЂРѕС„С–Р»СЊ РєР»С–С”РЅС‚Р° С‰Рµ РЅРµ Р·Р°РІРµСЂС€РµРЅРёР№.</strong>
+                    <p>Р—Р°РїРѕРІРЅС–С‚СЊ СЂРµР°Р»СЊРЅС– РґРѕРєСѓРјРµРЅС‚Рё С‚Р° РєРѕРЅС‚Р°РєС‚Рё, РїС–СЃР»СЏ С‡РѕРіРѕ РїРѕРІРµСЂРЅС–С‚СЊСЃСЏ РґРѕ РѕС„РѕСЂРјР»РµРЅРЅСЏ.</p>
                     {profileCompletionMessage ? <p>{profileCompletionMessage}</p> : null}
                     <div className="row-actions">
                       <button type="button" className="btn primary" onClick={() => navigate('/prokat/profile')}>
-                        Перейти до профілю
+                        РџРµСЂРµР№С‚Рё РґРѕ РїСЂРѕС„С–Р»СЋ
                       </button>
                     </div>
                   </div>
                 ) : null}
 
                 <div className="kv-grid prokat-review-grid">
-                  <strong>Модель</strong>
-                  <span>{selectedVehicle.make} {selectedVehicle.model}</span>
-                  <strong>Варіант</strong>
+                  <strong>РњРѕРґРµР»СЊ</strong>
+                  <span>{selectedVehicle.makeName} {selectedVehicle.modelName}</span>
+                  <strong>Р’Р°СЂС–Р°РЅС‚</strong>
                   <span>{selectedVehicle.licensePlate}</span>
-                  <strong>Період</strong>
+                  <strong>РџРµСЂС–РѕРґ</strong>
                   <span>{periodLabel}</span>
-                  <strong>Тривалість</strong>
+                  <strong>РўСЂРёРІР°Р»С–СЃС‚СЊ</strong>
                   <span>{durationLabel}</span>
-                  <strong>Добова ставка</strong>
+                  <strong>Р”РѕР±РѕРІР° СЃС‚Р°РІРєР°</strong>
                   <span>{formatCurrency(selectedVehicle.dailyRate)}</span>
-                  <strong>Орієнтовно до сплати</strong>
+                  <strong>РћСЂС–С”РЅС‚РѕРІРЅРѕ РґРѕ СЃРїР»Р°С‚Рё</strong>
                   <span>{formatCurrency(selectedVehicleAmount)}</span>
-                  <strong>Орендар</strong>
-                  <span>{myClient?.fullName ?? 'Профіль не знайдено'}</span>
-                  <strong>Контакт</strong>
-                  <span>{myClient?.phone || 'Телефон не вказано'}</span>
+                  <strong>РћСЂРµРЅРґР°СЂ</strong>
+                  <span>{myClient?.fullName ?? 'РџСЂРѕС„С–Р»СЊ РЅРµ Р·РЅР°Р№РґРµРЅРѕ'}</span>
+                  <strong>РљРѕРЅС‚Р°РєС‚</strong>
+                  <span>{myClient?.phone || 'РўРµР»РµС„РѕРЅ РЅРµ РІРєР°Р·Р°РЅРѕ'}</span>
                 </div>
 
                 <div className="prokat-filter-note">
-                  <strong>Локації</strong>
-                  <span>{pickupLocation} → {returnLocation}</span>
+                  <strong>Р›РѕРєР°С†С–С—</strong>
+                  <span>{pickupLocation} в†’ {returnLocation}</span>
                 </div>
 
                 <p className={`prokat-card-note ${selectedVehicleAvailability?.state === 'available' ? 'ok' : 'bad'}`}>
-                  {selectedVehicleAvailability?.note ?? 'Оберіть авто для оформлення.'}
+                  {selectedVehicleAvailability?.note ?? 'РћР±РµСЂС–С‚СЊ Р°РІС‚Рѕ РґР»СЏ РѕС„РѕСЂРјР»РµРЅРЅСЏ.'}
                 </p>
 
                 <div className="prokat-payment-card">
                   <div className="prokat-payment-card-head">
                     <div>
-                      <strong>Оплата карткою</strong>
-                      <span>У систему потрапляє лише маскований номер картки та ім’я власника.</span>
+                      <strong>РћРїР»Р°С‚Р° РєР°СЂС‚РєРѕСЋ</strong>
+                      <span>РЈ СЃРёСЃС‚РµРјСѓ РїРѕС‚СЂР°РїР»СЏС” Р»РёС€Рµ РјР°СЃРєРѕРІР°РЅРёР№ РЅРѕРјРµСЂ РєР°СЂС‚РєРё С‚Р° С–РјвЂ™СЏ РІР»Р°СЃРЅРёРєР°.</span>
                     </div>
                   </div>
 
                   <div className="prokat-payment-grid">
                     <label className="prokat-payment-field prokat-payment-field-wide">
-                      <span>Власник картки</span>
+                      <span>Р’Р»Р°СЃРЅРёРє РєР°СЂС‚РєРё</span>
                       <input
                         value={cardholderName}
                         onChange={(event) => handleCardholderNameChange(event.target.value)}
                         maxLength={CARDHOLDER_NAME_MAX_LENGTH}
                         autoComplete="cc-name"
-                        placeholder="Ім'я та прізвище"
+                        placeholder="Р†Рј'СЏ С‚Р° РїСЂС–Р·РІРёС‰Рµ"
                       />
                     </label>
 
                     <label className="prokat-payment-field prokat-payment-field-wide">
-                      <span>Номер картки</span>
+                      <span>РќРѕРјРµСЂ РєР°СЂС‚РєРё</span>
                       <input
                         value={cardNumber}
                         onChange={(event) => handleCardNumberChange(event.target.value)}
@@ -1631,7 +1634,7 @@ export function ProkatSearchPage() {
                     </label>
 
                     <label className="prokat-payment-field">
-                      <span>Термін дії (MM/YY)</span>
+                      <span>РўРµСЂРјС–РЅ РґС–С— (MM/YY)</span>
                       <input
                         value={cardExpiry}
                         onChange={(event) => handleCardExpiryChange(event.target.value)}
@@ -1659,8 +1662,8 @@ export function ProkatSearchPage() {
                 </div>
 
                 <div className="prokat-summary-note">
-                  Після підтвердження система створить оренду, додасть початковий платіж карткою
-                  і збереже договір у ваших бронюваннях та орендах.
+                  РџС–СЃР»СЏ РїС–РґС‚РІРµСЂРґР¶РµРЅРЅСЏ СЃРёСЃС‚РµРјР° СЃС‚РІРѕСЂРёС‚СЊ РѕСЂРµРЅРґСѓ, РґРѕРґР°СЃС‚СЊ РїРѕС‡Р°С‚РєРѕРІРёР№ РїР»Р°С‚С–Р¶ РєР°СЂС‚РєРѕСЋ
+                  С– Р·Р±РµСЂРµР¶Рµ РґРѕРіРѕРІС–СЂ Сѓ РІР°С€РёС… Р±СЂРѕРЅСЋРІР°РЅРЅСЏС… С‚Р° РѕСЂРµРЅРґР°С….
                 </div>
 
                 {checkoutValidationMessage ? (
@@ -1676,17 +1679,17 @@ export function ProkatSearchPage() {
                   {submitting ? (
                     <>
                       <InlineSpinner />
-                      {' '}Оформлення...
+                      {' '}РћС„РѕСЂРјР»РµРЅРЅСЏ...
                     </>
-                  ) : 'Оплатити та оформити'}
+                  ) : 'РћРїР»Р°С‚РёС‚Рё С‚Р° РѕС„РѕСЂРјРёС‚Рё'}
                 </button>
               </div>
             ) : (
               <EmptyState
                 icon="STEP"
                 className="prokat-review-empty"
-                title="Почніть з вибору авто."
-                description="Вкажіть період, знайдіть доступну модель у каталозі та оберіть конкретний екземпляр для оформлення."
+                title="РџРѕС‡РЅС–С‚СЊ Р· РІРёР±РѕСЂСѓ Р°РІС‚Рѕ."
+                description="Р’РєР°Р¶С–С‚СЊ РїРµСЂС–РѕРґ, Р·РЅР°Р№РґС–С‚СЊ РґРѕСЃС‚СѓРїРЅСѓ РјРѕРґРµР»СЊ Сѓ РєР°С‚Р°Р»РѕР·С– С‚Р° РѕР±РµСЂС–С‚СЊ РєРѕРЅРєСЂРµС‚РЅРёР№ РµРєР·РµРјРїР»СЏСЂ РґР»СЏ РѕС„РѕСЂРјР»РµРЅРЅСЏ."
               />
             )}
           </section>
@@ -1695,43 +1698,43 @@ export function ProkatSearchPage() {
 
       <ConfirmDialog
         open={cardWarningOpen}
-        title="Ймовірно, це не справжня картка"
+        title="Р™РјРѕРІС–СЂРЅРѕ, С†Рµ РЅРµ СЃРїСЂР°РІР¶РЅСЏ РєР°СЂС‚РєР°"
         description={(
           <p>
-            Номер картки не пройшов базову перевірку. Якщо це тестова або нестандартна картка, ви все одно можете продовжити оформлення.
+            РќРѕРјРµСЂ РєР°СЂС‚РєРё РЅРµ РїСЂРѕР№С€РѕРІ Р±Р°Р·РѕРІСѓ РїРµСЂРµРІС–СЂРєСѓ. РЇРєС‰Рѕ С†Рµ С‚РµСЃС‚РѕРІР° Р°Р±Рѕ РЅРµСЃС‚Р°РЅРґР°СЂС‚РЅР° РєР°СЂС‚РєР°, РІРё РІСЃРµ РѕРґРЅРѕ РјРѕР¶РµС‚Рµ РїСЂРѕРґРѕРІР¶РёС‚Рё РѕС„РѕСЂРјР»РµРЅРЅСЏ.
           </p>
         )}
-        confirmLabel="Продовжити"
-        cancelLabel="Змінити номер"
+        confirmLabel="РџСЂРѕРґРѕРІР¶РёС‚Рё"
+        cancelLabel="Р—РјС–РЅРёС‚Рё РЅРѕРјРµСЂ"
         onConfirm={confirmSuspiciousCardCheckout}
         onCancel={() => setCardWarningOpen(false)}
       />
 
       <ConfirmDialog
         open={confirmOpen}
-        title="Підтвердити оплату та оформлення"
+        title="РџС–РґС‚РІРµСЂРґРёС‚Рё РѕРїР»Р°С‚Сѓ С‚Р° РѕС„РѕСЂРјР»РµРЅРЅСЏ"
         description={selectedVehicle ? (
           <>
             <p>
-              Ми створимо оренду з початковим платежем карткою. Фінальна доступність авто ще раз перевіриться
-              під час збереження.
+              РњРё СЃС‚РІРѕСЂРёРјРѕ РѕСЂРµРЅРґСѓ Р· РїРѕС‡Р°С‚РєРѕРІРёРј РїР»Р°С‚РµР¶РµРј РєР°СЂС‚РєРѕСЋ. Р¤С–РЅР°Р»СЊРЅР° РґРѕСЃС‚СѓРїРЅС–СЃС‚СЊ Р°РІС‚Рѕ С‰Рµ СЂР°Р· РїРµСЂРµРІС–СЂРёС‚СЊСЃСЏ
+              РїС–Рґ С‡Р°СЃ Р·Р±РµСЂРµР¶РµРЅРЅСЏ.
             </p>
             <div className="kv-grid prokat-confirm-grid">
-              <strong>Авто</strong>
-              <span>{selectedVehicle.make} {selectedVehicle.model}</span>
-              <strong>Варіант</strong>
+              <strong>РђРІС‚Рѕ</strong>
+              <span>{selectedVehicle.makeName} {selectedVehicle.modelName}</span>
+              <strong>Р’Р°СЂС–Р°РЅС‚</strong>
               <span>{selectedVehicle.licensePlate}</span>
-              <strong>Період</strong>
+              <strong>РџРµСЂС–РѕРґ</strong>
               <span>{periodLabel}</span>
-              <strong>До сплати</strong>
+              <strong>Р”Рѕ СЃРїР»Р°С‚Рё</strong>
               <span>{formatCurrency(selectedVehicleAmount)}</span>
-              <strong>Оплата</strong>
+              <strong>РћРїР»Р°С‚Р°</strong>
               <span>{buildMaskedCardPaymentNote(cardholderName, cardNumber)}</span>
             </div>
           </>
         ) : null}
-        confirmLabel="Оплатити та оформити"
-        cancelLabel="Повернутися"
+        confirmLabel="РћРїР»Р°С‚РёС‚Рё С‚Р° РѕС„РѕСЂРјРёС‚Рё"
+        cancelLabel="РџРѕРІРµСЂРЅСѓС‚РёСЃСЏ"
         onConfirm={() => void confirmCheckout()}
         onCancel={() => setConfirmOpen(false)}
       />

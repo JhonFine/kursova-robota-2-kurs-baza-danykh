@@ -1,4 +1,4 @@
-namespace CarRental.Desktop.ViewModels;
+﻿namespace CarRental.Desktop.ViewModels;
 
 [Flags]
 public enum PageRefreshArea
@@ -14,3 +14,4 @@ public enum PageRefreshArea
     Damages = 1 << 7,
     Admin = 1 << 8
 }
+

@@ -169,6 +169,8 @@ public sealed class StaffListFilteringTests
                 User = new ClaimsPrincipal(new ClaimsIdentity(
                 [
                     new Claim(ClaimTypes.NameIdentifier, "1"),
+                    new Claim("account_id", "1"),
+                    new Claim("employee_id", "1"),
                     new Claim(ClaimTypes.Role, UserRole.Manager.ToString())
                 ], "TestAuth"))
             }
@@ -179,6 +181,8 @@ public sealed class StaffListFilteringTests
 
     private static void SeedClients(RentalDbContext dbContext)
     {
+        SeedManager(dbContext);
+
         dbContext.Clients.AddRange(
             new Client
             {
@@ -187,7 +191,7 @@ public sealed class StaffListFilteringTests
                 PassportData = "PP-001",
                 DriverLicense = "DL-001",
                 Phone = "+380500000001",
-                Blacklisted = false
+                IsBlacklisted = false
             },
             new Client
             {
@@ -196,7 +200,10 @@ public sealed class StaffListFilteringTests
                 PassportData = "PP-002",
                 DriverLicense = "DL-002",
                 Phone = "+380500000002",
-                Blacklisted = true
+                IsBlacklisted = true,
+                BlacklistReason = "Repeated violations",
+                BlacklistedAtUtc = DateTime.UtcNow,
+                BlacklistedByEmployeeId = 1
             },
             new Client
             {
@@ -205,7 +212,7 @@ public sealed class StaffListFilteringTests
                 PassportData = "PP-003",
                 DriverLicense = "DL-003",
                 Phone = "+380500000003",
-                Blacklisted = false
+                IsBlacklisted = false
             });
 
         dbContext.SaveChanges();
@@ -216,99 +223,67 @@ public sealed class StaffListFilteringTests
         TestLookupSeed.SeedVehicleLookups(dbContext);
 
         dbContext.Vehicles.AddRange(
-            new Vehicle
-            {
-                Id = 20,
-                Make = "Toyota",
-                Model = "Yaris",
-                FuelType = "Бензин",
-                TransmissionType = "Автомат",
-                PowertrainCapacityValue = 1.5m,
-                PowertrainCapacityUnit = "L",
-                CargoCapacityValue = 286m,
-                CargoCapacityUnit = "L",
-                ConsumptionValue = 5.5m,
-                ConsumptionUnit = "L_PER_100KM",
-                LicensePlate = "AA1000AA",
-                Mileage = 50000,
-                DailyRate = 1200m,
-                IsAvailable = true,
-                ServiceIntervalKm = 10000
-            },
-            new Vehicle
-            {
-                Id = 21,
-                Make = "Audi",
-                Model = "A4",
-                FuelType = "Бензин",
-                TransmissionType = "Автомат",
-                PowertrainCapacityValue = 2m,
-                PowertrainCapacityUnit = "L",
-                CargoCapacityValue = 460m,
-                CargoCapacityUnit = "L",
-                ConsumptionValue = 7.2m,
-                ConsumptionUnit = "L_PER_100KM",
-                LicensePlate = "AA2000AA",
-                Mileage = 25000,
-                DailyRate = 2200m,
-                IsAvailable = true,
-                ServiceIntervalKm = 10000
-            },
-            new Vehicle
-            {
-                Id = 22,
-                Make = "Tesla",
-                Model = "Model 3",
-                FuelType = "Електро",
-                TransmissionType = "Автомат",
-                PowertrainCapacityValue = 75m,
-                PowertrainCapacityUnit = "KWH",
-                CargoCapacityValue = 425m,
-                CargoCapacityUnit = "L",
-                ConsumptionValue = 16m,
-                ConsumptionUnit = "KWH_PER_100KM",
-                LicensePlate = "TES123",
-                Mileage = 12000,
-                DailyRate = 3000m,
-                IsAvailable = true,
-                ServiceIntervalKm = 10000
-            },
-            new Vehicle
-            {
-                Id = 23,
-                Make = "BMW",
-                Model = "320",
-                FuelType = "Дизель",
-                TransmissionType = "Автомат",
-                PowertrainCapacityValue = 2m,
-                PowertrainCapacityUnit = "L",
-                CargoCapacityValue = 480m,
-                CargoCapacityUnit = "L",
-                ConsumptionValue = 6.3m,
-                ConsumptionUnit = "L_PER_100KM",
-                LicensePlate = "AA3000AA",
-                Mileage = 32000,
-                DailyRate = 2600m,
-                IsAvailable = false,
-                ServiceIntervalKm = 10000
-            });
+            TestLookupSeed.CreateVehicle(
+                dbContext,
+                make: "Toyota",
+                model: "Yaris",
+                licensePlate: "AA1000AA",
+                fuelTypeCode: "Р‘РµРЅР·РёРЅ",
+                transmissionTypeCode: "РђРІС‚РѕРјР°С‚",
+                powertrainCapacityValue: 1.5m,
+                cargoCapacityValue: 286m,
+                consumptionValue: 5.5m,
+                mileage: 50000,
+                dailyRate: 1200m,
+                id: 20),
+            TestLookupSeed.CreateVehicle(
+                dbContext,
+                make: "Audi",
+                model: "A4",
+                licensePlate: "AA2000AA",
+                fuelTypeCode: "Р‘РµРЅР·РёРЅ",
+                transmissionTypeCode: "РђРІС‚РѕРјР°С‚",
+                powertrainCapacityValue: 2m,
+                cargoCapacityValue: 460m,
+                consumptionValue: 7.2m,
+                mileage: 25000,
+                dailyRate: 2200m,
+                id: 21),
+            TestLookupSeed.CreateVehicle(
+                dbContext,
+                make: "Tesla",
+                model: "Model 3",
+                licensePlate: "TES123",
+                fuelTypeCode: "Р•Р»РµРєС‚СЂРѕ",
+                transmissionTypeCode: "РђРІС‚РѕРјР°С‚",
+                powertrainCapacityValue: 75m,
+                cargoCapacityValue: 425m,
+                consumptionValue: 16m,
+                mileage: 12000,
+                dailyRate: 3000m,
+                id: 22),
+            TestLookupSeed.CreateVehicle(
+                dbContext,
+                make: "BMW",
+                model: "320",
+                licensePlate: "AA3000AA",
+                fuelTypeCode: "Р”РёР·РµР»СЊ",
+                transmissionTypeCode: "РђРІС‚РѕРјР°С‚",
+                powertrainCapacityValue: 2m,
+                cargoCapacityValue: 480m,
+                consumptionValue: 6.3m,
+                mileage: 32000,
+                dailyRate: 2600m,
+                id: 23));
 
+        dbContext.Vehicles.Single(item => item.Id == 23).IsBookable = false;
         dbContext.SaveChanges();
     }
 
     private static void SeedRentalsScenario(RentalDbContext dbContext)
     {
         TestLookupSeed.SeedVehicleLookups(dbContext);
-
-        dbContext.Employees.Add(new Employee
-        {
-            Id = 1,
-            FullName = "Manager User",
-            Login = "manager",
-            PasswordHash = "x",
-            Role = UserRole.Manager,
-            IsActive = true
-        });
+        SeedManager(dbContext);
 
         dbContext.Clients.AddRange(
             new Client
@@ -318,7 +293,7 @@ public sealed class StaffListFilteringTests
                 PassportData = "PP-030",
                 DriverLicense = "DL-030",
                 Phone = "+380500000030",
-                Blacklisted = false
+                IsBlacklisted = false
             },
             new Client
             {
@@ -327,48 +302,36 @@ public sealed class StaffListFilteringTests
                 PassportData = "PP-031",
                 DriverLicense = "DL-031",
                 Phone = "+380500000031",
-                Blacklisted = false
+                IsBlacklisted = false
             });
 
         dbContext.Vehicles.AddRange(
-            new Vehicle
-            {
-                Id = 40,
-                Make = "Skoda",
-                Model = "Octavia",
-                FuelType = "Бензин",
-                TransmissionType = "Автомат",
-                PowertrainCapacityValue = 1.8m,
-                PowertrainCapacityUnit = "L",
-                CargoCapacityValue = 600m,
-                CargoCapacityUnit = "L",
-                ConsumptionValue = 6.4m,
-                ConsumptionUnit = "L_PER_100KM",
-                LicensePlate = "AA9090TT",
-                Mileage = 15000,
-                DailyRate = 55m,
-                IsAvailable = true,
-                ServiceIntervalKm = 10000
-            },
-            new Vehicle
-            {
-                Id = 41,
-                Make = "Ford",
-                Model = "Focus",
-                FuelType = "Бензин",
-                TransmissionType = "Механіка",
-                PowertrainCapacityValue = 1.6m,
-                PowertrainCapacityUnit = "L",
-                CargoCapacityValue = 375m,
-                CargoCapacityUnit = "L",
-                ConsumptionValue = 6.1m,
-                ConsumptionUnit = "L_PER_100KM",
-                LicensePlate = "BB8080KK",
-                Mileage = 18000,
-                DailyRate = 50m,
-                IsAvailable = true,
-                ServiceIntervalKm = 10000
-            });
+            TestLookupSeed.CreateVehicle(
+                dbContext,
+                make: "Skoda",
+                model: "Octavia",
+                licensePlate: "AA9090TT",
+                fuelTypeCode: "Р‘РµРЅР·РёРЅ",
+                transmissionTypeCode: "РђРІС‚РѕРјР°С‚",
+                powertrainCapacityValue: 1.8m,
+                cargoCapacityValue: 600m,
+                consumptionValue: 6.4m,
+                mileage: 15000,
+                dailyRate: 55m,
+                id: 40),
+            TestLookupSeed.CreateVehicle(
+                dbContext,
+                make: "Ford",
+                model: "Focus",
+                licensePlate: "BB8080KK",
+                fuelTypeCode: "Р‘РµРЅР·РёРЅ",
+                transmissionTypeCode: "РњРµС…Р°РЅС–РєР°",
+                powertrainCapacityValue: 1.6m,
+                cargoCapacityValue: 375m,
+                consumptionValue: 6.1m,
+                mileage: 18000,
+                dailyRate: 50m,
+                id: 41));
 
         dbContext.Rentals.AddRange(
             new Rental
@@ -376,13 +339,13 @@ public sealed class StaffListFilteringTests
                 Id = 100,
                 ClientId = 30,
                 VehicleId = 40,
-                EmployeeId = 1,
+                CreatedByEmployeeId = 1,
                 ContractNumber = "CR-2026-300001",
                 StartDate = DateTime.UtcNow.AddDays(1),
                 EndDate = DateTime.UtcNow.AddDays(2),
                 StartMileage = 15000,
                 TotalAmount = 160m,
-                Status = RentalStatus.Booked,
+                StatusId = RentalStatus.Booked,
                 CreatedAtUtc = DateTime.UtcNow
             },
             new Rental
@@ -390,17 +353,40 @@ public sealed class StaffListFilteringTests
                 Id = 101,
                 ClientId = 31,
                 VehicleId = 41,
-                EmployeeId = 1,
+                CreatedByEmployeeId = 1,
                 ContractNumber = "CR-2026-300002",
                 StartDate = DateTime.UtcNow.AddDays(3),
                 EndDate = DateTime.UtcNow.AddDays(4),
                 StartMileage = 18000,
                 TotalAmount = 140m,
-                Status = RentalStatus.Active,
+                StatusId = RentalStatus.Active,
                 CreatedAtUtc = DateTime.UtcNow
             });
 
         dbContext.SaveChanges();
+    }
+
+    private static void SeedManager(RentalDbContext dbContext)
+    {
+        if (dbContext.Employees.Any(item => item.Id == 1))
+        {
+            return;
+        }
+
+        dbContext.Employees.Add(new Employee
+        {
+            Id = 1,
+            FullName = "Manager User",
+            RoleId = UserRole.Manager,
+            Account = new Account
+            {
+                Id = 1,
+                Login = "manager",
+                PasswordHash = "x",
+                IsActive = true,
+                PasswordChangedAtUtc = DateTime.UtcNow
+            }
+        });
     }
 
     private sealed class StubContractNumberService : IContractNumberService

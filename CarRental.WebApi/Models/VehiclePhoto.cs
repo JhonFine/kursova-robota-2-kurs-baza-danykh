@@ -1,6 +1,6 @@
 namespace CarRental.WebApi.Models;
 
-public sealed class VehiclePhoto
+public sealed class VehiclePhoto : IAuditableEntity, ISoftDeletableEntity
 {
     public int Id { get; set; }
 
@@ -13,6 +13,10 @@ public sealed class VehiclePhoto
     public bool IsPrimary { get; set; }
 
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+
+    public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
+
+    public bool IsDeleted { get; set; }
 
     public Vehicle? Vehicle { get; set; }
 }

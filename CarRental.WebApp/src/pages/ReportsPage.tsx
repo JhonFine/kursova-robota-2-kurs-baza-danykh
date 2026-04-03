@@ -39,8 +39,8 @@ function buildSummary(rows: Rental[]): ReportSummary {
   return rows.reduce<ReportSummary>(
     (acc, item) => ({
       totalRentals: acc.totalRentals + 1,
-      activeRentals: acc.activeRentals + (item.status === 'Active' ? 1 : 0),
-      totalRevenue: acc.totalRevenue + (item.status === 'Closed' ? item.totalAmount : 0),
+      activeRentals: acc.activeRentals + (item.statusId === 'Active' ? 1 : 0),
+      totalRevenue: acc.totalRevenue + (item.statusId === 'Closed' ? item.totalAmount : 0),
       totalDamageCost: acc.totalDamageCost + item.overageFee,
     }),
     {
@@ -69,8 +69,8 @@ function toCsv(rows: Rental[]): string {
     item.contractNumber,
     item.clientName,
     item.vehicleName,
-    item.employeeName,
-    item.status,
+    item.createdByEmployeeName,
+    item.statusId,
     item.totalAmount.toFixed(2),
     item.paidAmount.toFixed(2),
     item.balance.toFixed(2),
@@ -89,8 +89,8 @@ function toExcelLike(rows: Rental[]): string {
       item.contractNumber,
       item.clientName,
       item.vehicleName,
-      item.employeeName,
-      item.status,
+      item.createdByEmployeeName,
+      item.statusId,
       item.totalAmount.toFixed(2),
       item.paidAmount.toFixed(2),
       item.balance.toFixed(2),
@@ -150,8 +150,8 @@ export function ReportsPage() {
       setEmployees(
         Array.from(
           rows.reduce((map, item) => {
-            if (!map.has(item.employeeId)) {
-              map.set(item.employeeId, { id: item.employeeId, fullName: item.employeeName });
+            if (item.createdByEmployeeId && !map.has(item.createdByEmployeeId)) {
+              map.set(item.createdByEmployeeId, { id: item.createdByEmployeeId, fullName: item.createdByEmployeeName ?? 'Self-service' });
             }
 
             return map;
@@ -210,7 +210,7 @@ export function ReportsPage() {
     if (selectedVehicleLabel) {
       items.push({
         key: 'vehicle',
-        label: `Авто: ${selectedVehicleLabel.make} ${selectedVehicleLabel.model}`,
+        label: `Авто: ${selectedVehicleLabel.makeName} ${selectedVehicleLabel.modelName}`,
         onRemove: () => {
           setPage(1);
           setVehicleId('');
@@ -320,7 +320,7 @@ export function ReportsPage() {
               <option value="">Усі авто</option>
               {vehicles.map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.make} {item.model} [{item.licensePlate}]
+                  {item.makeName} {item.modelName} [{item.licensePlate}]
                 </option>
               ))}
             </select>
@@ -457,8 +457,8 @@ export function ReportsPage() {
                         <td>{item.contractNumber}</td>
                         <td>{item.clientName}</td>
                         <td>{item.vehicleName}</td>
-                        <td>{item.employeeName}</td>
-                        <td>{item.status}</td>
+                        <td>{item.createdByEmployeeName ?? '-'}</td>
+                        <td>{item.statusId}</td>
                         <td>{formatCurrency(item.totalAmount)}</td>
                         <td>{formatCurrency(item.paidAmount)}</td>
                         <td>{formatCurrency(item.balance)}</td>

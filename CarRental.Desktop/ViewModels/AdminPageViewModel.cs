@@ -244,7 +244,7 @@ public sealed class AdminPageViewModel : PageDataViewModelBase, ITransientStateO
                 return "Змінити роль менеджера";
             }
 
-            return SelectedEmployee.Role switch
+            return SelectedEmployee.RoleId switch
             {
                 UserRole.Admin => "Роль адміністратора не змінюється",
                 UserRole.Manager => "Зробити користувачем",
@@ -273,7 +273,7 @@ public sealed class AdminPageViewModel : PageDataViewModelBase, ITransientStateO
                     item.Id,
                     item.FullName,
                     item.Account != null ? item.Account.Login : string.Empty,
-                    item.Role,
+                    item.RoleId,
                     item.Account != null && item.Account.IsActive,
                     item.Account != null ? item.Account.LockoutUntilUtc : null,
                     item.Account != null ? item.Account.LastLoginUtc : null))
@@ -367,16 +367,16 @@ public sealed class AdminPageViewModel : PageDataViewModelBase, ITransientStateO
             return;
         }
 
-        if (employee.Role == UserRole.Admin)
+        if (employee.RoleId == UserRole.Admin)
         {
             SetInfo("Роль адміністратора не змінюється цим інструментом.");
             return;
         }
 
-        employee.Role = employee.Role == UserRole.Manager ? UserRole.User : UserRole.Manager;
+        employee.RoleId = employee.RoleId == UserRole.Manager ? UserRole.User : UserRole.Manager;
         await _dbContext.SaveChangesAsync();
 
-        SetSuccess(employee.Role == UserRole.Manager
+        SetSuccess(employee.RoleId == UserRole.Manager
             ? $"Працівника \"{employee.FullName}\" призначено менеджером."
             : $"Працівника \"{employee.FullName}\" переведено в роль користувача.");
 
@@ -426,7 +426,7 @@ public sealed class AdminPageViewModel : PageDataViewModelBase, ITransientStateO
             return;
         }
 
-        var result = await _authService.ChangePasswordAsync(_currentEmployee.Id, CurrentPassword, NewPassword);
+        var result = await _authService.ChangePasswordAsync(_currentEmployee.AccountId, CurrentPassword, NewPassword);
         if (result.Success)
         {
             SetSuccess(result.Message);
@@ -443,7 +443,7 @@ public sealed class AdminPageViewModel : PageDataViewModelBase, ITransientStateO
     {
         TotalEmployees = Employees.Count;
         ActiveEmployees = Employees.Count(item => item.IsActive);
-        ManagersCount = Employees.Count(item => item.Role == UserRole.Manager);
+        ManagersCount = Employees.Count(item => item.RoleId == UserRole.Manager);
         LockedEmployees = Employees.Count(item => item.IsLocked);
     }
 
@@ -518,19 +518,19 @@ public sealed class AdminPageViewModel : PageDataViewModelBase, ITransientStateO
         int Id,
         string FullName,
         string Login,
-        UserRole Role,
+        UserRole RoleId,
         bool IsActive,
         DateTime? LockoutUntilUtc,
         DateTime? LastLoginUtc)
     {
         public bool IsLocked => LockoutUntilUtc.HasValue && LockoutUntilUtc.Value > DateTime.UtcNow;
 
-        public string RoleDisplay => Role switch
+        public string RoleDisplay => RoleId switch
         {
             UserRole.Admin => "Адміністратор",
             UserRole.Manager => "Менеджер",
             UserRole.User => "Користувач",
-            _ => Role.ToString()
+            _ => RoleId.ToString()
         };
 
         public string ActivityDisplay => IsActive ? "Активний" : "Вимкнений";
@@ -542,6 +542,8 @@ public sealed class AdminPageViewModel : PageDataViewModelBase, ITransientStateO
             => LastLoginUtc.HasValue ? $"{LastLoginUtc:dd.MM.yyyy HH:mm} UTC" : "Немає даних";
     }
 }
+
+
 
 
 

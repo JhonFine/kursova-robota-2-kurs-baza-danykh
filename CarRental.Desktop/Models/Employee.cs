@@ -1,10 +1,9 @@
-using System.ComponentModel.DataAnnotations.Schema;
+﻿using System.ComponentModel.DataAnnotations.Schema;
 
 namespace CarRental.Desktop.Models;
 
 public sealed class Employee : IAuditableEntity
 {
-    private int? _legacyPortalClientId;
     private string? _legacyLogin;
     private string? _legacyPasswordHash;
     private bool? _legacyIsActive;
@@ -19,7 +18,7 @@ public sealed class Employee : IAuditableEntity
 
     public string FullName { get; set; } = string.Empty;
 
-    public UserRole Role { get; set; }
+    public UserRole RoleId { get; set; }
 
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
@@ -123,44 +122,6 @@ public sealed class Employee : IAuditableEntity
         }
     }
 
-    [NotMapped]
-    public int? PortalClientId
-    {
-        get => Account?.Client?.Id ?? _legacyPortalClientId;
-        set
-        {
-            _legacyPortalClientId = value;
-
-            if (value is null)
-            {
-                if (Account?.Client is not null)
-                {
-                    Account.Client.AccountId = null;
-                }
-
-                return;
-            }
-
-            if (Account?.Client is not null)
-            {
-                Account.Client.AccountId = AccountId;
-            }
-        }
-    }
-
-    [NotMapped]
-    public Client? PortalClient
-    {
-        get => Account?.Client;
-        set
-        {
-            if (value is not null)
-            {
-                value.AccountId = AccountId;
-            }
-        }
-    }
-
     public Account? Account { get; set; }
 
     public EmployeeRoleLookup? RoleLookup { get; set; }
@@ -171,7 +132,7 @@ public sealed class Employee : IAuditableEntity
 
     public ICollection<Rental> CanceledRentals { get; set; } = new List<Rental>();
 
-    public ICollection<Payment> Payments { get; set; } = new List<Payment>();
+    public ICollection<Payment> RecordedPayments { get; set; } = new List<Payment>();
 
     public ICollection<RentalInspection> Inspections { get; set; } = new List<RentalInspection>();
 
@@ -179,5 +140,6 @@ public sealed class Employee : IAuditableEntity
 
     public ICollection<MaintenanceRecord> MaintenanceRecords { get; set; } = new List<MaintenanceRecord>();
 
-    internal int? PendingPortalClientId => _legacyPortalClientId;
+    public ICollection<Client> BlacklistedClients { get; set; } = new List<Client>();
 }
+

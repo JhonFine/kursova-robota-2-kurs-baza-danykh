@@ -1,4 +1,4 @@
-namespace CarRental.Desktop.Models;
+﻿namespace CarRental.Desktop.Models;
 
 public enum UserRole
 {
@@ -6,4 +6,5 @@ public enum UserRole
     Manager = 2,
     User = 3
 }
+
 

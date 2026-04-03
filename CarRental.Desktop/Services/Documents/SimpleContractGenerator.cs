@@ -1,4 +1,4 @@
-using DocumentFormat.OpenXml;
+﻿using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 using QuestPDF.Fluent;
@@ -11,8 +11,8 @@ using QuestDocument = QuestPDF.Fluent.Document;
 
 namespace CarRental.Desktop.Services.Documents;
 
-// Генератор друкованих документів навмисно випускає три формати з одного ContractData:
-// plain text для швидкого перегляду, DOCX для редагування і PDF для фактичного друку.
+// Р“РµРЅРµСЂР°С‚РѕСЂ РґСЂСѓРєРѕРІР°РЅРёС… РґРѕРєСѓРјРµРЅС‚С–РІ РЅР°РІРјРёСЃРЅРѕ РІРёРїСѓСЃРєР°С” С‚СЂРё С„РѕСЂРјР°С‚Рё Р· РѕРґРЅРѕРіРѕ ContractData:
+// plain text РґР»СЏ С€РІРёРґРєРѕРіРѕ РїРµСЂРµРіР»СЏРґСѓ, DOCX РґР»СЏ СЂРµРґР°РіСѓРІР°РЅРЅСЏ С– PDF РґР»СЏ С„Р°РєС‚РёС‡РЅРѕРіРѕ РґСЂСѓРєСѓ.
 public sealed class SimpleContractGenerator(string contractsDirectory) : IDocumentGenerator
 {
     static SimpleContractGenerator()
@@ -24,7 +24,7 @@ public sealed class SimpleContractGenerator(string contractsDirectory) : IDocume
         ContractData data,
         CancellationToken cancellationToken = default)
     {
-        // Один timestamped stem тримає разом усі артефакти договору, щоб їх було легко знайти поряд у файловій системі.
+        // РћРґРёРЅ timestamped stem С‚СЂРёРјР°С” СЂР°Р·РѕРј СѓСЃС– Р°СЂС‚РµС„Р°РєС‚Рё РґРѕРіРѕРІРѕСЂСѓ, С‰РѕР± С—С… Р±СѓР»Рѕ Р»РµРіРєРѕ Р·РЅР°Р№С‚Рё РїРѕСЂСЏРґ Сѓ С„Р°Р№Р»РѕРІС–Р№ СЃРёСЃС‚РµРјС–.
         Directory.CreateDirectory(contractsDirectory);
 
         var stem = $"{data.ContractNumber}_{DateTime.UtcNow:yyyyMMdd_HHmmss}";
@@ -43,7 +43,7 @@ public sealed class SimpleContractGenerator(string contractsDirectory) : IDocume
     private static string BuildTextContent(ContractData data)
     {
         return new StringBuilder()
-            .AppendLine("ДОГОВІР ОРЕНДИ АВТОМОБІЛЯ")
+            .AppendLine("Р”РћР“РћР’Р†Р  РћР Р•РќР”Р РђР’РўРћРњРћР‘Р†Р›РЇ")
             .AppendLine($"Номер договору: {data.ContractNumber}")
             .AppendLine($"ID оренди: {data.RentalId}")
             .AppendLine($"Клієнт: {data.ClientName}")
@@ -61,7 +61,7 @@ public sealed class SimpleContractGenerator(string contractsDirectory) : IDocume
         using var word = WordprocessingDocument.Create(path, WordprocessingDocumentType.Document);
         var main = word.AddMainDocumentPart();
         main.Document = new OpenXmlDocument(new Body(
-            Paragraph("ДОГОВІР ОРЕНДИ АВТОМОБІЛЯ", 28),
+            Paragraph("Р”РћР“РћР’Р†Р  РћР Р•РќР”Р РђР’РўРћРњРћР‘Р†Р›РЇ", 28),
             Paragraph($"Номер договору: {data.ContractNumber}", 24),
             Paragraph($"ID оренди: {data.RentalId}", 24),
             Paragraph($"Клієнт: {data.ClientName}", 24),
@@ -92,7 +92,7 @@ public sealed class SimpleContractGenerator(string contractsDirectory) : IDocume
                     page.Content().Column(column =>
                     {
                         column.Spacing(10);
-                        column.Item().Text("ДОГОВІР ОРЕНДИ АВТОМОБІЛЯ").FontSize(20).SemiBold();
+                        column.Item().Text("Р”РћР“РћР’Р†Р  РћР Р•РќР”Р РђР’РўРћРњРћР‘Р†Р›РЇ").FontSize(20).SemiBold();
                         column.Item().Text($"Номер договору: {data.ContractNumber}");
                         column.Item().Text($"ID оренди: {data.RentalId}");
                         column.Item().Text($"Клієнт: {data.ClientName}");
@@ -107,3 +107,4 @@ public sealed class SimpleContractGenerator(string contractsDirectory) : IDocume
             .GeneratePdf(path);
     }
 }
+

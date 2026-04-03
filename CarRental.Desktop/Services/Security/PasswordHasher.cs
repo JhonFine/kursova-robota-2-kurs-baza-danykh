@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
 
 namespace CarRental.Desktop.Services.Security;
@@ -75,3 +75,4 @@ public static class PasswordHasher
         return CryptographicOperations.FixedTimeEquals(actual, expected);
     }
 }
+

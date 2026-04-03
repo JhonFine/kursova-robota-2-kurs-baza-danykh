@@ -20,7 +20,7 @@ public sealed class AuthorizationService : IAuthorizationService
 
     public bool HasPermission(Employee employee, EmployeePermission permission)
     {
-        var permissions = employee.Role switch
+        var permissions = employee.RoleId switch
         {
             UserRole.Admin => EmployeePermission.All,
             UserRole.Manager => ManagerPermissions,

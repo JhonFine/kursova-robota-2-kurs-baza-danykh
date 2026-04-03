@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
 namespace CarRental.Desktop.Data;
@@ -15,3 +15,4 @@ public sealed class DesignTimeRentalDbContextFactory : IDesignTimeDbContextFacto
         return new RentalDbContext(options);
     }
 }
+

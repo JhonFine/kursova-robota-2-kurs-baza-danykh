@@ -1,11 +1,9 @@
-using CarRental.Desktop.Data;
+﻿using CarRental.Desktop.Data;
 using CarRental.Desktop.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace CarRental.Desktop.Services.Payments;
 
-// Платіжний сервіс лишається thin навмисно:
-// бізнес-сума договору рахується сервісом оренд, а тут лише фіксуються рухи грошей і виводиться баланс.
 public sealed class PaymentService(RentalDbContext dbContext) : IPaymentService
 {
     public async Task<PaymentResult> AddPaymentAsync(PaymentRequest request, CancellationToken cancellationToken = default)
@@ -21,7 +19,8 @@ public sealed class PaymentService(RentalDbContext dbContext) : IPaymentService
             return new PaymentResult(false, "Оренду не знайдено.");
         }
 
-        if (!await dbContext.Employees.AnyAsync(item => item.Id == request.EmployeeId, cancellationToken))
+        if (request.RecordedByEmployeeId.HasValue &&
+            !await dbContext.Employees.AnyAsync(item => item.Id == request.RecordedByEmployeeId.Value, cancellationToken))
         {
             return new PaymentResult(false, "Працівника не знайдено.");
         }
@@ -29,10 +28,12 @@ public sealed class PaymentService(RentalDbContext dbContext) : IPaymentService
         var payment = new Payment
         {
             RentalId = request.RentalId,
-            EmployeeId = request.EmployeeId,
+            RecordedByEmployeeId = request.RecordedByEmployeeId,
             Amount = request.Amount,
-            Method = request.Method,
-            Direction = request.Direction,
+            MethodId = request.MethodId,
+            DirectionId = request.DirectionId,
+            StatusId = request.StatusId,
+            ExternalTransactionId = string.IsNullOrWhiteSpace(request.ExternalTransactionId) ? null : request.ExternalTransactionId.Trim(),
             Notes = request.Notes.Trim(),
             CreatedAtUtc = DateTime.UtcNow
         };
@@ -46,6 +47,8 @@ public sealed class PaymentService(RentalDbContext dbContext) : IPaymentService
     {
         return await dbContext.Payments
             .AsNoTracking()
+            .Include(item => item.RecordedByEmployee)
+            .ThenInclude(item => item!.Account)
             .Where(item => item.RentalId == rentalId)
             .OrderByDescending(item => item.CreatedAtUtc)
             .ToListAsync(cancellationToken);
@@ -53,7 +56,6 @@ public sealed class PaymentService(RentalDbContext dbContext) : IPaymentService
 
     public async Task<decimal> GetRentalBalanceAsync(int rentalId, CancellationToken cancellationToken = default)
     {
-        // Refund зменшує net paid, тому баланс рахується як TotalAmount мінус signed потоки платежів.
         var rentalAmount = await dbContext.Rentals
             .AsNoTracking()
             .Where(item => item.Id == rentalId)
@@ -63,10 +65,15 @@ public sealed class PaymentService(RentalDbContext dbContext) : IPaymentService
         var paid = await dbContext.Payments
             .AsNoTracking()
             .Where(item => item.RentalId == rentalId)
+            .Where(item => item.StatusId == PaymentStatus.Completed)
             .SumAsync(
-                item => (decimal?)(item.Direction == PaymentDirection.Incoming ? item.Amount : -item.Amount),
+                item => (decimal?)(item.DirectionId == PaymentDirection.Incoming ? item.Amount : -item.Amount),
                 cancellationToken) ?? 0m;
 
         return rentalAmount - paid;
     }
 }
+
+
+
+

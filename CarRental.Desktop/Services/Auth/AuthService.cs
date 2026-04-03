@@ -1,18 +1,19 @@
-using CarRental.Desktop.Data;
+﻿using CarRental.Desktop.Data;
 using CarRental.Desktop.Models;
 using CarRental.Desktop.Services.Security;
+using CarRental.Shared.ReferenceData;
 using CarRental.Shared.Security;
 using Microsoft.EntityFrameworkCore;
 
 namespace CarRental.Desktop.Services.Auth;
 
-// Desktop auth працює навколо shared account-моделі:
-// тут перевіряються lockout-правила, а за потреби staff-principal ліниво добудовується з client/account запису.
 public sealed class AuthService(RentalDbContext dbContext) : IAuthService
 {
     private const int MaxFailedAttempts = SecurityDefaults.MaxFailedAttempts;
     private static readonly TimeSpan LockoutDuration = TimeSpan.FromMinutes(SecurityDefaults.LockoutMinutes);
 
+    // РўСѓС‚ Р·С–Р±СЂР°РЅРѕ РІРµСЃСЊ login-flow: РІР°Р»С–РґР°С†С–СЏ РІРІРѕРґСѓ, lockout, РїРµСЂРµРІС–СЂРєР° РїР°СЂРѕР»СЏ,
+    // РјС–РіСЂР°С†С–СЏ legacy-С…РµС€С–РІ С– РѕРЅРѕРІР»РµРЅРЅСЏ audit-РїРѕР»С–РІ СѓСЃРїС–С€РЅРѕРіРѕ РІС…РѕРґСѓ.
     public async Task<AuthResult> AuthenticateAsync(string login, string password, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(login) || string.IsNullOrWhiteSpace(password))
@@ -20,12 +21,12 @@ public sealed class AuthService(RentalDbContext dbContext) : IAuthService
             return new AuthResult(false, "Потрібні логін і пароль.");
         }
 
-        // Логін нормалізується до одного canonical виду, щоб web/desktop не створювали дублікати по регістру.
         var normalizedLogin = login.Trim().ToLowerInvariant();
+
         var account = await dbContext.Accounts
             .Include(item => item.Employee)
             .Include(item => item.Client)
-                .ThenInclude(item => item!.Documents)
+            .ThenInclude(item => item!.Documents)
             .FirstOrDefaultAsync(item => item.Login == normalizedLogin, cancellationToken);
         if (account is null || !account.IsActive)
         {
@@ -44,31 +45,45 @@ public sealed class AuthService(RentalDbContext dbContext) : IAuthService
         var isValid = PasswordHasher.VerifyPassword(password, account.PasswordHash);
         if (!isValid)
         {
-            // Лічильник невдалих входів оновлюємо до будь-якого раннього виходу, інакше lockout можна обійти повторними спробами.
-            account.FailedLoginAttempts += 1;
-            if (account.FailedLoginAttempts >= MaxFailedAttempts)
-            {
-                account.LockoutUntilUtc = DateTime.UtcNow.Add(LockoutDuration);
-                account.FailedLoginAttempts = 0;
-            }
+            var newLockoutTime = DateTime.UtcNow.Add(LockoutDuration);
+            // Р›С–С‡РёР»СЊРЅРёРє РЅРµРІРґР°Р»РёС… СЃРїСЂРѕР± РѕРЅРѕРІР»СЋС”РјРѕ Р±РµР· Р·Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ СЃСѓС‚РЅРѕСЃС‚С– РїРѕРІС‚РѕСЂРЅРѕ,
+            // С‰РѕР± lockout РїСЂР°С†СЋРІР°РІ Р°С‚РѕРјР°СЂРЅРѕ РЅР°РІС–С‚СЊ РїС–Рґ РєРѕРЅРєСѓСЂРµРЅС‚РЅРёРјРё СЃРїСЂРѕР±Р°РјРё РІС…РѕРґСѓ.
+            await dbContext.Accounts
+                .Where(a => a.Id == account.Id)
+                .ExecuteUpdateAsync(updates =>
+                    updates.SetProperty(p => p.FailedLoginAttempts, p =>
+                                p.FailedLoginAttempts + 1 >= MaxFailedAttempts ? 0 : p.FailedLoginAttempts + 1)
+                           .SetProperty(p => p.LockoutUntilUtc, p =>
+                                p.FailedLoginAttempts + 1 >= MaxFailedAttempts ? (DateTime?)newLockoutTime : p.LockoutUntilUtc),
+                    cancellationToken: cancellationToken);
 
-            await dbContext.SaveChangesAsync(cancellationToken);
             return new AuthResult(false, "Невірні облікові дані.");
         }
 
         if (PasswordHasher.NeedsRehash(account.PasswordHash))
         {
-            account.PasswordHash = PasswordHasher.HashPassword(password);
+            var newHash = PasswordHasher.HashPassword(password);
+            await dbContext.Accounts
+                .Where(a => a.Id == account.Id)
+                .ExecuteUpdateAsync(u => u.SetProperty(p => p.PasswordHash, newHash), cancellationToken);
+            account.PasswordHash = newHash;
         }
+
+        var lastLoginTime = DateTime.UtcNow;
+        await dbContext.Accounts
+            .Where(a => a.Id == account.Id)
+            .ExecuteUpdateAsync(updates => updates
+                .SetProperty(p => p.FailedLoginAttempts, 0)
+                .SetProperty(p => p.LockoutUntilUtc, (DateTime?)null)
+                .SetProperty(p => p.LastLoginUtc, lastLoginTime),
+            cancellationToken);
 
         account.FailedLoginAttempts = 0;
         account.LockoutUntilUtc = null;
-        account.LastLoginUtc = DateTime.UtcNow;
+        account.LastLoginUtc = lastLoginTime;
 
-        var employee = await EnsureDesktopEmployeeAsync(account, cancellationToken);
-        await dbContext.SaveChangesAsync(cancellationToken);
-
-        return new AuthResult(true, "Успішний вхід.", employee);
+        var role = account.Employee?.RoleId ?? UserRole.User;
+        return new AuthResult(true, "Успішний вхід.", account, account.Employee, account.Client, role);
     }
 
     public async Task<RegistrationResult> RegisterAsync(
@@ -78,6 +93,8 @@ public sealed class AuthService(RentalDbContext dbContext) : IAuthService
         string password,
         CancellationToken cancellationToken = default)
     {
+        // Р РµС”СЃС‚СЂР°С†С–СЏ СЃС‚РІРѕСЂСЋС” РѕРєСЂРµРјС– Account С– Client, С‰РѕР± Р°РІС‚РѕСЂРёР·Р°С†С–СЏ С– Р±С–Р·РЅРµСЃ-РїСЂРѕС„С–Р»СЊ
+        // Р·Р°Р»РёС€Р°Р»РёСЃСЏ СЂРѕР·РґС–Р»РµРЅРёРјРё С‚Р°Рє СЃР°РјРѕ, СЏРє РґР»СЏ staff-Р°РєР°СѓРЅС‚С–РІ.
         if (string.IsNullOrWhiteSpace(fullName))
         {
             return new RegistrationResult(false, "Вкажіть ПІБ.");
@@ -93,13 +110,14 @@ public sealed class AuthService(RentalDbContext dbContext) : IAuthService
             return new RegistrationResult(false, "Пароль має містити щонайменше 8 символів.");
         }
 
-        var normalizedPhone = TryNormalizePhone(phone);
+        var normalizedPhone = ClientProfileConventions.TryNormalizePhone(phone);
         if (normalizedPhone is null)
         {
             return new RegistrationResult(false, "Вкажіть коректний телефон (10-15 цифр).");
         }
 
         var normalizedLogin = login.Trim().ToLowerInvariant();
+
         if (await dbContext.Accounts.AnyAsync(item => item.Login == normalizedLogin, cancellationToken))
         {
             return new RegistrationResult(false, "Користувач з таким логіном вже існує.");
@@ -125,23 +143,15 @@ public sealed class AuthService(RentalDbContext dbContext) : IAuthService
             Account = account
         };
 
-        var employee = new Employee
-        {
-            FullName = client.FullName,
-            Role = UserRole.User,
-            Account = account
-        };
-
         dbContext.Accounts.Add(account);
         dbContext.Clients.Add(client);
-        dbContext.Employees.Add(employee);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        return new RegistrationResult(true, "Реєстрація успішна.", employee);
+        return new RegistrationResult(true, "Реєстрація успішна.", account, null, client, UserRole.User);
     }
 
     public async Task<PasswordChangeResult> ChangePasswordAsync(
-        int employeeId,
+        int accountId,
         string currentPassword,
         string newPassword,
         CancellationToken cancellationToken = default)
@@ -151,80 +161,23 @@ public sealed class AuthService(RentalDbContext dbContext) : IAuthService
             return new PasswordChangeResult(false, "Новий пароль має містити щонайменше 8 символів.");
         }
 
-        var employee = await dbContext.Employees
-            .Include(item => item.Account)
-            .FirstOrDefaultAsync(item => item.Id == employeeId, cancellationToken);
-        if (employee?.Account is null)
+        var account = await dbContext.Accounts.FirstOrDefaultAsync(item => item.Id == accountId, cancellationToken);
+        if (account is null)
         {
-            return new PasswordChangeResult(false, "Працівника не знайдено.");
+            return new PasswordChangeResult(false, "Обліковий запис не знайдено.");
         }
 
-        if (!PasswordHasher.VerifyPassword(currentPassword, employee.Account.PasswordHash))
+        if (!PasswordHasher.VerifyPassword(currentPassword, account.PasswordHash))
         {
             return new PasswordChangeResult(false, "Поточний пароль невірний.");
         }
 
-        employee.Account.PasswordHash = PasswordHasher.HashPassword(newPassword);
-        employee.Account.PasswordChangedAtUtc = DateTime.UtcNow;
-        employee.Account.FailedLoginAttempts = 0;
-        employee.Account.LockoutUntilUtc = null;
+        account.PasswordHash = PasswordHasher.HashPassword(newPassword);
+        account.PasswordChangedAtUtc = DateTime.UtcNow;
+        account.FailedLoginAttempts = 0;
+        account.LockoutUntilUtc = null;
         await dbContext.SaveChangesAsync(cancellationToken);
         return new PasswordChangeResult(true, "Пароль оновлено.");
     }
 
-    private async Task<Employee> EnsureDesktopEmployeeAsync(Account account, CancellationToken cancellationToken)
-    {
-        // Desktop shell працює через Employee principal навіть для self-service користувача,
-        // тому акаунт клієнта при вході отримує або знаходить відповідний Employee-запис.
-        if (account.Employee is not null)
-        {
-            if (account.Client is not null &&
-                !string.IsNullOrWhiteSpace(account.Client.FullName) &&
-                !string.Equals(account.Employee.FullName, account.Client.FullName, StringComparison.Ordinal))
-            {
-                account.Employee.FullName = account.Client.FullName;
-            }
-
-            return account.Employee;
-        }
-
-        var employee = await dbContext.Employees
-            .Include(item => item.Account)
-            .FirstOrDefaultAsync(item => item.AccountId == account.Id, cancellationToken);
-        if (employee is not null)
-        {
-            account.Employee = employee;
-            return employee;
-        }
-
-        employee = new Employee
-        {
-            Account = account,
-            AccountId = account.Id,
-            FullName = !string.IsNullOrWhiteSpace(account.Client?.FullName)
-                ? account.Client.FullName
-                : account.Login,
-            Role = UserRole.User
-        };
-
-        dbContext.Employees.Add(employee);
-        account.Employee = employee;
-        return employee;
-    }
-
-    private static string? TryNormalizePhone(string? phone)
-    {
-        if (string.IsNullOrWhiteSpace(phone))
-        {
-            return null;
-        }
-
-        var digits = new string(phone.Where(char.IsDigit).ToArray());
-        if (digits.Length is < 10 or > 15)
-        {
-            return null;
-        }
-
-        return "+" + digits;
-    }
 }

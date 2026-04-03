@@ -7,35 +7,19 @@ namespace CarRental.WebApi.Infrastructure;
 public static class ClientProfileRules
 {
     public static string? TryNormalizePhone(string? phone)
-    {
-        if (string.IsNullOrWhiteSpace(phone))
-        {
-            return null;
-        }
-
-        var digits = new string(phone.Where(char.IsDigit).ToArray());
-        if (digits.Length is < 10 or > 15)
-        {
-            return null;
-        }
-
-        return "+" + digits;
-    }
+        => ClientProfileConventions.TryNormalizePhone(phone);
 
     public static bool IsProfileComplete(Client client)
     {
         var passport = GetActiveDocument(client, ClientDocumentTypes.Passport);
         var driverLicense = GetActiveDocument(client, ClientDocumentTypes.DriverLicense);
 
-        return !string.IsNullOrWhiteSpace(client.FullName) &&
-               !string.IsNullOrWhiteSpace(client.Phone) &&
-               passport is not null &&
-               !string.IsNullOrWhiteSpace(passport.DocumentNumber) &&
-               driverLicense is not null &&
-               !string.IsNullOrWhiteSpace(driverLicense.DocumentNumber) &&
-               driverLicense.ExpirationDate.HasValue &&
-               driverLicense.ExpirationDate.Value.Date >= DateTime.UtcNow.Date &&
-               TryNormalizePhone(client.Phone) is not null;
+        return ClientProfileConventions.IsProfileComplete(
+            client.FullName,
+            client.Phone,
+            passport?.DocumentNumber,
+            driverLicense?.DocumentNumber,
+            driverLicense?.ExpirationDate);
     }
 
     public static ClientDocument? GetActiveDocument(Client client, string documentTypeCode)

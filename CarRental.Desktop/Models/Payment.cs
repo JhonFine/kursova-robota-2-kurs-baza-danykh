@@ -1,4 +1,4 @@
-namespace CarRental.Desktop.Models;
+﻿namespace CarRental.Desktop.Models;
 
 public sealed class Payment
 {
@@ -6,15 +6,15 @@ public sealed class Payment
 
     public int RentalId { get; set; }
 
-    public int EmployeeId { get; set; }
+    public int? RecordedByEmployeeId { get; set; }
 
     public decimal Amount { get; set; }
 
-    public PaymentMethod Method { get; set; } = PaymentMethod.Cash;
+    public PaymentMethod MethodId { get; set; } = PaymentMethod.Cash;
 
-    public PaymentDirection Direction { get; set; } = PaymentDirection.Incoming;
+    public PaymentDirection DirectionId { get; set; } = PaymentDirection.Incoming;
 
-    public PaymentStatus Status { get; set; } = PaymentStatus.Completed;
+    public PaymentStatus StatusId { get; set; } = PaymentStatus.Completed;
 
     public string? ExternalTransactionId { get; set; }
 
@@ -24,7 +24,7 @@ public sealed class Payment
 
     public Rental? Rental { get; set; }
 
-    public Employee? Employee { get; set; }
+    public Employee? RecordedByEmployee { get; set; }
 
     public PaymentMethodLookup? MethodLookup { get; set; }
 
@@ -32,3 +32,4 @@ public sealed class Payment
 
     public PaymentStatusLookup? StatusLookup { get; set; }
 }
+

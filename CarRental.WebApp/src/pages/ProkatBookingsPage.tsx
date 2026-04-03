@@ -103,8 +103,8 @@ function RentalCard({
           <h3>{rental.vehicleName}</h3>
           <p>{rental.contractNumber}</p>
         </div>
-        <span className={`status-pill ${rentalStatusClass(rental.status)}`}>
-          {rentalStatusLabel(rental.status)}
+        <span className={`status-pill ${rentalStatusClass(rental.statusId)}`}>
+          {rentalStatusLabel(rental.statusId)}
         </span>
       </div>
 
@@ -275,19 +275,19 @@ export function ProkatBookingsPage() {
   // щоб не змішувати сценарії дії з архівом і фінальними підсумками.
   const upcomingRentals = useMemo(() => (
     [...myRentals]
-      .filter((rental) => rental.status === 'Booked')
+      .filter((rental) => rental.statusId === 'Booked')
       .sort((left, right) => compareAscByDate(left, right, (item) => item.startDate))
   ), [myRentals]);
 
   const activeRentals = useMemo(() => (
     [...myRentals]
-      .filter((rental) => rental.status === 'Active')
+      .filter((rental) => rental.statusId === 'Active')
       .sort((left, right) => compareAscByDate(left, right, (item) => item.endDate))
   ), [myRentals]);
 
   const historyRentals = useMemo(() => (
     [...myRentals]
-      .filter((rental) => rental.status === 'Closed' || rental.status === 'Canceled')
+      .filter((rental) => rental.statusId === 'Closed' || rental.statusId === 'Canceled')
       .sort(compareDescByHistoryMoment)
   ), [myRentals]);
 

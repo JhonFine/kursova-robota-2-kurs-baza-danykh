@@ -1,4 +1,4 @@
-namespace CarRental.Desktop.Models;
+﻿namespace CarRental.Desktop.Models;
 
 public sealed class RentalStatusLookup
 {
@@ -8,3 +8,4 @@ public sealed class RentalStatusLookup
 
     public ICollection<Rental> Rentals { get; set; } = new List<Rental>();
 }
+

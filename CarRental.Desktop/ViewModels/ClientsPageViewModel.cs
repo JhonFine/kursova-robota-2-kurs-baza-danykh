@@ -1,48 +1,69 @@
 using CarRental.Desktop.Data;
 using CarRental.Desktop.Models;
 using CarRental.Desktop.Services.Auth;
+using CarRental.Desktop.Services.Documents;
+using CarRental.Shared.ReferenceData;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.EntityFrameworkCore;
 using System.Collections.ObjectModel;
+using System.Globalization;
 
 namespace CarRental.Desktop.ViewModels;
 
-// Екран клієнтів свідомо лишається thin CRUD-оболонкою:
-// тут важливі пагінація, blacklist та soft-delete guard-и, а не складний derived state.
-public sealed class ClientsPageViewModel : PageDataViewModelBase, ITransientStateOwner
+public sealed partial class ClientsPageViewModel : PageDataViewModelBase, ITransientStateOwner
 {
     private const int PageSize = 40;
 
     private readonly RentalDbContext _dbContext;
     private readonly IAuthorizationService _authorizationService;
     private readonly PageRefreshCoordinator _refreshCoordinator;
+    private readonly IClientDocumentStorage _clientDocumentStorage;
     private readonly Employee _currentEmployee;
+    private CancellationTokenSource? _searchCancellationTokenSource;
     private bool _isLoading;
     private ClientRow? _selectedClient;
     private string _statusMessage = string.Empty;
     private int _guideRequestId;
     private int _currentPage = 1;
     private int _totalClients;
+    private string _searchText = string.Empty;
+    private ClientPanelMode _panelMode = ClientPanelMode.Create;
 
     public ClientsPageViewModel(
         RentalDbContext dbContext,
         IAuthorizationService authorizationService,
         PageRefreshCoordinator refreshCoordinator,
+        IClientDocumentStorage clientDocumentStorage,
         Employee currentEmployee)
     {
         _dbContext = dbContext;
         _authorizationService = authorizationService;
         _refreshCoordinator = refreshCoordinator;
+        _clientDocumentStorage = clientDocumentStorage;
         _currentEmployee = currentEmployee;
+
+        Editor = new ClientEditorDraft();
+        Editor.PropertyChanged += Editor_OnPropertyChanged;
+
         RefreshCommand = new AsyncRelayCommand(RefreshAsync, () => !IsLoading);
-        ToggleBlacklistCommand = new AsyncRelayCommand(ToggleBlacklistAsync, () => !IsLoading);
-        DeleteClientCommand = new AsyncRelayCommand(DeleteClientAsync, () => !IsLoading);
+        ToggleBlacklistCommand = new AsyncRelayCommand(ToggleBlacklistAsync, CanManageSelectedClient);
+        DeleteClientCommand = new AsyncRelayCommand(DeleteClientAsync, CanManageSelectedClient);
         PreviousPageCommand = new AsyncRelayCommand(() => ChangePageAsync(-1), CanMovePrevious);
         NextPageCommand = new AsyncRelayCommand(() => ChangePageAsync(1), CanMoveNext);
         RequestGuideCommand = new RelayCommand(RequestGuide);
+        StartCreateClientCommand = new RelayCommand(BeginCreateClient, () => !IsLoading);
+        QuickCreateFromSearchCommand = new RelayCommand(BeginCreateClientFromSearch, CanQuickCreateFromSearch);
+        EditClientCommand = new RelayCommand(BeginEditSelectedClient, CanManageSelectedClient);
+        SaveClientCommand = new AsyncRelayCommand(SaveClientAsync, () => !IsLoading);
+        CancelEditorCommand = new RelayCommand(CancelEditor, () => !IsLoading);
+        OpenRentalsCommand = new AsyncRelayCommand(OpenRentalsAsync, CanManageSelectedClient);
+        ClearPassportSelectionCommand = new RelayCommand(ClearPassportFileSelection, () => !IsLoading && Editor.HasPendingPassportSourceFile);
+        ClearDriverLicenseSelectionCommand = new RelayCommand(ClearDriverLicenseFileSelection, () => !IsLoading && Editor.HasPendingDriverLicenseSourceFile);
     }
 
     public ObservableCollection<ClientRow> Clients { get; } = [];
+
+    public ClientEditorDraft Editor { get; }
 
     public IAsyncRelayCommand RefreshCommand { get; }
 
@@ -56,10 +77,52 @@ public sealed class ClientsPageViewModel : PageDataViewModelBase, ITransientStat
 
     public IRelayCommand RequestGuideCommand { get; }
 
+    public IRelayCommand StartCreateClientCommand { get; }
+
+    public IRelayCommand QuickCreateFromSearchCommand { get; }
+
+    public IRelayCommand EditClientCommand { get; }
+
+    public IAsyncRelayCommand SaveClientCommand { get; }
+
+    public IRelayCommand CancelEditorCommand { get; }
+
+    public IAsyncRelayCommand OpenRentalsCommand { get; }
+
+    public IRelayCommand ClearPassportSelectionCommand { get; }
+
+    public IRelayCommand ClearDriverLicenseSelectionCommand { get; }
+
+    public Func<int, Task>? OpenRentalsRequestedAsync { get; set; }
+
     public ClientRow? SelectedClient
     {
         get => _selectedClient;
-        set => SetProperty(ref _selectedClient, value);
+        set
+        {
+            if (SetProperty(ref _selectedClient, value))
+            {
+                if (value is not null)
+                {
+                    PanelMode = ClientPanelMode.Details;
+                }
+
+                NotifySelectionStateChanged();
+            }
+        }
+    }
+
+    public string SearchText
+    {
+        get => _searchText;
+        set
+        {
+            if (SetProperty(ref _searchText, value))
+            {
+                NotifySearchStateChanged();
+                _ = QueueSearchRefreshAsync();
+            }
+        }
     }
 
     public string StatusMessage
@@ -80,6 +143,15 @@ public sealed class ClientsPageViewModel : PageDataViewModelBase, ITransientStat
                 DeleteClientCommand.NotifyCanExecuteChanged();
                 PreviousPageCommand.NotifyCanExecuteChanged();
                 NextPageCommand.NotifyCanExecuteChanged();
+                StartCreateClientCommand.NotifyCanExecuteChanged();
+                QuickCreateFromSearchCommand.NotifyCanExecuteChanged();
+                EditClientCommand.NotifyCanExecuteChanged();
+                SaveClientCommand.NotifyCanExecuteChanged();
+                CancelEditorCommand.NotifyCanExecuteChanged();
+                OpenRentalsCommand.NotifyCanExecuteChanged();
+                ClearPassportSelectionCommand.NotifyCanExecuteChanged();
+                ClearDriverLicenseSelectionCommand.NotifyCanExecuteChanged();
+                NotifySearchStateChanged();
             }
         }
     }
@@ -108,6 +180,26 @@ public sealed class ClientsPageViewModel : PageDataViewModelBase, ITransientStat
                 OnPropertyChanged(nameof(PageStatusText));
                 PreviousPageCommand.NotifyCanExecuteChanged();
                 NextPageCommand.NotifyCanExecuteChanged();
+                NotifySearchStateChanged();
+            }
+        }
+    }
+
+    public ClientPanelMode PanelMode
+    {
+        get => _panelMode;
+        private set
+        {
+            if (SetProperty(ref _panelMode, value))
+            {
+                OnPropertyChanged(nameof(IsCreateMode));
+                OnPropertyChanged(nameof(IsEditMode));
+                OnPropertyChanged(nameof(ShowClientDetails));
+                OnPropertyChanged(nameof(ShowEditorPanel));
+                OnPropertyChanged(nameof(RightPanelHeader));
+                OnPropertyChanged(nameof(EditorTitle));
+                OnPropertyChanged(nameof(EditorHint));
+                OnPropertyChanged(nameof(SaveButtonText));
             }
         }
     }
@@ -127,6 +219,36 @@ public sealed class ClientsPageViewModel : PageDataViewModelBase, ITransientStat
         }
     }
 
+    public bool IsCreateMode => PanelMode == ClientPanelMode.Create;
+
+    public bool IsEditMode => PanelMode == ClientPanelMode.Edit;
+
+    public bool ShowClientDetails => SelectedClient is not null && PanelMode == ClientPanelMode.Details;
+
+    public bool ShowEditorPanel => !ShowClientDetails;
+
+    public string RightPanelHeader => ShowClientDetails ? "Картка клієнта" : EditorTitle;
+
+    public string EditorTitle => PanelMode == ClientPanelMode.Edit
+        ? "Редагування картки клієнта"
+        : "Реєстрація нового клієнта за стійкою";
+
+    public string EditorHint => PanelMode == ClientPanelMode.Edit
+        ? "Оновіть базові дані клієнта та, за потреби, замініть вкладені документи."
+        : "Створіть локальний профіль без web-акаунта, щоб одразу перейти до оформлення оренди.";
+
+    public string SaveButtonText => PanelMode == ClientPanelMode.Edit ? "Зберегти зміни" : "Створити клієнта";
+
+    public string BlacklistButtonText => SelectedClient?.IsBlacklisted == true
+        ? "Прибрати з чорного списку"
+        : "Додати до чорного списку";
+
+    public bool ShowQuickCreateFromSearch => CanQuickCreateFromSearch();
+
+    public string QuickCreateFromSearchText => ClientProfileConventions.TryNormalizePhone(SearchText) is { } normalizedPhone
+        ? $"Клієнта не знайдено. Створити новий профіль з номером {normalizedPhone}?"
+        : "Клієнта не знайдено. Створити новий профіль?";
+
     public override async Task RefreshAsync()
     {
         if (IsLoading)
@@ -134,169 +256,63 @@ public sealed class ClientsPageViewModel : PageDataViewModelBase, ITransientStat
             return;
         }
 
-        IsLoading = true;
-        try
-        {
-            TotalClients = await _dbContext.Clients
-                .AsNoTracking()
-                .CountAsync();
-            var totalPages = Math.Max(1, (int)Math.Ceiling((double)Math.Max(TotalClients, 0) / PageSize));
-            if (CurrentPage > totalPages)
-            {
-                CurrentPage = totalPages;
-            }
-
-            var clients = await _dbContext.Clients
-                .AsNoTracking()
-                .OrderBy(item => item.FullName)
-                .Skip((CurrentPage - 1) * PageSize)
-                .Take(PageSize)
-                .ToListAsync();
-
-            Clients.Clear();
-            foreach (var client in clients)
-            {
-                Clients.Add(new ClientRow(
-                    client.Id,
-                    client.FullName,
-                    FormatPhoneForDisplay(client.Phone),
-                    client.DriverLicense,
-                    client.Blacklisted));
-            }
-
-            MarkDataLoaded();
-        }
-        finally
-        {
-            IsLoading = false;
-        }
+        await LoadClientsPageAsync(SelectedClient?.Id);
     }
 
-    private async Task ToggleBlacklistAsync()
+    public void SelectPassportSourceFile(string filePath)
     {
+        Editor.PassportSourceFilePath = filePath?.Trim() ?? string.Empty;
         StatusMessage = string.Empty;
-        if (SelectedClient is null)
-        {
-            StatusMessage = "Оберіть клієнта.";
-            return;
-        }
-
-        var client = await _dbContext.Clients.FirstOrDefaultAsync(item => item.Id == SelectedClient.Id);
-        if (client is null)
-        {
-            StatusMessage = "Клієнта не знайдено.";
-            return;
-        }
-
-        client.Blacklisted = !client.Blacklisted;
-        await _dbContext.SaveChangesAsync();
-        _refreshCoordinator.Invalidate(PageRefreshArea.Rentals);
-        StatusMessage = client.Blacklisted ? "Клієнта додано до чорного списку." : "Клієнта прибрано з чорного списку.";
-        await RefreshAsync();
     }
 
-    private async Task DeleteClientAsync()
+    public void SelectDriverLicenseSourceFile(string filePath)
     {
+        Editor.DriverLicenseSourceFilePath = filePath?.Trim() ?? string.Empty;
         StatusMessage = string.Empty;
-        if (!_authorizationService.HasPermission(_currentEmployee, EmployeePermission.DeleteRecords))
-        {
-            StatusMessage = "Недостатньо прав.";
-            return;
-        }
-
-        if (SelectedClient is null)
-        {
-            StatusMessage = "Оберіть клієнта.";
-            return;
-        }
-
-        var hasRentals = await _dbContext.Rentals.AnyAsync(item => item.ClientId == SelectedClient.Id);
-        if (hasRentals)
-        {
-            StatusMessage = "Клієнт має оренди, видалення неможливе.";
-            return;
-        }
-
-        var client = await _dbContext.Clients.FirstOrDefaultAsync(item => item.Id == SelectedClient.Id);
-        if (client is null)
-        {
-            StatusMessage = "Клієнта не знайдено.";
-            return;
-        }
-
-        _dbContext.Clients.Remove(client);
-        await _dbContext.SaveChangesAsync();
-        _refreshCoordinator.Invalidate(PageRefreshArea.Rentals);
-        if (Clients.Count == 1 && CurrentPage > 1)
-        {
-            CurrentPage--;
-        }
-        StatusMessage = "Клієнта видалено.";
-        await RefreshAsync();
-    }
-
-    private void RequestGuide()
-    {
-        GuideRequestId++;
     }
 
     public void ReleaseTransientState()
     {
+        _searchCancellationTokenSource?.Cancel();
+        _searchCancellationTokenSource?.Dispose();
+        _searchCancellationTokenSource = null;
         SelectedClient = null;
         StatusMessage = string.Empty;
-    }
-
-    private async Task ChangePageAsync(int delta)
-    {
-        var nextPage = Math.Max(1, CurrentPage + delta);
-        if (nextPage == CurrentPage)
-        {
-            return;
-        }
-
-        CurrentPage = nextPage;
-        await RefreshAsync();
-    }
-
-    private bool CanMovePrevious() => !IsLoading && CurrentPage > 1;
-
-    private bool CanMoveNext()
-    {
-        if (IsLoading)
-        {
-            return false;
-        }
-
-        var totalPages = Math.Max(1, (int)Math.Ceiling((double)Math.Max(TotalClients, 0) / PageSize));
-        return CurrentPage < totalPages;
+        PanelMode = ClientPanelMode.Create;
+        Editor.Reset();
     }
 
     public sealed record ClientRow(
         int Id,
+        int? AccountId,
         string FullName,
         string Phone,
+        string PassportData,
+        DateTime? PassportExpirationDate,
+        string? PassportStoredPath,
         string DriverLicense,
-        bool Blacklisted);
-
-    private static string FormatPhoneForDisplay(string? value)
+        DateTime? DriverLicenseExpirationDate,
+        string? DriverLicenseStoredPath,
+        bool IsBlacklisted)
     {
-        var normalized = TryNormalizePhone(value);
-        return normalized ?? "Не вказано";
-    }
+        public bool HasPassportAttachment => !string.IsNullOrWhiteSpace(PassportStoredPath);
 
-    private static string? TryNormalizePhone(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return null;
-        }
+        public bool HasDriverLicenseAttachment => !string.IsNullOrWhiteSpace(DriverLicenseStoredPath);
 
-        var digits = new string(value.Where(char.IsDigit).ToArray());
-        if (digits.Length is < 10 or > 15)
-        {
-            return null;
-        }
+        public string PassportDataDisplay => string.IsNullOrWhiteSpace(PassportData) ? "Не вказано" : PassportData;
 
-        return "+" + digits;
+        public string DriverLicenseDisplay => string.IsNullOrWhiteSpace(DriverLicense) ? "Не вказано" : DriverLicense;
+
+        public string PassportExpirationText => PassportExpirationDate?.ToString("dd.MM.yyyy", CultureInfo.CurrentCulture) ?? "Не вказано";
+
+        public string DriverLicenseExpirationText => DriverLicenseExpirationDate?.ToString("dd.MM.yyyy", CultureInfo.CurrentCulture) ?? "Не вказано";
+
+        public string AccessModeText => AccountId.HasValue ? "Прив'язаний web-акаунт" : "Локальний профіль";
+
+        public string StatusText => IsBlacklisted ? "У чорному списку" : "Активний";
+
+        public string PassportAttachmentText => HasPassportAttachment ? "Файл додано" : "Файл не додано";
+
+        public string DriverLicenseAttachmentText => HasDriverLicenseAttachment ? "Файл додано" : "Файл не додано";
     }
 }

@@ -8,7 +8,7 @@ public sealed class RentalInspection : IAuditableEntity
 
     public int PerformedByEmployeeId { get; set; }
 
-    public RentalInspectionType Type { get; set; }
+    public RentalInspectionType TypeId { get; set; }
 
     public DateTime CompletedAtUtc { get; set; } = DateTime.UtcNow;
 

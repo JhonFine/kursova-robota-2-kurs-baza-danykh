@@ -14,6 +14,7 @@ import type {
   Payment,
   PaymentDirection,
   PaymentMethod,
+  PaymentStatus,
   RentalAvailabilitySlot,
   Rental,
   RentalStatus,
@@ -21,6 +22,8 @@ import type {
   ReportSummary,
   UserRole,
   Vehicle,
+  VehicleMake,
+  VehicleModel,
   VehicleUpsertPayload,
   PaginationParams,
   PagedResult,
@@ -33,7 +36,7 @@ const TOKEN_STORAGE_KEY = 'car_rental_token';
 // Frontend зводить їх до одного канонічного string-представлення ще на межі клієнта.
 type WireEnum<T extends string> = T | number | `${number}`;
 
-type EmployeeWire = Omit<Employee, 'role'> & { role: WireEnum<UserRole> };
+type EmployeeWire = Omit<Employee, 'roleId'> & { roleId: WireEnum<UserRole> };
 type AccountWire = {
   id: number;
   login: string;
@@ -57,14 +60,18 @@ type AuthTokenResponseWire = Omit<AuthTokenResponse, 'user' | 'employee'> & {
   employee?: EmployeeWire | null;
 };
 type MediaAssetWire = MediaAsset;
-type RentalWire = Omit<Rental, 'status'> & { status: WireEnum<RentalStatus> };
-type RentalAvailabilitySlotWire = Omit<RentalAvailabilitySlot, 'status'> & { status: WireEnum<RentalStatus> };
-type PaymentWire = Omit<Payment, 'method' | 'direction'> & {
-  method: WireEnum<PaymentMethod>;
-  direction: WireEnum<PaymentDirection>;
+type ClientWire = Client;
+type ClientProfileWire = Omit<ClientWire, 'isComplete'> & { isComplete: boolean };
+type VehicleWire = Vehicle;
+type RentalWire = Omit<Rental, 'statusId'> & { statusId: WireEnum<RentalStatus> };
+type RentalAvailabilitySlotWire = Omit<RentalAvailabilitySlot, 'statusId'> & { statusId: WireEnum<RentalStatus> };
+type PaymentWire = Omit<Payment, 'methodId' | 'directionId' | 'statusId'> & {
+  methodId: WireEnum<PaymentMethod>;
+  directionId: WireEnum<PaymentDirection>;
+  statusId: WireEnum<PaymentStatus>;
 };
-type DamageWire = Omit<Damage, 'status' | 'photos'> & {
-  status: WireEnum<DamageStatus>;
+type DamageWire = Omit<Damage, 'statusId' | 'photos'> & {
+  statusId: WireEnum<DamageStatus>;
   photos?: MediaAssetWire[] | null;
 };
 
@@ -219,6 +226,29 @@ function normalizePaymentDirection(direction: WireEnum<PaymentDirection> | undef
   }
 }
 
+function normalizePaymentStatus(status: WireEnum<PaymentStatus> | undefined): PaymentStatus {
+  switch (status) {
+    case 'Pending':
+    case 1:
+    case '1':
+      return 'Pending';
+    case 'Completed':
+    case 2:
+    case '2':
+      return 'Completed';
+    case 'Canceled':
+    case 3:
+    case '3':
+      return 'Canceled';
+    case 'Refunded':
+    case 4:
+    case '4':
+      return 'Refunded';
+    default:
+      return 'Completed';
+  }
+}
+
 function normalizeDamageStatus(status: WireEnum<DamageStatus> | undefined): DamageStatus {
   switch (status) {
     case 'Open':
@@ -241,7 +271,18 @@ function normalizeDamageStatus(status: WireEnum<DamageStatus> | undefined): Dama
 function normalizeEmployee(employee: EmployeeWire): Employee {
   return {
     ...employee,
-    role: normalizeUserRole(employee.role),
+    roleId: normalizeUserRole(employee.roleId),
+  };
+}
+
+function normalizeClient(client: ClientWire): Client {
+  return client;
+}
+
+function normalizeClientProfile(client: ClientProfileWire): ClientProfile {
+  return {
+    ...normalizeClient(client),
+    isComplete: client.isComplete,
   };
 }
 
@@ -274,38 +315,46 @@ function normalizeAuthTokenResponse(response: AuthTokenResponseWire): AuthTokenR
 function normalizeRental(rental: RentalWire): Rental {
   return {
     ...rental,
-    status: normalizeRentalStatus(rental.status),
+    statusId: normalizeRentalStatus(rental.statusId),
   };
 }
 
 function normalizeRentalAvailabilitySlot(slot: RentalAvailabilitySlotWire): RentalAvailabilitySlot {
   return {
     ...slot,
-    status: normalizeRentalStatus(slot.status),
+    statusId: normalizeRentalStatus(slot.statusId),
   };
 }
 
 function normalizePayment(payment: PaymentWire): Payment {
   return {
     ...payment,
-    method: normalizePaymentMethod(payment.method),
-    direction: normalizePaymentDirection(payment.direction),
+    methodId: normalizePaymentMethod(payment.methodId),
+    directionId: normalizePaymentDirection(payment.directionId),
+    statusId: normalizePaymentStatus(payment.statusId),
   };
 }
 
 function normalizeDamage(damage: DamageWire): Damage {
-  const photos = damage.photos ?? [];
   return {
     ...damage,
-    // Старі відповіді API можуть містити лише photoPath без масиву photos.
-    // Підставляємо головне фото з відсортованої галереї, щоб новий UI однаково
-    // працював і з новими, і з legacy payload'ами.
-    photos,
-    photoPath: damage.photoPath ?? photos
-      .slice()
-      .sort((left, right) => left.sortOrder - right.sortOrder)
-      .map((item) => item.storedPath)[0] ?? null,
-    status: normalizeDamageStatus(damage.status),
+    photos: damage.photos ?? [],
+    statusId: normalizeDamageStatus(damage.statusId),
+  };
+}
+
+function normalizeVehicle(vehicle: VehicleWire): Vehicle {
+  return {
+    ...vehicle,
+    photos: vehicle.photos ?? [],
+  };
+}
+
+function normalizeMaintenanceRecord(record: MaintenanceRecord): MaintenanceRecord {
+  return {
+    ...record,
+    nextServiceMileage: record.nextServiceMileage ?? null,
+    nextServiceDate: record.nextServiceDate ?? null,
   };
 }
 
@@ -362,8 +411,8 @@ export const Api = {
   },
 
   async getOwnClient(): Promise<ClientProfile> {
-    const response = await api.get<ClientProfile>('/api/profile/client');
-    return response.data;
+    const response = await api.get<ClientProfileWire>('/api/profile/client');
+    return normalizeClientProfile(response.data);
   },
 
   async updateOwnClientProfile(payload: {
@@ -376,36 +425,40 @@ export const Api = {
     driverLicenseExpirationDate?: string | null;
     driverLicensePhotoPath?: string | null;
   }): Promise<ClientProfile> {
-    const response = await api.put<ClientProfile>('/api/profile/client', payload);
-    return response.data;
+    const response = await api.put<ClientProfileWire>('/api/profile/client', payload);
+    return normalizeClientProfile(response.data);
   },
 
   async getClients(): Promise<Client[]> {
-    const response = await api.get<Client[]>('/api/clients');
-    return response.data;
+    const response = await api.get<ClientWire[]>('/api/clients');
+    return response.data.map(normalizeClient);
   },
 
   async getClientsPage(params: PaginationParams & {
     search?: string;
     blacklisted?: boolean;
   }): Promise<PagedResult<Client>> {
-    const response = await api.get<Client[]>('/api/clients', { params });
-    return resolvePagedResult(response.data, response.headers, params);
+    const response = await api.get<ClientWire[]>('/api/clients', { params });
+    return resolvePagedResult(response.data.map(normalizeClient), response.headers, params);
   },
 
-  async createClient(payload: Omit<Client, 'id'>): Promise<Client> {
-    const response = await api.post<Client>('/api/clients', payload);
-    return response.data;
+  async createClient(payload: Omit<Client, 'id' | 'blacklistedByEmployeeId' | 'blacklistedAtUtc' | 'accountId'>): Promise<Client> {
+    const response = await api.post<ClientWire>('/api/clients', {
+      ...payload,
+    });
+    return normalizeClient(response.data);
   },
 
-  async updateClient(id: number, payload: Omit<Client, 'id'>): Promise<Client> {
-    const response = await api.put<Client>(`/api/clients/${id}`, payload);
-    return response.data;
+  async updateClient(id: number, payload: Omit<Client, 'id' | 'blacklistedByEmployeeId' | 'blacklistedAtUtc' | 'accountId'>): Promise<Client> {
+    const response = await api.put<ClientWire>(`/api/clients/${id}`, {
+      ...payload,
+    });
+    return normalizeClient(response.data);
   },
 
   async setClientBlacklist(id: number, blacklisted: boolean): Promise<Client> {
-    const response = await api.patch<Client>(`/api/clients/${id}/blacklist`, { blacklisted });
-    return response.data;
+    const response = await api.patch<ClientWire>(`/api/clients/${id}/blacklist`, { isBlacklisted: blacklisted });
+    return normalizeClient(response.data);
   },
 
   async deleteClient(id: number): Promise<void> {
@@ -413,8 +466,8 @@ export const Api = {
   },
 
   async getVehicles(): Promise<Vehicle[]> {
-    const response = await api.get<Vehicle[]>('/api/vehicles');
-    return response.data;
+    const response = await api.get<VehicleWire[]>('/api/vehicles');
+    return response.data.map(normalizeVehicle);
   },
 
   async getVehiclesPage(params: PaginationParams & {
@@ -424,8 +477,20 @@ export const Api = {
     sortBy?: string;
     sortDir?: 'asc' | 'desc';
   }): Promise<PagedResult<Vehicle>> {
-    const response = await api.get<Vehicle[]>('/api/vehicles', { params });
-    return resolvePagedResult(response.data, response.headers, params);
+    const response = await api.get<VehicleWire[]>('/api/vehicles', { params });
+    return resolvePagedResult(response.data.map(normalizeVehicle), response.headers, params);
+  },
+
+  async getVehicleMakes(): Promise<VehicleMake[]> {
+    const response = await api.get<VehicleMake[]>('/api/vehicles/makes');
+    return response.data;
+  },
+
+  async getVehicleModels(makeId?: number): Promise<VehicleModel[]> {
+    const response = await api.get<VehicleModel[]>('/api/vehicles/models', {
+      params: makeId ? { makeId } : undefined,
+    });
+    return response.data;
   },
 
   getVehiclePhotoUrl(vehicleId: number): string {
@@ -449,18 +514,18 @@ export const Api = {
   },
 
   async createVehicle(payload: VehicleUpsertPayload): Promise<Vehicle> {
-    const response = await api.post<Vehicle>('/api/vehicles', payload);
-    return response.data;
+    const response = await api.post<VehicleWire>('/api/vehicles', payload);
+    return normalizeVehicle(response.data);
   },
 
   async updateVehicle(id: number, payload: VehicleUpsertPayload): Promise<Vehicle> {
-    const response = await api.put<Vehicle>(`/api/vehicles/${id}`, payload);
-    return response.data;
+    const response = await api.put<VehicleWire>(`/api/vehicles/${id}`, payload);
+    return normalizeVehicle(response.data);
   },
 
   async updateVehicleRate(id: number, dailyRate: number): Promise<Vehicle> {
-    const response = await api.patch<Vehicle>(`/api/vehicles/${id}/rate`, { dailyRate });
-    return response.data;
+    const response = await api.patch<VehicleWire>(`/api/vehicles/${id}/rate`, { dailyRate });
+    return normalizeVehicle(response.data);
   },
 
   async deleteVehicle(id: number): Promise<void> {
@@ -595,11 +660,17 @@ export const Api = {
   async addPayment(payload: {
     rentalId: number;
     amount: number;
-    method: string;
-    direction: string;
+    methodId: string;
+    directionId: string;
     notes: string;
   }): Promise<Payment> {
-    const response = await api.post<PaymentWire>('/api/payments', payload);
+    const response = await api.post<PaymentWire>('/api/payments', {
+      rentalId: payload.rentalId,
+      amount: payload.amount,
+      methodId: payload.methodId,
+      directionId: payload.directionId,
+      notes: payload.notes,
+    });
     return normalizePayment(response.data);
   },
 
@@ -652,12 +723,12 @@ export const Api = {
 
   async getMaintenanceRecords(): Promise<MaintenanceRecord[]> {
     const response = await api.get<MaintenanceRecord[]>('/api/maintenance/records');
-    return response.data;
+    return response.data.map(normalizeMaintenanceRecord);
   },
 
   async getMaintenanceRecordsPage(pagination: PaginationParams): Promise<PagedResult<MaintenanceRecord>> {
     const response = await api.get<MaintenanceRecord[]>('/api/maintenance/records', { params: pagination });
-    return resolvePagedResult(response.data, response.headers, pagination);
+    return resolvePagedResult(response.data.map(normalizeMaintenanceRecord), response.headers, pagination);
   },
 
   async getMaintenanceDue(): Promise<MaintenanceDue[]> {
@@ -671,9 +742,13 @@ export const Api = {
     mileageAtService: number;
     description: string;
     cost: number;
-    nextServiceMileage: number;
+    nextServiceMileage?: number | null;
+    nextServiceDate?: string | null;
   }): Promise<void> {
-    await api.post('/api/maintenance/records', payload);
+    await api.post('/api/maintenance/records', {
+      ...payload,
+      maintenanceTypeCode: 'SCHEDULED',
+    });
   },
 
   async getEmployees(): Promise<Employee[]> {

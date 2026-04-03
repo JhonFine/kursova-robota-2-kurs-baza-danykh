@@ -104,7 +104,7 @@ public sealed class AuthController(
             return Unauthorized();
         }
 
-        var role = account.Employee?.Role ?? Models.UserRole.User;
+        var role = account.Employee?.RoleId ?? Models.UserRole.User;
         return Ok(account.ToAccountContextDto(account.Employee, account.Client, role));
     }
 
@@ -159,18 +159,18 @@ public sealed class AuthController(
             return Unauthorized();
         }
 
-        if (employee.Role != request.Role)
+        if (employee.RoleId != request.Role)
         {
-            if (employee.Role == Models.UserRole.Admin && request.Role != Models.UserRole.Admin)
+            if (employee.RoleId == Models.UserRole.Admin && request.Role != Models.UserRole.Admin)
             {
-                var adminCount = await dbContext.Employees.CountAsync(e => e.IsActive && e.Role == Models.UserRole.Admin, cancellationToken);
+                var adminCount = await dbContext.Employees.CountAsync(e => e.IsActive && e.RoleId == Models.UserRole.Admin, cancellationToken);
                 if (adminCount <= 1)
                 {
                     return BadRequest(new { message = "Неможливо змінити роль. Ви єдиний активний адміністратор у системі." });
                 }
             }
             
-            employee.Role = request.Role;
+            employee.RoleId = request.Role;
             await dbContext.SaveChangesAsync(cancellationToken);
         }
 

@@ -1,4 +1,4 @@
-namespace CarRental.Desktop.ViewModels;
+﻿namespace CarRental.Desktop.ViewModels;
 
 public abstract class PageDataViewModelBase : ViewModelBase, IPageDataLifecycle
 {
@@ -40,3 +40,4 @@ public abstract class PageDataViewModelBase : ViewModelBase, IPageDataLifecycle
 
     public abstract Task RefreshAsync();
 }
+

@@ -8,6 +8,10 @@ namespace CarRental.WebApi.Data;
 
 public static class DatabaseInitializer
 {
+    private const string CanonicalAdminFullName = "Системний адміністратор";
+    private const string CanonicalManagerFullName = "Менеджер прокату";
+    private const string LegacyAdminFullName = "РЎРёСЃС‚РµРјРЅРёР№ Р°РґРјС–РЅС–СЃС‚СЂР°С‚РѕСЂ";
+    private const string LegacyManagerFullName = "РњРµРЅРµРґР¶РµСЂ РїСЂРѕРєР°С‚Сѓ";
     private static readonly int SeedRandomValue = DemoSeedReferenceData.SeedRandomValue;
     private static readonly int TotalClients = DemoSeedReferenceData.TotalClients;
     private static readonly int TotalClosedRentals = DemoSeedReferenceData.TotalClosedRentals;
@@ -38,6 +42,16 @@ public static class DatabaseInitializer
     private static readonly decimal[] DamageCostTemplate = [.. DemoSeedReferenceData.DamageCostTemplate];
     private static readonly IReadOnlySet<int> ChargedDamageIndices = DemoSeedReferenceData.ChargedDamageIndices;
     private static readonly IReadOnlyList<PlateLocation> WeightedPlateLocations = BuildPlateLocations();
+    private static readonly IReadOnlyDictionary<string, string> CanonicalSeedEmployeeNames = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        [DemoSeedReferenceData.AdminLogin] = CanonicalAdminFullName,
+        [DemoSeedReferenceData.ManagerLogin] = CanonicalManagerFullName
+    };
+    private static readonly IReadOnlyDictionary<string, string> LegacySeedEmployeeNames = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        [DemoSeedReferenceData.AdminLogin] = LegacyAdminFullName,
+        [DemoSeedReferenceData.ManagerLogin] = LegacyManagerFullName
+    };
 
     // Seed іде фазами: staff-акаунти, довідники, клієнти, каталог авто,
     // а історичні оренди/платежі генеруються лише для порожньої operational частини.
@@ -69,6 +83,7 @@ public static class DatabaseInitializer
     {
         if (dbContext.Employees.Any())
         {
+            RepairLegacySeedEmployeeNames(dbContext);
             return null;
         }
 
@@ -79,19 +94,19 @@ public static class DatabaseInitializer
         dbContext.Employees.AddRange(
             new Employee
             {
-                FullName = "Системний адміністратор",
+                FullName = CanonicalAdminFullName,
                 Login = DemoSeedReferenceData.AdminLogin,
                 PasswordHash = PasswordHasher.HashPassword(adminPassword.Password),
-                Role = UserRole.Admin,
+                RoleId = UserRole.Admin,
                 IsActive = true,
                 PasswordChangedAtUtc = passwordChangedAt
             },
             new Employee
             {
-                FullName = "Менеджер прокату",
+                FullName = CanonicalManagerFullName,
                 Login = DemoSeedReferenceData.ManagerLogin,
                 PasswordHash = PasswordHasher.HashPassword(managerPassword.Password),
-                Role = UserRole.Manager,
+                RoleId = UserRole.Manager,
                 IsActive = true,
                 PasswordChangedAtUtc = passwordChangedAt
             });
@@ -100,11 +115,11 @@ public static class DatabaseInitializer
                      .Where(entry => entry.State == EntityState.Added && entry.Entity.Account is null)
                      .Select(entry => entry.Entity))
         {
-            if (employee.Role == UserRole.Admin)
+            if (employee.RoleId == UserRole.Admin)
             {
                 employee.Account = CreateSeedAccount(DemoSeedReferenceData.AdminLogin, adminPassword.Password, passwordChangedAt);
             }
-            else if (employee.Role == UserRole.Manager)
+            else if (employee.RoleId == UserRole.Manager)
             {
                 employee.Account = CreateSeedAccount(DemoSeedReferenceData.ManagerLogin, managerPassword.Password, passwordChangedAt);
             }
@@ -119,10 +134,42 @@ public static class DatabaseInitializer
             managerPassword.IsGenerated);
     }
 
+    private static void RepairLegacySeedEmployeeNames(RentalDbContext dbContext)
+    {
+        var employees = dbContext.Employees
+            .Include(item => item.Account)
+            .Where(item => item.RoleId == UserRole.Admin || item.RoleId == UserRole.Manager)
+            .ToList();
+
+        var hasChanges = false;
+        foreach (var employee in employees)
+        {
+            var login = employee.Account?.Login ?? employee.Login;
+            if (string.IsNullOrWhiteSpace(login) ||
+                !CanonicalSeedEmployeeNames.TryGetValue(login, out var canonicalName) ||
+                !LegacySeedEmployeeNames.TryGetValue(login, out var legacyName) ||
+                !string.Equals(employee.FullName, legacyName, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            employee.FullName = canonicalName;
+            hasChanges = true;
+        }
+
+        if (hasChanges)
+        {
+            dbContext.SaveChanges();
+        }
+    }
+
     // Демо-клієнти генеруються детерміновано, щоб телефон, паспорт і водійське
     // залишалися стабільними між factory reset та тестовими сценаріями.
     private static void EnsureClients(RentalDbContext dbContext)
     {
+        var blacklistActorId = ResolveSeedBlacklistEmployeeId(dbContext);
+        BackfillBlacklistedClientActors(dbContext, blacklistActorId);
+
         var existingDriverLicenses = dbContext.ClientDocuments
             .Where(document => !document.IsDeleted && document.DocumentTypeCode == ClientDocumentTypes.DriverLicense)
             .Select(document => document.DocumentNumber)
@@ -141,7 +188,7 @@ public static class DatabaseInitializer
             return;
         }
 
-        foreach (var client in BuildClientSeeds().Skip(currentCount).Take(TotalClients - currentCount))
+        foreach (var client in BuildClientSeeds(blacklistActorId).Skip(currentCount).Take(TotalClients - currentCount))
         {
             if (existingDriverLicenses.Contains(client.DriverLicense) ||
                 existingPhones.Contains(client.Phone) ||
@@ -157,7 +204,7 @@ public static class DatabaseInitializer
         }
     }
 
-    private static IEnumerable<Client> BuildClientSeeds()
+    private static IEnumerable<Client> BuildClientSeeds(int blacklistActorId)
     {
         var generated = 0;
         var blacklistedIndexes = DemoSeedReferenceData.BlacklistedClientIndexes;
@@ -166,7 +213,7 @@ public static class DatabaseInitializer
         {
             foreach (var firstName in MaleFirstNames)
             {
-                yield return CreateClientSeed(generated, $"{firstName} {familyName}", blacklistedIndexes.Contains(generated));
+                yield return CreateClientSeed(generated, $"{firstName} {familyName}", blacklistedIndexes.Contains(generated), blacklistActorId);
                 generated++;
                 if (generated == TotalClients / 2)
                 {
@@ -180,7 +227,7 @@ public static class DatabaseInitializer
         {
             foreach (var firstName in FemaleFirstNames)
             {
-                yield return CreateClientSeed(generated, $"{firstName} {familyName}", blacklistedIndexes.Contains(generated));
+                yield return CreateClientSeed(generated, $"{firstName} {familyName}", blacklistedIndexes.Contains(generated), blacklistActorId);
                 generated++;
                 if (generated == TotalClients)
                 {
@@ -190,7 +237,7 @@ public static class DatabaseInitializer
         }
     }
 
-    private static Client CreateClientSeed(int index, string fullName, bool blacklisted)
+    private static Client CreateClientSeed(int index, string fullName, bool blacklisted, int blacklistActorId)
     {
         var passportSeries = PassportSeries[index % PassportSeries.Length];
         var driverSeries = DriverLicenseSeries[index % DriverLicenseSeries.Length];
@@ -206,12 +253,54 @@ public static class DatabaseInitializer
             DriverLicense = $"{driverSeries}{500000 + index:000000}",
             DriverLicenseExpirationDate = issuedAt.AddYears(5),
             Phone = $"+380{phonePrefix}{phoneSuffix:0000000}",
-            Blacklisted = blacklisted
+            IsBlacklisted = blacklisted,
+            BlacklistReason = blacklisted ? "Seeded blacklist restriction." : null,
+            BlacklistedAtUtc = blacklisted ? DateTime.UtcNow : null,
+            BlacklistedByEmployeeId = blacklisted ? blacklistActorId : null
         };
+    }
+
+    private static void BackfillBlacklistedClientActors(RentalDbContext dbContext, int blacklistActorId)
+    {
+        foreach (var client in dbContext.Clients.Where(item => item.IsBlacklisted && !item.BlacklistedByEmployeeId.HasValue))
+        {
+            client.BlacklistedByEmployeeId = blacklistActorId;
+            client.BlacklistedAtUtc ??= client.UpdatedAtUtc;
+            client.BlacklistReason = string.IsNullOrWhiteSpace(client.BlacklistReason)
+                ? "Legacy blacklist backfill."
+                : client.BlacklistReason.Trim();
+        }
+    }
+
+    private static int ResolveSeedBlacklistEmployeeId(RentalDbContext dbContext)
+    {
+        var adminId = dbContext.Employees
+            .Where(employee => employee.RoleId == UserRole.Admin)
+            .OrderBy(employee => employee.CreatedAtUtc)
+            .ThenBy(employee => employee.Id)
+            .Select(employee => (int?)employee.Id)
+            .FirstOrDefault();
+        if (adminId.HasValue)
+        {
+            return adminId.Value;
+        }
+
+        return dbContext.Employees
+            .OrderBy(employee => employee.CreatedAtUtc)
+            .ThenBy(employee => employee.Id)
+            .Select(employee => employee.Id)
+            .First();
     }
 
     private static void EnsureVehicleLookups(RentalDbContext dbContext)
     {
+        var existingMakes = dbContext.VehicleMakes
+            .ToList()
+            .ToDictionary(item => NormalizeLookupName(item.Name), item => item, StringComparer.Ordinal);
+        var existingModels = dbContext.VehicleModels
+            .ToList()
+            .ToDictionary(item => (item.MakeId, NormalizeLookupName(item.Name)), item => item);
+
         var existingFuelCodes = dbContext.FuelTypes
             .Select(item => item.Code)
             .ToHashSet(StringComparer.Ordinal);
@@ -255,6 +344,58 @@ public static class DatabaseInitializer
             });
             existingTransmissionCodes.Add(transmissionType);
         }
+
+        foreach (var makeName in VehicleCatalogSeeds.All
+                     .Select(item => item.Make)
+                     .Where(item => !string.IsNullOrWhiteSpace(item))
+                     .Distinct(StringComparer.Ordinal)
+                     .OrderBy(item => item, StringComparer.Ordinal))
+        {
+            var normalizedName = NormalizeLookupName(makeName);
+            if (existingMakes.ContainsKey(normalizedName))
+            {
+                continue;
+            }
+
+            var make = new VehicleMake
+            {
+                Name = makeName.Trim(),
+                NormalizedName = normalizedName
+            };
+            dbContext.VehicleMakes.Add(make);
+            existingMakes.Add(normalizedName, make);
+        }
+
+        dbContext.SaveChanges();
+
+        var makeIds = dbContext.VehicleMakes
+            .AsNoTracking()
+            .ToDictionary(item => NormalizeLookupName(item.Name), item => item.Id, StringComparer.Ordinal);
+
+        foreach (var seed in VehicleCatalogSeeds.All.OrderBy(item => item.Make, StringComparer.Ordinal).ThenBy(item => item.Model, StringComparer.Ordinal))
+        {
+            if (!makeIds.TryGetValue(NormalizeLookupName(seed.Make), out var makeId))
+            {
+                continue;
+            }
+
+            var normalizedModelName = NormalizeLookupName(seed.Model);
+            if (existingModels.ContainsKey((makeId, normalizedModelName)))
+            {
+                continue;
+            }
+
+            var model = new VehicleModel
+            {
+                MakeId = makeId,
+                Name = seed.Model.Trim(),
+                NormalizedName = normalizedModelName
+            };
+            dbContext.VehicleModels.Add(model);
+            existingModels.Add((makeId, normalizedModelName), model);
+        }
+
+        dbContext.SaveChanges();
     }
 
     // Каталог авто синхронізується акуратно: якщо в системі вже є орендна історія,
@@ -272,7 +413,7 @@ public static class DatabaseInitializer
 
         foreach (var vehicle in vehicles)
         {
-            var seed = VehicleCatalogSeeds.TryFindByVehicle(vehicle.Make, vehicle.Model);
+            var seed = VehicleCatalogSeeds.TryFindByVehicle(vehicle.MakeName, vehicle.ModelName);
             if (seed is null)
             {
                 continue;
@@ -309,8 +450,8 @@ public static class DatabaseInitializer
 
             var vehicle = new Vehicle
             {
-                Make = seed.Make,
-                Model = seed.Model,
+                MakeId = ResolveVehicleMakeId(dbContext, seed.Make),
+                ModelId = ResolveVehicleModelId(dbContext, seed.Make, seed.Model),
                 LicensePlate = plate,
                 Mileage = CalculateInitialMileage(seed),
                 DailyRate = seed.DailyRate,
@@ -337,10 +478,10 @@ public static class DatabaseInitializer
         var periodStart = today.AddDays(-365);
 
         var employees = dbContext.Employees
-            .OrderBy(employee => employee.Role)
+            .OrderBy(employee => employee.RoleId)
             .ThenBy(employee => employee.Id)
             .ToList();
-        var manager = employees.FirstOrDefault(employee => employee.Role == UserRole.Manager) ?? employees.First();
+        var manager = employees.FirstOrDefault(employee => employee.RoleId == UserRole.Manager) ?? employees.First();
         var admin = employees.First();
 
         var clients = dbContext.Clients
@@ -352,7 +493,7 @@ public static class DatabaseInitializer
             .ToList()
             .Select(vehicle =>
             {
-                var seed = VehicleCatalogSeeds.TryFindByVehicle(vehicle.Make, vehicle.Model);
+                var seed = VehicleCatalogSeeds.TryFindByVehicle(vehicle.MakeName, vehicle.ModelName);
                 return seed is null ? null : CreateVehicleSeedState(vehicle, seed);
             })
             .Where(state => state is not null)
@@ -398,6 +539,14 @@ public static class DatabaseInitializer
         var damages = new List<Damage>();
         var inspections = new List<RentalInspection>();
         var maintenanceRecords = vehicleStates.SelectMany(state => state.MaintenanceRecords).ToList();
+        foreach (var maintenanceRecord in maintenanceRecords)
+        {
+            if (!maintenanceRecord.PerformedByEmployeeId.HasValue &&
+                string.IsNullOrWhiteSpace(maintenanceRecord.ServiceProviderName))
+            {
+                maintenanceRecord.PerformedByEmployeeId = manager.Id;
+            }
+        }
 
         foreach (var scheduledRental in scheduledRentals.OrderBy(item => item.StartDate).ThenBy(item => item.ContractNumber, StringComparer.Ordinal))
         {
@@ -405,7 +554,7 @@ public static class DatabaseInitializer
             {
                 Client = scheduledRental.Client,
                 Vehicle = scheduledRental.VehicleState.Vehicle,
-                Employee = scheduledRental.Employee,
+                CreatedByEmployee = scheduledRental.Employee,
                 ContractNumber = scheduledRental.ContractNumber,
                 StartDate = scheduledRental.StartDate,
                 EndDate = scheduledRental.EndDate,
@@ -415,7 +564,7 @@ public static class DatabaseInitializer
                 EndMileage = scheduledRental.EndMileage,
                 OverageFee = scheduledRental.OverageFee,
                 TotalAmount = scheduledRental.TotalAmount,
-                Status = scheduledRental.Status,
+                StatusId = scheduledRental.StatusId,
                 CreatedAtUtc = scheduledRental.CreatedAtUtc,
                 ClosedAtUtc = scheduledRental.ClosedAtUtc,
                 CanceledAtUtc = scheduledRental.CanceledAtUtc,
@@ -428,7 +577,8 @@ public static class DatabaseInitializer
                 inspections.Add(new RentalInspection
                 {
                     Rental = rental,
-                    Type = RentalInspectionType.Pickup,
+                    PerformedByEmployeeId = scheduledRental.Employee.Id,
+                    TypeId = RentalInspectionType.Pickup,
                     CompletedAtUtc = scheduledRental.PickupInspectionCompletedAtUtc.Value,
                     FuelPercent = scheduledRental.PickupFuelPercent,
                     Notes = scheduledRental.PickupInspectionNotes,
@@ -442,7 +592,8 @@ public static class DatabaseInitializer
                 inspections.Add(new RentalInspection
                 {
                     Rental = rental,
-                    Type = RentalInspectionType.Return,
+                    PerformedByEmployeeId = scheduledRental.Employee.Id,
+                    TypeId = RentalInspectionType.Return,
                     CompletedAtUtc = scheduledRental.ReturnInspectionCompletedAtUtc.Value,
                     FuelPercent = scheduledRental.ReturnFuelPercent,
                     Notes = scheduledRental.ReturnInspectionNotes,
@@ -456,10 +607,10 @@ public static class DatabaseInitializer
                 payments.Add(new Payment
                 {
                     Rental = rental,
-                    EmployeeId = paymentPlan.EmployeeId,
+                    RecordedByEmployeeId = paymentPlan.RecordedByEmployeeId,
                     Amount = paymentPlan.Amount,
-                    Method = paymentPlan.Method,
-                    Direction = paymentPlan.Direction,
+                    MethodId = paymentPlan.MethodId,
+                    DirectionId = paymentPlan.DirectionId,
                     CreatedAtUtc = paymentPlan.CreatedAtUtc,
                     Notes = paymentPlan.Notes
                 });
@@ -471,12 +622,13 @@ public static class DatabaseInitializer
                 {
                     Rental = rental,
                     VehicleId = scheduledRental.VehicleState.Vehicle.Id,
+                    ReportedByEmployeeId = scheduledRental.Employee.Id,
                     Description = damagePlan.Description,
                     DateReported = damagePlan.DateReported,
                     RepairCost = damagePlan.RepairCost,
-                    ActNumber = damagePlan.ActNumber,
+                    DamageActNumber = damagePlan.DamageActNumber,
                     ChargedAmount = damagePlan.ChargedAmount,
-                    Status = damagePlan.Status
+                    StatusId = damagePlan.StatusId
                 });
             }
         }
@@ -563,7 +715,7 @@ public static class DatabaseInitializer
                 VehicleState = vehicleState,
                 Client = client,
                 Employee = employee,
-                Status = status,
+                StatusId = status,
                 DurationDays = durationDays,
                 StartDate = startDate,
                 EndDate = endDate,
@@ -573,7 +725,7 @@ public static class DatabaseInitializer
                 IsOneWay = !string.Equals(pickupLocation, returnLocation, StringComparison.Ordinal)
             };
 
-            if (status == RentalStatus.Canceled)
+            if (scheduledRental.StatusId == RentalStatus.Canceled)
             {
                 scheduledRental.CanceledAtUtc = ResolveCanceledAt(random, createdAtUtc, startDate);
                 scheduledRental.CancellationReason = CancellationReasons[sequenceIndex % CancellationReasons.Length];
@@ -581,7 +733,7 @@ public static class DatabaseInitializer
             else
             {
                 vehicleState.OccupiedIntervals.Add(new DateInterval(startDate, endDate));
-                if (status == RentalStatus.Active)
+                if (scheduledRental.StatusId == RentalStatus.Active)
                 {
                     vehicleState.HasActiveRental = true;
                 }
@@ -733,7 +885,7 @@ public static class DatabaseInitializer
                 rental.StartMileage = vehicleState.CurrentMileage;
                 rental.BaseAmount = rental.VehicleState.Vehicle.DailyRate * rental.DurationDays;
 
-                if (rental.Status == RentalStatus.Canceled)
+                if (rental.StatusId == RentalStatus.Canceled)
                 {
                     rental.EndMileage = null;
                     rental.OverageFee = 0m;
@@ -748,7 +900,7 @@ public static class DatabaseInitializer
 
                 var distance = EstimateDistance(random, rental.VehicleState.CatalogSeed, rental.DurationDays, rental.IsOneWay);
 
-                if (rental.Status == RentalStatus.Closed)
+                if (rental.StatusId == RentalStatus.Closed)
                 {
                     rental.EndMileage = rental.StartMileage + distance;
                     rental.OverageFee = ResolveOverageFee(random, rental.DurationDays);
@@ -907,7 +1059,7 @@ public static class DatabaseInitializer
     private static void AttachDamages(IReadOnlyList<ScheduledRental> scheduledRentals, Random random)
     {
         var closedRentals = scheduledRentals
-            .Where(rental => rental.Status == RentalStatus.Closed)
+            .Where(rental => rental.StatusId == RentalStatus.Closed)
             .OrderByDescending(rental => rental.DurationDays)
             .ThenBy(rental => rental.StartDate)
             .ToList();
@@ -1083,9 +1235,9 @@ public static class DatabaseInitializer
                 continue;
             }
 
-            var seed = VehicleCatalogSeeds.TryFindByVehicle(vehicle.Make, vehicle.Model);
+            var seed = VehicleCatalogSeeds.TryFindByVehicle(vehicle.MakeName, vehicle.ModelName);
             var resolved = seed is null
-                ? TryResolveCatalogPhotoPath(vehicle.Make, vehicle.Model)
+                ? TryResolveCatalogPhotoPath(vehicle.MakeName, vehicle.ModelName)
                 : TryResolveCatalogPhotoPath(seed.Make, seed.Model);
             if (!string.IsNullOrWhiteSpace(resolved))
             {
@@ -1098,6 +1250,28 @@ public static class DatabaseInitializer
     {
         return VehiclePhotoCatalog.TryBuildCatalogPhotoPath(make, model);
     }
+
+    private static int ResolveVehicleMakeId(RentalDbContext dbContext, string make)
+    {
+        var normalizedName = NormalizeLookupName(make);
+        return dbContext.VehicleMakes
+            .Where(item => item.NormalizedName == normalizedName)
+            .Select(item => item.Id)
+            .First();
+    }
+
+    private static int ResolveVehicleModelId(RentalDbContext dbContext, string make, string model)
+    {
+        var makeId = ResolveVehicleMakeId(dbContext, make);
+        var normalizedName = NormalizeLookupName(model);
+        return dbContext.VehicleModels
+            .Where(item => item.MakeId == makeId && item.NormalizedName == normalizedName)
+            .Select(item => item.Id)
+            .First();
+    }
+
+    private static string NormalizeLookupName(string value)
+        => string.Join(' ', value.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries)).ToUpperInvariant();
 
     private static void ApplyCatalogSeed(Vehicle vehicle, VehicleCatalogSeeds.CatalogVehicleSeed? seed)
     {
@@ -1171,7 +1345,7 @@ public static class DatabaseInitializer
         public required VehicleSeedState VehicleState { get; init; }
         public required Client Client { get; init; }
         public required Employee Employee { get; init; }
-        public required RentalStatus Status { get; init; }
+        public required RentalStatus StatusId { get; init; }
         public required int DurationDays { get; init; }
         public required DateTime StartDate { get; init; }
         public required DateTime EndDate { get; init; }
@@ -1198,8 +1372,8 @@ public static class DatabaseInitializer
         public List<ScheduledDamage> Damages { get; } = [];
     }
 
-    private sealed record ScheduledPayment(int EmployeeId, decimal Amount, PaymentMethod Method, PaymentDirection Direction, DateTime CreatedAtUtc, string Notes);
-    private sealed record ScheduledDamage(string Description, DateTime DateReported, decimal RepairCost, decimal ChargedAmount, bool IsChargedToClient, DamageStatus Status, string ActNumber);
+    private sealed record ScheduledPayment(int RecordedByEmployeeId, decimal Amount, PaymentMethod MethodId, PaymentDirection DirectionId, DateTime CreatedAtUtc, string Notes);
+    private sealed record ScheduledDamage(string Description, DateTime DateReported, decimal RepairCost, decimal ChargedAmount, bool IsChargedToClient, DamageStatus StatusId, string DamageActNumber);
 
     public sealed record SeedCredentials(
         string AdminLogin,
@@ -1209,3 +1383,5 @@ public static class DatabaseInitializer
         string ManagerPassword,
         bool ManagerPasswordGenerated);
 }
+
+

@@ -45,12 +45,12 @@ public sealed class PaymentsController(
         var result = await paymentService.AddPaymentAsync(
             new PaymentRequest(
                 RentalId: request.RentalId,
-                EmployeeId: employeeId.Value,
+                RecordedByEmployeeId: employeeId.Value,
                 Amount: request.Amount,
-                Method: request.Method,
-                Direction: request.Direction,
+                MethodId: request.MethodId,
+                DirectionId: request.DirectionId,
                 Notes: request.Notes,
-                Status: request.Status,
+                StatusId: request.StatusId,
                 ExternalTransactionId: request.ExternalTransactionId),
             cancellationToken);
 
@@ -61,7 +61,7 @@ public sealed class PaymentsController(
 
         var payment = await dbContext.Payments
             .AsNoTracking()
-            .Include(item => item.Employee)
+            .Include(item => item.RecordedByEmployee)
             .ThenInclude(item => item!.Account)
             .FirstOrDefaultAsync(item => item.Id == result.PaymentId, cancellationToken);
         if (payment is null)

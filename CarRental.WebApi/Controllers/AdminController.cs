@@ -89,12 +89,12 @@ public sealed class AdminController(
             return NotFound();
         }
 
-        if (employee.Role == Models.UserRole.Admin)
+        if (employee.RoleId == Models.UserRole.Admin)
         {
             return BadRequest(new { message = "Admin role cannot be changed by this operation." });
         }
 
-        employee.Role = employee.Role == Models.UserRole.Manager ? Models.UserRole.User : Models.UserRole.Manager;
+        employee.RoleId = employee.RoleId == Models.UserRole.Manager ? Models.UserRole.User : Models.UserRole.Manager;
         await dbContext.SaveChangesAsync(cancellationToken);
         return Ok(employee.ToDto());
     }

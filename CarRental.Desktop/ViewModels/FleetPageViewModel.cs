@@ -63,6 +63,8 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
     private int _totalVehicles;
     // Під час відновлення query-стану не можна тригерити ще один fetch на кожну зміну окремого фільтра.
     private bool _suppressQueryRefresh;
+    private readonly object _pendingQueryRefreshSync = new();
+    private Task _pendingQueryRefreshTask = Task.CompletedTask;
 
     public FleetPageViewModel(
         RentalDbContext dbContext,
@@ -80,6 +82,7 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
         OpenVehicleDetailsCommand = new RelayCommand(OpenSelectedVehicleDetails, () => !IsLoading && SelectedVehicle is not null);
         CloseVehicleDetailsCommand = new RelayCommand(CloseVehicleDetailsDialog);
         ToggleSearchPanelCommand = new RelayCommand(ToggleSearchPanel);
+        CloseSearchPanelCommand = new RelayCommand(CloseSearchPanel);
         SearchCommand = new AsyncRelayCommand(() => RefreshForQueryChangeAsync(), () => !IsLoading);
         ClearSearchCommand = new AsyncRelayCommand(ClearSearchAsync, () => !IsLoading);
         PreviousPageCommand = new AsyncRelayCommand(() => ChangePageAsync(-1), CanMovePrevious);
@@ -129,6 +132,7 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
 
     public IRelayCommand CloseVehicleDetailsCommand { get; }
     public IRelayCommand ToggleSearchPanelCommand { get; }
+    public IRelayCommand CloseSearchPanelCommand { get; }
     public IAsyncRelayCommand SearchCommand { get; }
     public IAsyncRelayCommand ClearSearchCommand { get; }
     public IAsyncRelayCommand PreviousPageCommand { get; }
@@ -229,7 +233,7 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
             {
                 if (!_suppressQueryRefresh)
                 {
-                    _ = RefreshForQueryChangeAsync();
+                    ScheduleQueryRefresh();
                 }
             }
         }
@@ -244,7 +248,7 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
             {
                 if (!_suppressQueryRefresh)
                 {
-                    _ = RefreshForQueryChangeAsync();
+                    ScheduleQueryRefresh();
                 }
             }
         }
@@ -259,7 +263,7 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
             {
                 if (!_suppressQueryRefresh)
                 {
-                    _ = RefreshForQueryChangeAsync();
+                    ScheduleQueryRefresh();
                 }
             }
         }
@@ -274,7 +278,7 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
             {
                 if (!_suppressQueryRefresh)
                 {
-                    _ = RefreshForQueryChangeAsync();
+                    ScheduleQueryRefresh();
                 }
             }
         }
@@ -318,7 +322,7 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
             var today = DateTime.Today;
             var activeVehicleIds = await _dbContext.Rentals
                 .AsNoTracking()
-                .Where(item => item.Status == RentalStatus.Active && item.StartDate <= today && today <= item.EndDate)
+                .Where(item => item.StatusId == RentalStatus.Active && item.StartDate <= today && today <= item.EndDate)
                 .Select(item => item.VehicleId)
                 .Distinct()
                 .ToListAsync();
@@ -326,7 +330,12 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
 
             await UpdateMakeFilterOptionsAsync();
 
-            var query = ApplyVehicleFilters(_dbContext.Vehicles.AsNoTracking(), activeVehicleIds);
+            var query = ApplyVehicleFilters(
+                _dbContext.Vehicles
+                    .AsNoTracking()
+                    .Include(item => item.MakeLookup)
+                    .Include(item => item.ModelLookup),
+                activeVehicleIds);
             TotalVehicles = await query.CountAsync();
             var totalPages = Math.Max(1, (int)Math.Ceiling((double)Math.Max(TotalVehicles, 0) / PageSize));
             if (CurrentPage > totalPages)
@@ -336,8 +345,8 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
 
             var vehicles = await query
                 .AsNoTracking()
-                .OrderBy(item => item.Make)
-                .ThenBy(item => item.Model)
+                .OrderBy(item => item.MakeLookup!.Name)
+                .ThenBy(item => item.ModelLookup!.Name)
                 .Skip((CurrentPage - 1) * PageSize)
                 .Take(PageSize)
                 .ToListAsync();
@@ -345,13 +354,13 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
             _allVehicles.Clear();
             foreach (var vehicle in vehicles)
             {
-                var car = $"{vehicle.Make} {vehicle.Model}";
-                var status = active.Contains(vehicle.Id)
+                var car = $"{vehicle.MakeName} {vehicle.ModelName}";
+                var statusText = active.Contains(vehicle.Id)
                     ? StatusActiveRental
                     : vehicle.IsBookable ? StatusAvailable : StatusUnavailable;
                 _allVehicles.Add(new FleetRow(
                     vehicle.Id,
-                    vehicle.Make,
+                    vehicle.MakeName,
                     car,
                     ResolveVehicleClass(car, vehicle.DailyRate),
                     vehicle.LicensePlate,
@@ -359,7 +368,7 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
                     vehicle.DailyRate,
                     vehicle.ServiceIntervalKm,
                     ResolveVehicleImageSource(vehicle),
-                    status));
+                    statusText));
             }
 
             ApplyFilters(selectedId);
@@ -424,6 +433,44 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
         IsVehicleDetailsDialogOpen = true;
     }
 
+    public async Task PrepareForVehicleAsync(int preferredVehicleId, bool openDetails = true)
+    {
+        _suppressQueryRefresh = true;
+        try
+        {
+            CurrentPage = 1;
+            SelectedMakeFilter = AllMakesOption;
+            SelectedClassFilter = AllClassesOption;
+            SelectedStatusFilter = AllStatusesOption;
+            SelectedSearchField = SearchFieldOptions.First(item => item.Key == SearchByIdKey);
+            SearchText = preferredVehicleId.ToString(CultureInfo.InvariantCulture);
+            IsSearchPanelOpen = false;
+            StatusMessage = string.Empty;
+            CloseVehicleDetailsDialog();
+        }
+        finally
+        {
+            _suppressQueryRefresh = false;
+        }
+
+        await AwaitPendingQueryRefreshAsync();
+
+        await RefreshAsync();
+
+        SelectedVehicle = Vehicles.FirstOrDefault(item => item.Id == preferredVehicleId);
+
+        if (SelectedVehicle is null)
+        {
+            StatusMessage = "Авто не знайдено в автопарку.";
+            return;
+        }
+
+        if (openDetails)
+        {
+            OpenSelectedVehicleDetails();
+        }
+    }
+
     public void CloseVehicleDetailsDialog()
     {
         IsVehicleDetailsDialogOpen = false;
@@ -432,6 +479,11 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
     private void ToggleSearchPanel()
     {
         IsSearchPanelOpen = !IsSearchPanelOpen;
+    }
+
+    private void CloseSearchPanel()
+    {
+        IsSearchPanelOpen = false;
     }
 
     private async Task ClearSearchAsync()
@@ -460,6 +512,38 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
         }
 
         await RefreshAsync();
+    }
+
+    private void ScheduleQueryRefresh()
+    {
+        lock (_pendingQueryRefreshSync)
+        {
+            _pendingQueryRefreshTask = QueueQueryRefreshAsync(_pendingQueryRefreshTask);
+        }
+    }
+
+    private async Task AwaitPendingQueryRefreshAsync()
+    {
+        Task pendingRefreshTask;
+        lock (_pendingQueryRefreshSync)
+        {
+            pendingRefreshTask = _pendingQueryRefreshTask;
+        }
+
+        await pendingRefreshTask;
+    }
+
+    private async Task QueueQueryRefreshAsync(Task previousRefreshTask)
+    {
+        try
+        {
+            await previousRefreshTask;
+        }
+        catch
+        {
+        }
+
+        await RefreshForQueryChangeAsync();
     }
 
     private async Task ChangePageAsync(int delta)
@@ -491,7 +575,7 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
     {
         if (!string.Equals(SelectedMakeFilter, AllMakesOption, StringComparison.OrdinalIgnoreCase))
         {
-            query = query.Where(item => item.Make == SelectedMakeFilter);
+            query = query.Where(item => item.MakeLookup!.Name == SelectedMakeFilter);
         }
 
         if (!string.Equals(SelectedClassFilter, AllClassesOption, StringComparison.OrdinalIgnoreCase))
@@ -518,7 +602,7 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
 
         return SelectedSearchField.Key switch
         {
-            SearchByCarKey => query.Where(item => item.Make.Contains(searchValue) || item.Model.Contains(searchValue)),
+            SearchByCarKey => query.Where(item => item.MakeLookup!.Name.Contains(searchValue) || item.ModelLookup!.Name.Contains(searchValue)),
             SearchByLicensePlateKey => query.Where(item => item.LicensePlate.Contains(searchValue)),
             SearchByIdKey when int.TryParse(searchValue, out var parsedId) => query.Where(item => item.Id == parsedId),
             SearchByMileageKey when int.TryParse(searchValue, out var parsedMileage) => query.Where(item => item.Mileage == parsedMileage),
@@ -534,46 +618,46 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
         return selectedClass switch
         {
             "Кабріолет" => query.Where(item =>
-                item.Make.Contains("MX-5") || item.Model.Contains("MX-5") ||
-                item.Model.Contains("Z4") ||
-                item.Model.Contains("500C") ||
-                item.Model.Contains("Roadster") ||
-                item.Model.Contains("Cabrio")),
+                item.MakeLookup!.Name.Contains("MX-5") || item.ModelLookup!.Name.Contains("MX-5") ||
+                item.ModelLookup!.Name.Contains("Z4") ||
+                item.ModelLookup!.Name.Contains("500C") ||
+                item.ModelLookup!.Name.Contains("Roadster") ||
+                item.ModelLookup!.Name.Contains("Cabrio")),
             "Пікап" => query.Where(item =>
-                item.Model.Contains("Hilux") ||
-                item.Model.Contains("Ranger") ||
-                item.Model.Contains("Navara") ||
-                item.Model.Contains("D-Max") ||
-                item.Model.Contains("Dmax")),
+                item.ModelLookup!.Name.Contains("Hilux") ||
+                item.ModelLookup!.Name.Contains("Ranger") ||
+                item.ModelLookup!.Name.Contains("Navara") ||
+                item.ModelLookup!.Name.Contains("D-Max") ||
+                item.ModelLookup!.Name.Contains("Dmax")),
             "Електромобіль" => query.Where(item =>
-                item.Model.Contains("Leaf") ||
-                item.Model.Contains("Model 3") ||
-                item.Model.Contains("Model Y") ||
-                item.Model.Contains("Ioniq 5") ||
-                item.Model.Contains("EV6")),
+                item.ModelLookup!.Name.Contains("Leaf") ||
+                item.ModelLookup!.Name.Contains("Model 3") ||
+                item.ModelLookup!.Name.Contains("Model Y") ||
+                item.ModelLookup!.Name.Contains("Ioniq 5") ||
+                item.ModelLookup!.Name.Contains("EV6")),
             "Комерційний" => query.Where(item =>
-                item.Model.Contains("Transit") ||
-                item.Model.Contains("Sprinter") ||
-                item.Model.Contains("Vivaro")),
+                item.ModelLookup!.Name.Contains("Transit") ||
+                item.ModelLookup!.Name.Contains("Sprinter") ||
+                item.ModelLookup!.Name.Contains("Vivaro")),
             "Мінівен" => query.Where(item =>
-                item.Model.Contains("Trafi") ||
-                item.Model.Contains("Kangoo") ||
-                item.Model.Contains("Multivan")),
+                item.ModelLookup!.Name.Contains("Trafi") ||
+                item.ModelLookup!.Name.Contains("Kangoo") ||
+                item.ModelLookup!.Name.Contains("Multivan")),
             "Позашляховик" => query.Where(item =>
-                item.Model.Contains("Prado") ||
-                item.Model.Contains("X5") ||
-                item.Model.Contains("Q7") ||
-                item.Model.Contains("GLE") ||
-                item.Model.Contains("RAV4") ||
-                item.Model.Contains("Sportage") ||
-                item.Model.Contains("X-Trail") ||
-                item.Model.Contains("Outlander") ||
-                item.Model.Contains("Forester") ||
-                item.Model.Contains("Tiguan") ||
-                item.Model.Contains("Duster") ||
-                item.Model.Contains("Wrangler") ||
-                item.Model.Contains("Discovery") ||
-                item.Model.Contains("Cayenne")),
+                item.ModelLookup!.Name.Contains("Prado") ||
+                item.ModelLookup!.Name.Contains("X5") ||
+                item.ModelLookup!.Name.Contains("Q7") ||
+                item.ModelLookup!.Name.Contains("GLE") ||
+                item.ModelLookup!.Name.Contains("RAV4") ||
+                item.ModelLookup!.Name.Contains("Sportage") ||
+                item.ModelLookup!.Name.Contains("X-Trail") ||
+                item.ModelLookup!.Name.Contains("Outlander") ||
+                item.ModelLookup!.Name.Contains("Forester") ||
+                item.ModelLookup!.Name.Contains("Tiguan") ||
+                item.ModelLookup!.Name.Contains("Duster") ||
+                item.ModelLookup!.Name.Contains("Wrangler") ||
+                item.ModelLookup!.Name.Contains("Discovery") ||
+                item.ModelLookup!.Name.Contains("Cayenne")),
             "Преміум" => query.Where(item => item.DailyRate >= VehicleDomainRules.BusinessUpperBound),
             "Бізнес" => query.Where(item => item.DailyRate >= VehicleDomainRules.MidUpperBound && item.DailyRate < VehicleDomainRules.BusinessUpperBound),
             "Середній" => query.Where(item => item.DailyRate >= VehicleDomainRules.EconomyUpperBound && item.DailyRate < VehicleDomainRules.MidUpperBound),
@@ -611,8 +695,7 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
         var currentSelection = SelectedMakeFilter;
         var uniqueMakes = await _dbContext.Vehicles
             .AsNoTracking()
-            .Where(item => !string.IsNullOrWhiteSpace(item.Make))
-            .Select(item => item.Make)
+            .Select(item => item.MakeLookup!.Name)
             .Distinct()
             .OrderBy(item => item)
             .ToListAsync();
@@ -671,7 +754,7 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
             SearchByCarKey => IsFuzzyTextMatch(row.Car, searchValue),
             SearchByMileageKey => IsNumericMatch(row.Mileage, searchValue),
             SearchByDailyRateKey => IsDecimalMatch(row.DailyRate, searchValue),
-            SearchByStatusKey => IsFuzzyTextMatch(row.Status, searchValue),
+            SearchByStatusKey => IsFuzzyTextMatch(row.StatusId, searchValue),
             SearchByIdKey => IsNumericMatch(row.Id, searchValue),
             SearchByLicensePlateKey => IsFuzzyTextMatch(row.LicensePlate, searchValue),
             SearchByServiceIntervalKey => IsNumericMatch(row.ServiceIntervalKm, searchValue),
@@ -997,10 +1080,22 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
             return new AddVehicleResult(false, photoError);
         }
 
+        var makeId = await ResolveVehicleMakeIdAsync(draft.Make);
+        if (!makeId.HasValue)
+        {
+            return new AddVehicleResult(false, "Оберіть марку авто з наявного каталогу.");
+        }
+
+        var modelId = await ResolveVehicleModelIdAsync(makeId.Value, draft.Model);
+        if (!modelId.HasValue)
+        {
+            return new AddVehicleResult(false, "Оберіть модель авто з наявного каталогу.");
+        }
+
         var vehicle = new Vehicle
         {
-            Make = draft.Make.Trim(),
-            Model = draft.Model.Trim(),
+            MakeId = makeId.Value,
+            ModelId = modelId.Value,
             PowertrainCapacityValue = powertrainCapacityValue,
             PowertrainCapacityUnit = powertrainCapacityUnit,
             FuelType = fuelType,
@@ -1023,6 +1118,27 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
         await _dbContext.SaveChangesAsync();
         return new AddVehicleResult(true, "Авто додано в автопарк.");
     }
+
+    private async Task<int?> ResolveVehicleMakeIdAsync(string make)
+    {
+        var normalizedName = NormalizeLookupName(make);
+        return await _dbContext.VehicleMakes
+            .Where(item => item.NormalizedName == normalizedName)
+            .Select(item => (int?)item.Id)
+            .FirstOrDefaultAsync();
+    }
+
+    private async Task<int?> ResolveVehicleModelIdAsync(int makeId, string model)
+    {
+        var normalizedName = NormalizeLookupName(model);
+        return await _dbContext.VehicleModels
+            .Where(item => item.MakeId == makeId && item.NormalizedName == normalizedName)
+            .Select(item => (int?)item.Id)
+            .FirstOrDefaultAsync();
+    }
+
+    private static string NormalizeLookupName(string value)
+        => string.Join(' ', value.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries)).ToUpperInvariant();
 
     private static bool TryParseDecimal(string text, out decimal value)
     {
@@ -1162,7 +1278,7 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
         decimal DailyRate,
         int ServiceIntervalKm,
         string ImageSource,
-        string Status)
+        string StatusId)
     {
         public bool HasImage => !string.IsNullOrWhiteSpace(ImageSource);
     }
@@ -1171,3 +1287,4 @@ public sealed class FleetPageViewModel : PageDataViewModelBase, ITransientStateO
 
     private sealed record AddVehicleResult(bool Success, string Message);
 }
+

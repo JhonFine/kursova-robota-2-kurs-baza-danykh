@@ -58,6 +58,7 @@ function Wait-TcpPortOpen {
 
 $repoRoot = $PSScriptRoot
 $desktopProjectPath = Join-Path $repoRoot "CarRental.Desktop\CarRental.Desktop.csproj"
+$apiProjectPath = Join-Path $repoRoot "CarRental.WebApi\CarRental.WebApi.csproj"
 $composePath = Join-Path $repoRoot "deploy\docker-compose.postgres.yml"
 
 # Скрипт піднімає desktop саме на PostgreSQL-профілі, щоб локальний WPF-клієнт тестував ту саму схему, що й web.
@@ -77,6 +78,21 @@ if (-not (Wait-TcpPortOpen -TargetHost "127.0.0.1" -Port 5432 -TimeoutSec 30)) {
 }
 
 $env:CAR_RENTAL_POSTGRES_CONNECTION = $PostgresConnection
+$env:CAR_RENTAL_JWT_SIGNING_KEY = "desktop-postgres-bootstrap-signing-key-20260403"
+
+Write-Host "Applying canonical WebApi migrations..."
+Push-Location $repoRoot
+try {
+    dotnet tool restore | Out-Host
+    dotnet tool run dotnet-ef database update `
+        --project $apiProjectPath `
+        --startup-project $apiProjectPath `
+        --context RentalDbContext `
+        --connection "$PostgresConnection" | Out-Host
+}
+finally {
+    Pop-Location
+}
 
 Write-Host "Starting desktop on PostgreSQL..."
 Write-Host "Connection: $PostgresConnection"

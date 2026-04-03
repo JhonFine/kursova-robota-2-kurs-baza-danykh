@@ -134,10 +134,30 @@
                     </Style>
                 </Border.Style>
                 <StackPanel>
-                    <TextBlock Text="Деталізований пошук"
-                               Style="{StaticResource FilterHeaderTextStyle}" />
-                    <TextBlock Text="Використовуйте конкретне поле, якщо швидких фільтрів недостатньо."
-                               Style="{StaticResource FilterSubtleTextStyle}" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Деталізований пошук"
+                                       Style="{StaticResource FilterHeaderTextStyle}" />
+                            <TextBlock Text="Використовуйте конкретне поле, якщо швидких фільтрів недостатньо."
+                                       Style="{StaticResource FilterSubtleTextStyle}" />
+                        </StackPanel>
+
+                        <Button Grid.Column="1"
+                                Width="28"
+                                Height="28"
+                                Margin="8,0,0,0"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Top"
+                                Content="✕"
+                                FontSize="13"
+                                ToolTip="Закрити пошук"
+                                Command="{Binding CloseSearchPanelCommand}" />
+                    </Grid>
 
                     <TextBlock Margin="0,12,0,0" Text="Поле" Style="{StaticResource FormLabelStyle}" />
                     <ComboBox Margin="0,0,0,6"
